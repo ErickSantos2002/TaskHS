@@ -12,7 +12,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
-import type { Board, BoardList, Card, Priority } from "../types";
+import type { Board, BoardList, Card, Comment, Priority } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -66,6 +66,431 @@ const IX = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
   </svg>
 );
+const ISend = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+  </svg>
+);
+const ITrash = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+const IUserPlus = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+  </svg>
+);
+const ITag = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 8V5a2 2 0 012-2h2z" />
+  </svg>
+);
+
+const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6","#ec4899","#64748b"];
+
+// ── CardDetailModal ────────────────────────────────────────────
+
+function CardDetailModal({ card, onClose, onCardUpdate, onCardDelete }: {
+  card: Card;
+  onClose: () => void;
+  onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
+  onCardDelete: (cardId: number) => void;
+}) {
+  const [title, setTitle] = useState(card.title);
+  const [description, setDescription] = useState(card.description ?? "");
+  const [labels, setLabels] = useState<Label[]>(card.labels);
+  const [members, setMembers] = useState<User[]>(card.members);
+  const [comments, setComments] = useState<Comment[]>(card.comments);
+  const [commentBody, setCommentBody] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  // Label form
+  const [showLabelForm, setShowLabelForm] = useState(false);
+  const [newLabelText, setNewLabelText] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState("#0ea5e9");
+
+  // Member picker
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+
+  // Delete
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setTitle(card.title);
+    setDescription(card.description ?? "");
+    setLabels(card.labels);
+    setMembers(card.members);
+    setComments(card.comments);
+  }, [card.id]);
+
+  useEffect(() => {
+    if (showMemberPicker && allUsers.length === 0) {
+      api.get<User[]>("/auth/users").then(setAllUsers).catch(() => {});
+    }
+  }, [showMemberPicker]);
+
+  async function patchCard(fields: Record<string, unknown>) {
+    try {
+      const updated = await api.patch<Card>(`/lists/${card.list_id}/cards/${card.id}`, fields);
+      onCardUpdate({ id: card.id, ...updated });
+    } catch {}
+  }
+
+  function handleTitleBlur() {
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === card.title) return;
+    patchCard({ title: trimmed });
+  }
+
+  function handleDescriptionBlur() {
+    const trimmed = description.trim();
+    if (trimmed === (card.description ?? "")) return;
+    patchCard({ description: trimmed || null });
+  }
+
+  async function handleAddComment() {
+    const body = commentBody.trim();
+    if (!body || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body });
+      const updated = [...comments, comment];
+      setComments(updated);
+      setCommentBody("");
+      onCardUpdate({ id: card.id, comments: updated });
+    } finally {
+      setSubmittingComment(false);
+    }
+  }
+
+  async function handleAddLabel() {
+    const text = newLabelText.trim();
+    if (!text) return;
+    try {
+      const label = await api.post<Label>(`/lists/${card.list_id}/cards/${card.id}/labels`, { label: text, color: newLabelColor });
+      const updated = [...labels, label];
+      setLabels(updated);
+      onCardUpdate({ id: card.id, labels: updated });
+      setNewLabelText("");
+      setShowLabelForm(false);
+    } catch {}
+  }
+
+  async function handleRemoveLabel(labelId: number) {
+    try {
+      await api.del(`/lists/${card.list_id}/cards/${card.id}/labels/${labelId}`);
+      const updated = labels.filter(l => l.id !== labelId);
+      setLabels(updated);
+      onCardUpdate({ id: card.id, labels: updated });
+    } catch {}
+  }
+
+  async function handleAddMember(user: User) {
+    try {
+      await api.post(`/lists/${card.list_id}/cards/${card.id}/members/${user.id}`, {});
+      const updated = [...members, user];
+      setMembers(updated);
+      onCardUpdate({ id: card.id, members: updated });
+      setShowMemberPicker(false);
+    } catch {}
+  }
+
+  async function handleRemoveMember(userId: number) {
+    try {
+      await api.del(`/lists/${card.list_id}/cards/${card.id}/members/${userId}`);
+      const updated = members.filter(m => m.id !== userId);
+      setMembers(updated);
+      onCardUpdate({ id: card.id, members: updated });
+    } catch {}
+  }
+
+  async function handleDeleteCard() {
+    setDeleting(true);
+    try {
+      await api.del(`/lists/${card.list_id}/cards/${card.id}`);
+      onCardDelete(card.id);
+      onClose();
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
+  const PRIO_BTNS: { value: Priority; label: string; dot: string }[] = [
+    { value: "low",      label: "Baixo",   dot: "#94a3b8" },
+    { value: "medium",   label: "Médio",   dot: "#818cf8" },
+    { value: "high",     label: "Alto",    dot: "#f59e0b" },
+    { value: "critical", label: "Crítico", dot: "#ef4444" },
+  ];
+
+  const isOverdue = card.due_date && new Date(card.due_date) < new Date();
+  const availableUsers = allUsers.filter(u => !members.some(m => m.id === u.id));
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-background-surface border border-slate-200 dark:border-border shadow-2xl mb-12">
+        {/* Priority stripe */}
+        <div className="h-1 rounded-t-2xl" style={{ backgroundColor: PRIORITY[card.priority].dot }} />
+
+        {/* Header */}
+        <div className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-slate-100 dark:border-border">
+          <div className="flex-1 min-w-0">
+            <textarea
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleTitleBlur(); } }}
+              rows={2}
+              className="w-full text-lg font-bold text-slate-900 dark:text-slate-100 bg-transparent resize-none focus:outline-none leading-snug"
+            />
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-background-elevated transition-colors mt-1"
+          >
+            <IX />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-6">
+
+          {/* Priority + Due date */}
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Prioridade</p>
+              <div className="flex gap-2">
+                {PRIO_BTNS.map(pb => (
+                  <button
+                    key={pb.value}
+                    onClick={() => patchCard({ priority: pb.value })}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all",
+                      card.priority === pb.value
+                        ? "border-current"
+                        : "border-transparent opacity-40 hover:opacity-70 bg-slate-100 dark:bg-background-elevated text-slate-600 dark:text-slate-400"
+                    )}
+                    style={card.priority === pb.value ? { color: pb.dot, backgroundColor: `${pb.dot}18` } : {}}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: pb.dot }} />
+                    {pb.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Data de entrega</p>
+              <input
+                type="date"
+                defaultValue={card.due_date ?? ""}
+                onChange={e => patchCard({ due_date: e.target.value || null })}
+                className={cn(
+                  "text-sm rounded-lg border px-3 py-1.5 bg-transparent focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors dark:text-slate-200",
+                  isOverdue ? "border-red-400 text-red-500" : "border-slate-200 dark:border-border text-slate-700"
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Descrição</p>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              onBlur={handleDescriptionBlur}
+              rows={4}
+              placeholder="Adicionar descrição…"
+              className="w-full text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-background-elevated border border-slate-200 dark:border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-400 leading-relaxed"
+            />
+          </div>
+
+          {/* Members */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Membros</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full bg-slate-100 dark:bg-background-elevated border border-slate-200 dark:border-border group">
+                  <span className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <span className="text-[9px] font-bold text-primary leading-none">{m.initials}</span>
+                  </span>
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{m.name}</span>
+                  <button
+                    onClick={() => handleRemoveMember(m.id)}
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors ml-0.5"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              ))}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMemberPicker(p => !p)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border-2 border-dashed border-slate-300 dark:border-border text-slate-400 hover:border-primary hover:text-primary transition-colors text-xs"
+                >
+                  <IUserPlus /><span>Adicionar</span>
+                </button>
+                {showMemberPicker && (
+                  <div className="absolute top-full left-0 mt-1 z-10 w-52 rounded-xl bg-white dark:bg-background-surface border border-slate-200 dark:border-border shadow-xl overflow-hidden">
+                    {availableUsers.length === 0 ? (
+                      <p className="text-xs text-slate-400 p-3 text-center">{allUsers.length === 0 ? "Carregando…" : "Todos já adicionados"}</p>
+                    ) : (
+                      availableUsers.map(u => (
+                        <button
+                          key={u.id}
+                          onClick={() => handleAddMember(u)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-background-elevated transition-colors text-left"
+                        >
+                          <span className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-bold text-primary leading-none">{u.initials}</span>
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{u.name}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{u.email}</p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Labels */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Etiquetas</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {labels.map(l => (
+                <span
+                  key={l.id}
+                  className="flex items-center gap-1 text-xs font-semibold pl-2.5 pr-1 py-1 rounded-full border"
+                  style={{ backgroundColor: `${l.color}20`, color: l.color, borderColor: `${l.color}40` }}
+                >
+                  {l.label}
+                  <button
+                    onClick={() => handleRemoveLabel(l.id)}
+                    className="w-4 h-4 rounded-full flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </span>
+              ))}
+              {showLabelForm ? (
+                <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl border border-slate-200 dark:border-border bg-slate-50 dark:bg-background-elevated">
+                  <input
+                    autoFocus
+                    value={newLabelText}
+                    onChange={e => setNewLabelText(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddLabel(); } if (e.key === "Escape") setShowLabelForm(false); }}
+                    placeholder="Nome da etiqueta…"
+                    className="text-xs bg-transparent focus:outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 w-32"
+                  />
+                  <div className="flex gap-1">
+                    {LABEL_COLORS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setNewLabelColor(c)}
+                        className={cn("w-4 h-4 rounded-full border-2 transition-transform", newLabelColor === c ? "scale-125 border-white dark:border-background-elevated" : "border-transparent")}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                  <button onClick={handleAddLabel} className="p-1 rounded text-primary hover:text-primary-600 transition-colors"><ICheck /></button>
+                  <button onClick={() => setShowLabelForm(false)} className="p-1 rounded text-slate-400 hover:text-slate-600 transition-colors"><IX /></button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowLabelForm(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border-2 border-dashed border-slate-300 dark:border-border text-slate-400 hover:border-primary hover:text-primary transition-colors text-xs"
+                >
+                  <ITag /><span>Adicionar</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Comments */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+              Comentários{comments.length > 0 && <span className="normal-case font-normal ml-1">({comments.length})</span>}
+            </p>
+            {comments.length === 0 && (
+              <p className="text-xs text-slate-400 italic mb-3">Nenhum comentário ainda.</p>
+            )}
+            <div className="space-y-3 mb-4 max-h-52 overflow-y-auto">
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-[9px] font-bold text-primary leading-none">{c.author.initials}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 mb-0.5">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{c.author.name}</span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(c.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap bg-slate-50 dark:bg-background-elevated rounded-lg px-2.5 py-2">{c.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 items-end">
+              <textarea
+                value={commentBody}
+                onChange={e => setCommentBody(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
+                placeholder="Adicionar comentário… (Enter para enviar)"
+                rows={2}
+                className="flex-1 text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-background-elevated border border-slate-200 dark:border-border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-400"
+              />
+              <button
+                onClick={handleAddComment}
+                disabled={!commentBody.trim() || submittingComment}
+                className="p-2.5 rounded-lg bg-primary text-white hover:bg-primary-600 disabled:opacity-40 transition-all shrink-0"
+              >
+                <ISend />
+              </button>
+            </div>
+          </div>
+
+          {/* Delete */}
+          <div className="pt-2 border-t border-slate-100 dark:border-border">
+            {confirmDelete ? (
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-slate-500 flex-1">Tem certeza? Esta ação não pode ser desfeita.</p>
+                <button onClick={() => setConfirmDelete(false)} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-border text-slate-500 hover:bg-slate-50 dark:hover:bg-background-elevated transition-colors">Cancelar</button>
+                <button
+                  onClick={handleDeleteCard}
+                  disabled={deleting}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold"
+                >
+                  {deleting ? "Excluindo…" : "Confirmar exclusão"}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-2 text-xs text-slate-400 hover:text-red-500 transition-colors"
+              >
+                <ITrash /><span>Excluir card</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── CardContent (shared between sortable card and drag overlay) ─
 
@@ -125,7 +550,7 @@ function CardContent({ card, isDragging = false }: { card: Card; isDragging?: bo
 
 // ── KanbanCard (sortable) ──────────────────────────────────────
 
-function KanbanCard({ card }: { card: Card }) {
+function KanbanCard({ card, onClick }: { card: Card; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
 
   return (
@@ -138,12 +563,15 @@ function KanbanCard({ card }: { card: Card }) {
       <div
         {...attributes}
         {...listeners}
+        onPointerDown={e => e.stopPropagation()}
         className="absolute top-2 right-2 z-10 p-1 rounded opacity-0 group-hover/card:opacity-100 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-background-elevated transition-all"
         title="Arrastar"
       >
         <IGrip />
       </div>
-      <CardContent card={card} />
+      <button type="button" className="w-full text-left" onClick={onClick}>
+        <CardContent card={card} />
+      </button>
     </div>
   );
 }
@@ -266,7 +694,7 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, onCardAdded }: { list: BoardList; cards: Card[]; onCardAdded: (c: Card) => void }) {
+function KanbanColumn({ list, cards, onCardAdded, onCardClick }: { list: BoardList; cards: Card[]; onCardAdded: (c: Card) => void; onCardClick: (card: Card) => void }) {
   const [addingCard, setAddingCard] = useState(false);
 
   return (
@@ -293,7 +721,7 @@ function KanbanColumn({ list, cards, onCardAdded }: { list: BoardList; cards: Ca
               <p className="text-xs text-slate-400">Nenhum card</p>
             </div>
           )}
-          {cards.map(card => <KanbanCard key={card.id} card={card} />)}
+          {cards.map(card => <KanbanCard key={card.id} card={card} onClick={() => onCardClick(card)} />)}
           {addingCard && (
             <AddCardForm
               listId={list.id}
@@ -332,6 +760,7 @@ export function BoardPage() {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [activeListId, setActiveListId] = useState<number | null>(null);
   const currentListIdRef = useRef<number | null>(null); // tracks card's current list during drag
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -370,6 +799,35 @@ export function BoardPage() {
     if (str.startsWith("list-")) return Number(str.replace("list-", ""));
     // overId is a card id — find its list
     return findListOfCard(Number(overId));
+  }
+
+  function handleCardUpdate(updated: Partial<Card> & { id: number }) {
+    setCardsByList(prev => {
+      const next = { ...prev };
+      for (const listId of Object.keys(next)) {
+        const idx = next[Number(listId)].findIndex(c => c.id === updated.id);
+        if (idx !== -1) {
+          next[Number(listId)] = next[Number(listId)].map(c => c.id === updated.id ? { ...c, ...updated } : c);
+          break;
+        }
+      }
+      return next;
+    });
+    setSelectedCard(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+  }
+
+  function handleCardDelete(cardId: number) {
+    setCardsByList(prev => {
+      const next = { ...prev };
+      for (const listId of Object.keys(next)) {
+        const filtered = next[Number(listId)].filter(c => c.id !== cardId);
+        if (filtered.length !== next[Number(listId)].length) {
+          next[Number(listId)] = filtered;
+          break;
+        }
+      }
+      return next;
+    });
   }
 
   // ── DnD handlers ─────────────────────────────────────────────
@@ -533,6 +991,7 @@ export function BoardPage() {
                     list={list}
                     cards={filteredCards(list.id)}
                     onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
+                    onCardClick={card => setSelectedCard(card)}
                   />
                 ))}
                 {addingList ? (
@@ -555,6 +1014,16 @@ export function BoardPage() {
           </div>
         </div>
       </div>
+
+      {/* Card detail modal */}
+      {selectedCard && (
+        <CardDetailModal
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          onCardUpdate={handleCardUpdate}
+          onCardDelete={handleCardDelete}
+        />
+      )}
 
       {/* Drag overlay — ghost card following the cursor */}
       <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>

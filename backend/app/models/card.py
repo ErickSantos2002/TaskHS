@@ -28,7 +28,7 @@ class Card(Base):
     list: Mapped["List"] = relationship("List", back_populates="cards")
     labels: Mapped[list["CardLabel"]] = relationship("CardLabel", back_populates="card", cascade="all, delete-orphan")
     members: Mapped[list["CardMember"]] = relationship("CardMember", back_populates="card", cascade="all, delete-orphan")
-    comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan", order_by="CardComment.created_at")
+    comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan")
     attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan")
 
 

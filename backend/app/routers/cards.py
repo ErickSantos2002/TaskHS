@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from sqlalchemy.orm import selectinload
-from app.database import get_db
-from app.models.card import Card, CardComment, CardMember
+from app.database import get_db, AsyncSessionLocal
+from app.models.card import Card, CardComment, CardMember, CardLabel
 from app.models.user import User
-from app.schemas.card import CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut
+from app.schemas.card import CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut, LabelCreate, LabelOut
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/lists/{list_id}/cards", tags=["cards"])
@@ -56,15 +56,16 @@ async def get_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db
 
 @router.patch("/{card_id}", response_model=CardOut)
 async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    card = await _get_card_or_404(card_id, list_id, db)
+    exists = await db.execute(select(Card.id).where(Card.id == card_id, Card.list_id == list_id))
+    if not exists.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Card não encontrado")
     data = body.model_dump(exclude_none=True)
-    if "list_id" in data:
-        card.list_id = data.pop("list_id")
-    for field, value in data.items():
-        setattr(card, field, value)
+    if data:
+        await db.execute(sql_update(Card).where(Card.id == card_id).values(**data).execution_options(synchronize_session=False))
     await db.commit()
-    result = await db.execute(select(Card).where(Card.id == card.id).options(*_card_options()))
-    return result.scalar_one()
+    async with AsyncSessionLocal() as fresh_db:
+        result = await fresh_db.execute(select(Card).where(Card.id == card_id).options(*_card_options()))
+        return result.scalar_one()
 
 
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -100,4 +101,23 @@ async def remove_card_member(list_id: int, card_id: int, user_id: int, db: Async
     member = result.scalar_one_or_none()
     if member:
         await db.delete(member)
+        await db.commit()
+
+
+@router.post("/{card_id}/labels", response_model=LabelOut, status_code=status.HTTP_201_CREATED)
+async def add_label(list_id: int, card_id: int, body: LabelCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
+    label = CardLabel(card_id=card_id, label=body.label, color=body.color)
+    db.add(label)
+    await db.commit()
+    await db.refresh(label)
+    return label
+
+
+@router.delete("/{card_id}/labels/{label_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_label(list_id: int, card_id: int, label_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(CardLabel).where(CardLabel.id == label_id, CardLabel.card_id == card_id))
+    label = result.scalar_one_or_none()
+    if label:
+        await db.delete(label)
         await db.commit()

@@ -64,7 +64,14 @@ class CardOut(BaseModel):
     @field_validator("labels", "comments", "attachments", mode="before")
     @classmethod
     def default_list(cls, v: Any) -> Any:
-        return v if v is not None else []
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        try:
+            return list(v)
+        except TypeError:
+            return [v]
 
     @field_validator("members", mode="before")
     @classmethod
@@ -75,6 +82,11 @@ class CardOut(BaseModel):
         if hasattr(v[0], "user"):
             return [m.user for m in v if m.user is not None]
         return v
+
+
+class LabelCreate(BaseModel):
+    label: str
+    color: str = "#0ea5e9"
 
 
 class CommentCreate(BaseModel):
