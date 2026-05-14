@@ -27,6 +27,18 @@ class TokenOut(BaseModel):
     user: UserOut
 
 
+class UserAdminCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    initials: str
+    is_admin: bool = False
+
+
+class UserAdminUpdate(BaseModel):
+    is_admin: bool
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str

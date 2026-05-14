@@ -73,16 +73,6 @@ class CardOut(BaseModel):
         except TypeError:
             return [v]
 
-    @field_validator("members", mode="before")
-    @classmethod
-    def extract_users(cls, v: Any) -> Any:
-        if not v:
-            return []
-        # Card.members is list[CardMember] — extract the nested .user
-        if hasattr(v[0], "user"):
-            return [m.user for m in v if m.user is not None]
-        return v
-
 
 class LabelCreate(BaseModel):
     label: str

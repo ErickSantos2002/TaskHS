@@ -5,6 +5,7 @@ import { MainLayout } from "./layouts/MainLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { BoardsPage } from "./pages/BoardsPage";
 import { BoardPage } from "./pages/BoardPage";
+import { UsersPage } from "./pages/UsersPage";
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
                     <Route index element={<Navigate to="/boards" replace />} />
                     <Route path="boards" element={<BoardsPage />} />
                     <Route path="boards/:id" element={<BoardPage />} />
+                    <Route path="usuarios" element={<UsersPage />} />
                     <Route path="*" element={<Navigate to="/boards" replace />} />
                   </Routes>
                 </MainLayout>

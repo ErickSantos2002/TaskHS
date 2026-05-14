@@ -20,6 +20,37 @@ def _card_options():
     ]
 
 
+def _to_list(v) -> list:
+    """Normalize any SQLAlchemy collection to a plain list, even if ORM returns a scalar."""
+    if not v:
+        return []
+    if isinstance(v, list):
+        return v
+    try:
+        return list(v)
+    except TypeError:
+        return [v]
+
+
+def _card_to_dict(card: Card) -> dict:
+    """Convert Card ORM object to dict, extracting User from CardMember relationships."""
+    return {
+        "id": card.id,
+        "list_id": card.list_id,
+        "title": card.title,
+        "description": card.description,
+        "priority": card.priority,
+        "position": card.position,
+        "due_date": card.due_date,
+        "created_at": card.created_at,
+        "updated_at": card.updated_at,
+        "labels": _to_list(card.labels),
+        "members": [m.user for m in _to_list(card.members) if m.user is not None],
+        "comments": _to_list(card.comments),
+        "attachments": _to_list(card.attachments),
+    }
+
+
 async def _get_card_or_404(card_id: int, list_id: int, db: AsyncSession) -> Card:
     result = await db.execute(
         select(Card).where(Card.id == card_id, Card.list_id == list_id).options(*_card_options())
@@ -38,7 +69,7 @@ async def create_card(list_id: int, body: CardCreate, db: AsyncSession = Depends
     db.add(card)
     await db.commit()
     result = await db.execute(select(Card).where(Card.id == card.id).options(*_card_options()))
-    return result.scalar_one()
+    return _card_to_dict(result.scalar_one())
 
 
 @router.get("", response_model=list[CardOut])
@@ -46,12 +77,12 @@ async def get_cards(list_id: int, db: AsyncSession = Depends(get_db), current_us
     result = await db.execute(
         select(Card).where(Card.list_id == list_id).order_by(Card.position).options(*_card_options())
     )
-    return result.scalars().all()
+    return [_card_to_dict(c) for c in result.scalars().all()]
 
 
 @router.get("/{card_id}", response_model=CardOut)
 async def get_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return await _get_card_or_404(card_id, list_id, db)
+    return _card_to_dict(await _get_card_or_404(card_id, list_id, db))
 
 
 @router.patch("/{card_id}", response_model=CardOut)
@@ -65,7 +96,7 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
     await db.commit()
     async with AsyncSessionLocal() as fresh_db:
         result = await fresh_db.execute(select(Card).where(Card.id == card_id).options(*_card_options()))
-        return result.scalar_one()
+        return _card_to_dict(result.scalar_one())
 
 
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
