@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"D:\\\\GitHub\\\\hsgrowth-sistema\\\\frontend\" 2>&1 | head -30)",
+      "Read(//d/GitHub/hsgrowth-sistema/frontend/**)",
+      "Bash(start http://localhost:5174)",
+      "Read(//d/GitHub/HelpHS/frontend/**)",
+      "Bash(Get-ChildItem -Recurse -File -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table Name, FullName)",
+      "Bash(node -e \"require\\('d:/GitHub/TaskHS/frontend/node_modules/tailwindcss'\\)\")",
+      "Bash(Remove-Item -Recurse -Force \"d:/GitHub/TaskHS/frontend/node_modules/.vite\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"cache limpo\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(taskkill /F /IM node.exe)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(python -c \"import asyncio; from app.database import engine; from sqlalchemy import text; asyncio.run\\(engine.connect\\(\\).__aenter__\\(\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(uvicorn app.main:app --port 8000 --timeout-graceful-shutdown 2)",
+      "Bash(uvicorn app.main:app --port 8000 --reload)",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(curl http://localhost:8000/api/health)"
+    ]
+  }
+}
