@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Integer, DateTime, Date, Text, Enum as SAEnum
+from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -20,7 +20,7 @@ class Card(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     priority: Mapped[Priority] = mapped_column(SAEnum(Priority), default=Priority.medium)
-    position: Mapped[int] = mapped_column(Integer, default=0)
+    position: Mapped[float] = mapped_column(Float, default=65536.0)
     due_date: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

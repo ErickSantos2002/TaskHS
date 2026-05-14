@@ -32,7 +32,9 @@ async def _get_card_or_404(card_id: int, list_id: int, db: AsyncSession) -> Card
 
 @router.post("", response_model=CardOut, status_code=status.HTTP_201_CREATED)
 async def create_card(list_id: int, body: CardCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    card = Card(**body.model_dump(), list_id=list_id)
+    last = await db.execute(select(Card.position).where(Card.list_id == list_id).order_by(Card.position.desc()).limit(1))
+    last_pos = last.scalar_one_or_none() or 0.0
+    card = Card(**body.model_dump(), list_id=list_id, position=last_pos + 65536.0)
     db.add(card)
     await db.commit()
     result = await db.execute(select(Card).where(Card.id == card.id).options(*_card_options()))

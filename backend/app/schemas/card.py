@@ -1,5 +1,6 @@
 from datetime import datetime, date
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, field_validator
 from app.models.card import Priority
 from app.schemas.user import UserOut
 
@@ -32,7 +33,6 @@ class CardCreate(BaseModel):
     description: str | None = None
     priority: Priority = Priority.medium
     due_date: date | None = None
-    position: int = 0
 
 
 class CardUpdate(BaseModel):
@@ -40,7 +40,7 @@ class CardUpdate(BaseModel):
     description: str | None = None
     priority: Priority | None = None
     due_date: date | None = None
-    position: int | None = None
+    position: float | None = None
     list_id: int | None = None
 
 
@@ -50,7 +50,7 @@ class CardOut(BaseModel):
     title: str
     description: str | None
     priority: Priority
-    position: int
+    position: float
     due_date: date | None
     created_at: datetime
     updated_at: datetime
@@ -60,6 +60,21 @@ class CardOut(BaseModel):
     attachments: list[AttachmentOut] = []
 
     model_config = {"from_attributes": True}
+
+    @field_validator("labels", "comments", "attachments", mode="before")
+    @classmethod
+    def default_list(cls, v: Any) -> Any:
+        return v if v is not None else []
+
+    @field_validator("members", mode="before")
+    @classmethod
+    def extract_users(cls, v: Any) -> Any:
+        if not v:
+            return []
+        # Card.members is list[CardMember] — extract the nested .user
+        if hasattr(v[0], "user"):
+            return [m.user for m in v if m.user is not None]
+        return v
 
 
 class CommentCreate(BaseModel):

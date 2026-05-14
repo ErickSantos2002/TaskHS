@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { useAuth } from "../contexts/AuthContext";
 import logo from "../assets/logo.png";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -65,9 +67,9 @@ function IconLogout() {
 // ── Nav items ─────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: <IconDashboard />, active: false },
-  { label: "Boards",    icon: <IconBoards />,    active: true  },
-  { label: "Configurações", icon: <IconSettings />, active: false },
+  { label: "Dashboard",     icon: <IconDashboard />, to: "/dashboard" },
+  { label: "Boards",        icon: <IconBoards />,    to: "/boards"    },
+  { label: "Configurações", icon: <IconSettings />,  to: "/settings"  },
 ];
 
 // ── Layout ────────────────────────────────────────────────────
@@ -77,8 +79,16 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [dark, setDark] = useState(() => localStorage.getItem("taskhs-theme") !== "light");
   const [collapsed, setCollapsed] = useState(false);
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
 
   function toggleTheme() {
     const next = !dark;
@@ -120,9 +130,12 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-0.5">
-          {NAV_ITEMS.map(({ label, icon, active }) => (
-            <button
+          {NAV_ITEMS.map(({ label, icon, to }) => {
+            const active = location.pathname.startsWith(to);
+            return (
+            <Link
               key={label}
+              to={to}
               title={collapsed ? label : undefined}
               className={cn(
                 "relative group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-150",
@@ -147,8 +160,9 @@ export function MainLayout({ children }: MainLayoutProps) {
                   {label}
                 </span>
               )}
-            </button>
-          ))}
+            </Link>
+            );
+          })}
         </nav>
 
         {/* Footer */}
@@ -191,18 +205,24 @@ export function MainLayout({ children }: MainLayoutProps) {
             </button>
 
             {/* User */}
-            <button className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-background-elevated transition-colors ml-1">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                EH
+            <div className="flex items-center gap-1 ml-1">
+              <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                  {user?.initials ?? "?"}
+                </div>
+                <div className="hidden md:block text-left">
+                  <p className="text-sm font-medium text-slate-100 leading-tight">{user?.name ?? ""}</p>
+                  <p className="text-xs text-slate-500 leading-tight">{user?.is_admin ? "Administrador" : "Membro"}</p>
+                </div>
               </div>
-              <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-slate-100 leading-tight">Erick H.</p>
-                <p className="text-xs text-slate-500 leading-tight">Administrador</p>
-              </div>
-              <svg className="w-4 h-4 text-slate-500 hidden md:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+              <button
+                onClick={handleLogout}
+                title="Sair"
+                className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-background-elevated hover:text-danger transition-colors"
+              >
+                <IconLogout />
+              </button>
+            </div>
           </div>
         </header>
 
