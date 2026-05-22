@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import {
   DndContext, DragOverlay, closestCorners,
   PointerSensor, useSensor, useSensors,
@@ -120,6 +121,11 @@ const ISearch = () => (
 const ICopy = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
+const IGear = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -984,6 +990,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(list.title);
   const [showMenu, setShowMenu] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -996,6 +1003,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(false);
         setConfirmDelete(false);
+        setShowColorPicker(false);
       }
     }
     if (showMenu) document.addEventListener("mousedown", onClickOutside);
@@ -1012,6 +1020,16 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
     } catch {
       setRenameValue(list.title);
     }
+  }
+
+  async function handleColorChange(color: string) {
+    setShowColorPicker(false);
+    setShowMenu(false);
+    if (color === list.color) return;
+    try {
+      const updated = await api.patch<BoardList>(`/boards/${list.board_id}/lists/${list.id}`, { color });
+      onListUpdate(updated);
+    } catch {}
   }
 
   async function handleDelete() {
@@ -1076,6 +1094,19 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     Renomear
                   </button>
+                  <div className="border-t border-border">
+                    <button onClick={() => setShowColorPicker(p => !p)} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left">
+                      <span className="w-4 h-4 rounded-full border-2 border-white/20 shrink-0" style={{ backgroundColor: list.color }} />
+                      Mudar cor
+                    </button>
+                    {showColorPicker && (
+                      <div className="px-3 pb-2.5 flex gap-1.5 flex-wrap">
+                        {LABEL_COLORS.map(c => (
+                          <button key={c} onClick={() => handleColorChange(c)} className={cn("w-5 h-5 rounded-full border-2 transition-transform", list.color === c ? "scale-125 border-white/80" : "border-transparent")} style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button onClick={() => { handleArchiveList(); setShowMenu(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left border-t border-border">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                     Arquivar lista
@@ -1142,6 +1173,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
 export function BoardPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const boardId = Number(id);
 
   const [board, setBoard] = useState<Board | null>(null);
@@ -1165,8 +1197,43 @@ export function BoardPage() {
   const [archivedLists, setArchivedLists] = useState<BoardList[]>([]);
   const [archivedTab, setArchivedTab] = useState<"cards" | "lists">("cards");
   const [loadingArchived, setLoadingArchived] = useState(false);
+  const [showEditBoard, setShowEditBoard] = useState(false);
+  const [editBoardTitle, setEditBoardTitle] = useState("");
+  const [editBoardDescription, setEditBoardDescription] = useState("");
+  const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
+  const [savingBoard, setSavingBoard] = useState(false);
+  const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
+  const [deletingBoard, setDeletingBoard] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollDrag = useRef({ active: false, startX: 0, scrollLeft: 0 });
+
+  function onBoardMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, textarea, [data-dnd-draggable]")) return;
+    if (e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollDrag.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft };
+    el.style.cursor = "grabbing";
+    el.style.userSelect = "none";
+  }
+
+  function onBoardMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!scrollDrag.current.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const dx = e.clientX - scrollDrag.current.startX;
+    el.scrollLeft = scrollDrag.current.scrollLeft - dx;
+  }
+
+  function onBoardMouseUp() {
+    scrollDrag.current.active = false;
+    const el = scrollRef.current;
+    if (el) { el.style.cursor = ""; el.style.userSelect = ""; }
+  }
 
   useEffect(() => {
     if (!boardId) return;
@@ -1314,6 +1381,41 @@ export function BoardPage() {
       await api.del(`/boards/${boardId}/lists/${lst.id}`);
       setArchivedLists(prev => prev.filter(l => l.id !== lst.id));
     } catch {}
+  }
+
+  function openEditBoard() {
+    if (!board) return;
+    setEditBoardTitle(board.title);
+    setEditBoardDescription(board.description ?? "");
+    setEditBoardColor(board.color);
+    setConfirmDeleteBoard(false);
+    setShowEditBoard(true);
+  }
+
+  async function handleSaveBoard() {
+    if (!editBoardTitle.trim()) return;
+    setSavingBoard(true);
+    try {
+      const updated = await api.patch<Board>(`/boards/${boardId}`, {
+        title: editBoardTitle.trim(),
+        description: editBoardDescription.trim() || null,
+        color: editBoardColor,
+      });
+      setBoard(updated);
+      setShowEditBoard(false);
+    } catch {} finally {
+      setSavingBoard(false);
+    }
+  }
+
+  async function handleDeleteBoard() {
+    setDeletingBoard(true);
+    try {
+      await api.del(`/boards/${boardId}`);
+      navigate("/boards");
+    } catch {} finally {
+      setDeletingBoard(false);
+    }
   }
 
   function handleCardCopy(newCard: Card) {
@@ -1479,6 +1581,15 @@ export function BoardPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                   Arquivados
                 </button>
+                {(currentUser?.id === board.owner_id || currentUser?.is_admin) && (
+                  <button
+                    onClick={openEditBoard}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                    title="Configurações do board"
+                  >
+                    <IGear />Configurações
+                  </button>
+                )}
                 <button
                   onClick={() => setAddingList(true)}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
@@ -1518,7 +1629,14 @@ export function BoardPage() {
             className="h-full rounded-2xl border border-border/30 overflow-hidden relative"
             style={{ background: `linear-gradient(160deg, ${hexToRgba(board.color, 0.14)} 0%, ${hexToRgba(board.color, 0.04)} 35%, #0a1525 70%)` }}
           >
-            <div className="h-full overflow-x-auto">
+            <div
+              ref={scrollRef}
+              className="h-full overflow-x-auto"
+              onMouseDown={onBoardMouseDown}
+              onMouseMove={onBoardMouseMove}
+              onMouseUp={onBoardMouseUp}
+              onMouseLeave={onBoardMouseUp}
+            >
               <div className="inline-flex gap-3 h-full p-3 items-start">
                 {lists.map(list => (
                   <KanbanColumn
@@ -1563,6 +1681,86 @@ export function BoardPage() {
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
         />
+      )}
+
+      {/* Edit Board Panel */}
+      {showEditBoard && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-black/40" onClick={() => setShowEditBoard(false)} />
+          <div className="w-[380px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2">
+                <IGear />
+                <h2 className="text-sm font-semibold text-slate-200">Configurações do board</h2>
+              </div>
+              <button onClick={() => setShowEditBoard(false)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400">Nome do board</label>
+                <input
+                  autoFocus
+                  value={editBoardTitle}
+                  onChange={e => setEditBoardTitle(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleSaveBoard()}
+                  placeholder="Nome do board…"
+                  className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder-slate-500"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400">Descrição (opcional)</label>
+                <textarea
+                  value={editBoardDescription}
+                  onChange={e => setEditBoardDescription(e.target.value)}
+                  placeholder="Descrição do board…"
+                  rows={3}
+                  className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2.5 text-slate-200 resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder-slate-500"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400">Cor</label>
+                <div className="flex gap-2 flex-wrap">
+                  {LABEL_COLORS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setEditBoardColor(c)}
+                      className={cn("w-7 h-7 rounded-full border-2 transition-transform", editBoardColor === c ? "scale-125 border-white/80" : "border-transparent")}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={handleSaveBoard}
+                disabled={savingBoard || !editBoardTitle.trim()}
+                className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-40 transition-colors"
+              >
+                {savingBoard ? "Salvando…" : "Salvar alterações"}
+              </button>
+            </div>
+            <div className="border-t border-border p-5 shrink-0">
+              <p className="text-xs font-semibold text-slate-400 mb-3">Zona de perigo</p>
+              {confirmDeleteBoard ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400">Tem certeza? Todas as listas e cards serão excluídos permanentemente.</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setConfirmDeleteBoard(false)} className="flex-1 py-2 rounded-lg border border-border text-xs font-medium text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
+                    <button onClick={handleDeleteBoard} disabled={deletingBoard} className="flex-1 py-2 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors">
+                      {deletingBoard ? "Excluindo…" : "Confirmar exclusão"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteBoard(true)}
+                  className="w-full py-2.5 rounded-lg border border-red-500/40 text-red-400 text-sm font-semibold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ITrash />Excluir este board
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Label Manager Panel */}

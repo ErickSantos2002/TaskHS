@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
@@ -52,6 +52,11 @@ const IArrow = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
   </svg>
 );
+const IUpload = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+  </svg>
+);
 
 // ── Board colors ───────────────────────────────────────────────
 
@@ -83,6 +88,191 @@ const SORT_LABELS: Record<SortOption, string> = {
   "name-asc":  "Nome A–Z",
   "name-desc": "Nome Z–A",
 };
+
+// ── Import Modal ───────────────────────────────────────────────
+
+type LogLine = { type: "info" | "warning" | "error" | "done"; text: string };
+
+function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: (b: Board) => void }) {
+  const navigate = useNavigate();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  const [phase, setPhase] = useState<"pick" | "importing" | "done" | "error">("pick");
+  const [fileName, setFileName] = useState("");
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [resultBoardId, setResultBoardId] = useState<number | null>(null);
+
+  function pushLog(line: LogLine) {
+    setLogs(prev => [...prev, line]);
+    setTimeout(() => {
+      if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+    }, 10);
+  }
+
+  async function handleFile(file: File) {
+    setFileName(file.name);
+    setPhase("importing");
+    setLogs([]);
+    setProgress({ current: 0, total: 0 });
+
+    const token = localStorage.getItem("taskhs-token");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/boards/import", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        pushLog({ type: "error", text: err.detail ?? "Erro na importação" });
+        setPhase("error");
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop()!;
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(part.slice(6));
+            if (evt.type === "info")     pushLog({ type: "info",    text: evt.message });
+            if (evt.type === "warning")  pushLog({ type: "warning", text: evt.message });
+            if (evt.type === "error")  { pushLog({ type: "error",   text: evt.message }); setPhase("error"); }
+            if (evt.type === "progress") setProgress({ current: evt.current, total: evt.total });
+            if (evt.type === "done") {
+              pushLog({ type: "done", text: `Concluído! ${evt.imported} cartões importados${evt.errors > 0 ? `, ${evt.errors} erros` : ""}.` });
+              setResultBoardId(evt.board_id);
+              setPhase("done");
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      pushLog({ type: "error", text: String(e) });
+      setPhase("error");
+    }
+  }
+
+  const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={phase === "pick" ? onClose : undefined}>
+      <div className="w-full max-w-lg rounded-2xl bg-background-surface border border-border shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <IUpload />
+            <h2 className="text-sm font-semibold text-slate-200">Importar board do Trello</h2>
+          </div>
+          {(phase === "done" || phase === "error" || phase === "pick") && (
+            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
+
+        {/* Pick phase */}
+        {phase === "pick" && (
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-400 leading-relaxed">
+              Exporte o board do Trello em JSON (abra o board no Trello, adicione <code className="px-1 py-0.5 rounded bg-background-elevated text-primary text-xs">.json</code> no final da URL e salve o arquivo).
+            </p>
+            <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full py-8 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-slate-400 hover:text-primary text-sm font-medium flex flex-col items-center gap-2 transition-all"
+            >
+              <IUpload />
+              Clique para selecionar o arquivo JSON do Trello
+            </button>
+          </div>
+        )}
+
+        {/* Importing / done / error phase */}
+        {phase !== "pick" && (
+          <div className="p-4 space-y-3">
+            {/* File name */}
+            <p className="text-xs text-slate-500 truncate">{fileName}</p>
+
+            {/* Progress bar */}
+            {progress.total > 0 && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>Cartões</span>
+                  <span>{progress.current}/{progress.total} ({pct}%)</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-background-elevated overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Log */}
+            <div
+              ref={logRef}
+              className="h-64 overflow-y-auto rounded-lg bg-[#0a0f1a] border border-border p-3 font-mono text-xs space-y-0.5"
+            >
+              {logs.map((l, i) => (
+                <div key={i} className={cn(
+                  "leading-relaxed",
+                  l.type === "info"    && "text-slate-300",
+                  l.type === "warning" && "text-amber-400",
+                  l.type === "error"   && "text-red-400",
+                  l.type === "done"    && "text-emerald-400 font-semibold",
+                )}>
+                  {l.type === "info"    && <span className="text-slate-600 mr-1.5">›</span>}
+                  {l.type === "warning" && <span className="text-amber-600 mr-1.5">⚠</span>}
+                  {l.type === "error"   && <span className="text-red-600 mr-1.5">✕</span>}
+                  {l.type === "done"    && <span className="text-emerald-600 mr-1.5">✓</span>}
+                  {l.text}
+                </div>
+              ))}
+              {phase === "importing" && (
+                <div className="flex items-center gap-2 text-slate-500 pt-1">
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  <span>Importando…</span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              {phase === "done" && resultBoardId && (
+                <button
+                  onClick={() => navigate(`/boards/${resultBoardId}`)}
+                  className="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-600 transition-colors"
+                >
+                  Abrir board importado
+                </button>
+              )}
+              {(phase === "done" || phase === "error") && (
+                <button onClick={onClose} className={cn("py-2.5 rounded-lg border border-border text-sm font-medium text-slate-400 hover:bg-background-elevated transition-colors", phase === "done" ? "px-4" : "flex-1")}>
+                  Fechar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ── Create Board Modal ─────────────────────────────────────────
 
@@ -270,6 +460,7 @@ export function BoardsPage() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("date-desc");
@@ -358,12 +549,20 @@ export function BoardsPage() {
                 {search && ` encontrado${sorted.length !== 1 ? "s" : ""}`}
               </p>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
-            >
-              <IPlus />Novo Board
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+              >
+                <IUpload />Importar
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
+              >
+                <IPlus />Novo Board
+              </button>
+            </div>
           </div>
 
           {/* Controls row */}
@@ -483,6 +682,12 @@ export function BoardsPage() {
       </div>
 
       {showModal && <CreateBoardModal onClose={() => setShowModal(false)} onCreated={handleCreated} />}
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onImported={board => { setBoards(prev => [board, ...prev]); }}
+        />
+      )}
     </div>
   );
 }

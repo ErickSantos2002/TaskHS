@@ -3,6 +3,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { MainLayout } from "./layouts/MainLayout";
 import { LoginPage } from "./pages/LoginPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { BoardsPage } from "./pages/BoardsPage";
 import { BoardPage } from "./pages/BoardPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -19,11 +20,12 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <Routes>
-                    <Route index element={<Navigate to="/boards" replace />} />
+                    <Route index element={<DashboardPage />} />
+                    <Route path="dashboard" element={<DashboardPage />} />
                     <Route path="boards" element={<BoardsPage />} />
                     <Route path="boards/:id" element={<BoardPage />} />
                     <Route path="usuarios" element={<UsersPage />} />
-                    <Route path="*" element={<Navigate to="/boards" replace />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </MainLayout>
               </ProtectedRoute>
