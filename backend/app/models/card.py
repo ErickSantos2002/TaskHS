@@ -1,8 +1,12 @@
+from __future__ import annotations
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Enum as SAEnum
+from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.models.board import BoardLabel
 
 
 class Priority(str, enum.Enum):
@@ -22,6 +26,8 @@ class Card(Base):
     priority: Mapped[Priority] = mapped_column(SAEnum(Priority), default=Priority.medium)
     position: Mapped[float] = mapped_column(Float, default=65536.0)
     due_date: Mapped[date | None] = mapped_column(Date)
+    due_date_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -30,6 +36,7 @@ class Card(Base):
     members: Mapped[list["CardMember"]] = relationship("CardMember", back_populates="card", cascade="all, delete-orphan")
     comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan")
     attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan")
+    checklists: Mapped[list["Checklist"]] = relationship("Checklist", back_populates="card", cascade="all, delete-orphan")
 
 
 class CardLabel(Base):
@@ -37,10 +44,10 @@ class CardLabel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
-    label: Mapped[str] = mapped_column(String(60))
-    color: Mapped[str] = mapped_column(String(7), default="#0ea5e9")
+    label_id: Mapped[int] = mapped_column(ForeignKey("board_labels.id"))
 
     card: Mapped["Card"] = relationship("Card", back_populates="labels")
+    board_label: Mapped["BoardLabel"] = relationship("BoardLabel", back_populates="card_assignments")
 
 
 class CardMember(Base):
@@ -77,3 +84,26 @@ class CardAttachment(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     card: Mapped["Card"] = relationship("Card", back_populates="attachments")
+
+
+class Checklist(Base):
+    __tablename__ = "card_checklists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
+    title: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    card: Mapped["Card"] = relationship("Card", back_populates="checklists")
+    items: Mapped[list["ChecklistItem"]] = relationship("ChecklistItem", back_populates="checklist", cascade="all, delete-orphan", order_by="ChecklistItem.id")
+
+
+class ChecklistItem(Base):
+    __tablename__ = "card_checklist_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    checklist_id: Mapped[int] = mapped_column(ForeignKey("card_checklists.id"))
+    text: Mapped[str] = mapped_column(String(500))
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    checklist: Mapped["Checklist"] = relationship("Checklist", back_populates="items")

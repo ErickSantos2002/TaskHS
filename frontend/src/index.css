@@ -1,23 +1,23 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap");
 @import "tailwindcss";
 
 /* ── Design tokens ──────────────────────────────────────────── */
 @theme {
   /* Font */
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
 
-  /* Primary — sky/cyan */
-  --color-primary:   #0ea5e9;
-  --color-primary-50:  #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
+  /* Primary — Emerald (matches Talenths brand) */
+  --color-primary:     #10b981;
+  --color-primary-50:  #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
 
   /* Success */
   --color-success:     #10b981;
@@ -55,23 +55,25 @@
   --color-info-600: #2563eb;
   --color-info-700: #1d4ed8;
 
-  /* Background — light defaults; dark overridden below */
-  --color-background:          #f8fafc;
+  /* Background — light with subtle green tint */
+  --color-background:          #f0f7f5;
   --color-background-surface:  #ffffff;
-  --color-background-elevated: #f1f5f9;
+  --color-background-elevated: #e8f4f0;
+  --color-background-sidebar:  #f5faf8;
 
   /* Border */
-  --color-border:       #e2e8f0;
-  --color-border-muted: #f1f5f9;
+  --color-border:       #ddeee8;
+  --color-border-muted: #eef7f4;
 }
 
 /* ── Dark mode overrides ──────────────────────────────────────── */
 .dark {
-  --color-background:          #0d1b2a;
-  --color-background-surface:  #132238;
-  --color-background-elevated: #1a2f4a;
-  --color-border:              #1e3a5f;
-  --color-border-muted:        #132238;
+  --color-background:          #0c1629;
+  --color-background-surface:  #111f35;
+  --color-background-elevated: #182a42;
+  --color-background-sidebar:  #08111f;
+  --color-border:              #192c44;
+  --color-border-muted:        #111f35;
 }
 
 /* ── Base styles ─────────────────────────────────────────────── */
@@ -79,14 +81,15 @@ body {
   background-color: var(--color-background);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   color: rgb(15 23 42);
 }
 
 .dark body {
-  color: rgb(241 245 249);
+  color: rgb(235 240 250);
 }
 
-/* Text color inversion for light mode (same pattern do HelpHS) */
+/* Text color inversion for light mode */
 html:not(.dark) .text-slate-100 { color: rgb(15 23 42);    }
 html:not(.dark) .text-slate-200 { color: rgb(30 41 59);    }
 html:not(.dark) .text-slate-300 { color: rgb(51 65 85);    }
@@ -96,9 +99,12 @@ html:not(.dark) .text-slate-600 { color: rgb(148 163 184); }
 
 /* ── Custom scrollbar ─────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--color-background-surface); }
-::-webkit-scrollbar-thumb { background: var(--color-background-elevated); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-border); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-primary-300); }
+
+/* ── Glow utilities ───────────────────────────────────────────── */
+.glow-primary { box-shadow: 0 0 20px -4px color-mix(in srgb, #10b981 40%, transparent); }
 
 #root {
   width: 100%;

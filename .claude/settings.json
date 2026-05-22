@@ -20,7 +20,21 @@
       "Bash(uvicorn app.main:app --port 8000 --timeout-graceful-shutdown 2)",
       "Bash(uvicorn app.main:app --port 8000 --reload)",
       "Bash(Start-Sleep -Seconds 3)",
-      "Bash(curl http://localhost:8000/api/health)"
+      "Bash(curl http://localhost:8000/api/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/register -H \"Content-Type: application/json\" -d \"{\\\\\"name\\\\\":\\\\\"Erick H.\\\\\",\\\\\"email\\\\\":\\\\\"healthsafetyti@gmail.com\\\\\",\\\\\"password\\\\\":\\\\\"admin123\\\\\",\\\\\"initials\\\\\":\\\\\"EH\\\\\"}\")",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/register -H \"Content-Type: application/json\" -d '{\"name\":\"Erick H.\",\"email\":\"healthsafetyti@gmail.com\",\"password\":\"admin123\",\"initials\":\"EH\"}')",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"healthsafetyti@gmail.com\",\"password\":\"admin123\"}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['access_token'][:30]+'...'\\)\")",
+      "Bash(taskkill /F /PID 37372)",
+      "Bash(findstr \":8000\")",
+      "PowerShell(Stop-Process -Id 37372 -Force)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Set-Location d:/GitHub/TaskHS/backend; $env:PYTHONPATH = \"d:/GitHub/TaskHS/backend\"; Start-Process -NoNewWindow python -ArgumentList \"-m\", \"uvicorn\", \"app.main:app\", \"--port\", \"8000\", \"--reload\")",
+      "Bash(Get-Process -Name python -ErrorAction SilentlyContinue)",
+      "Bash(Stop-Process -Force)",
+      "PowerShell(Get-Process -Name python -ErrorAction SilentlyContinue)",
+      "PowerShell(Start-Process -FilePath \"d:\\\\GitHub\\\\TaskHS\\\\backend\\\\.venv\\\\Scripts\\\\uvicorn.exe\" -ArgumentList \"app.main:app\",\"--reload\",\"--host\",\"0.0.0.0\",\"--port\",\"8000\" -WorkingDirectory \"d:\\\\GitHub\\\\TaskHS\\\\backend\" -WindowStyle Normal)"
     ]
   }
 }

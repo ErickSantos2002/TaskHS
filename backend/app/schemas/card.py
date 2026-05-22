@@ -28,6 +28,33 @@ class AttachmentOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ChecklistItemOut(BaseModel):
+    id: int
+    text: str
+    checked: bool
+    model_config = {"from_attributes": True}
+
+
+class ChecklistOut(BaseModel):
+    id: int
+    title: str
+    items: list[ChecklistItemOut] = []
+    model_config = {"from_attributes": True}
+
+
+class ChecklistCreate(BaseModel):
+    title: str
+
+
+class ChecklistItemCreate(BaseModel):
+    text: str
+
+
+class ChecklistItemUpdate(BaseModel):
+    text: str | None = None
+    checked: bool | None = None
+
+
 class CardCreate(BaseModel):
     title: str
     description: str | None = None
@@ -40,6 +67,7 @@ class CardUpdate(BaseModel):
     description: str | None = None
     priority: Priority | None = None
     due_date: date | None = None
+    due_date_completed: bool | None = None
     position: float | None = None
     list_id: int | None = None
 
@@ -52,16 +80,19 @@ class CardOut(BaseModel):
     priority: Priority
     position: float
     due_date: date | None
+    due_date_completed: bool = False
+    archived: bool = False
     created_at: datetime
     updated_at: datetime
     labels: list[LabelOut] = []
     members: list[UserOut] = []
     comments: list[CommentOut] = []
     attachments: list[AttachmentOut] = []
+    checklists: list[ChecklistOut] = []
 
     model_config = {"from_attributes": True}
 
-    @field_validator("labels", "comments", "attachments", mode="before")
+    @field_validator("labels", "comments", "attachments", "checklists", mode="before")
     @classmethod
     def default_list(cls, v: Any) -> Any:
         if v is None:
@@ -72,11 +103,6 @@ class CardOut(BaseModel):
             return list(v)
         except TypeError:
             return [v]
-
-
-class LabelCreate(BaseModel):
-    label: str
-    color: str = "#0ea5e9"
 
 
 class CommentCreate(BaseModel):

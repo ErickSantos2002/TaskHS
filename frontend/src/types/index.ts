@@ -24,12 +24,20 @@ export interface BoardList {
   description: string | null;
   color: string;
   position: number;
+  archived: boolean;
   created_at: string;
 }
 
 export interface Label {
   id: number;
   label: string;
+  color: string;
+}
+
+export interface BoardLabel {
+  id: number;
+  board_id: number;
+  name: string;
   color: string;
 }
 
@@ -47,6 +55,18 @@ export interface Attachment {
   uploaded_at: string;
 }
 
+export interface ChecklistItem {
+  id: number;
+  text: string;
+  checked: boolean;
+}
+
+export interface Checklist {
+  id: number;
+  title: string;
+  items: ChecklistItem[];
+}
+
 export interface Card {
   id: number;
   list_id: number;
@@ -55,10 +75,13 @@ export interface Card {
   priority: Priority;
   position: number;
   due_date: string | null;
+  due_date_completed: boolean;
+  archived: boolean;
   created_at: string;
   updated_at: string;
   labels: Label[];
   members: User[];
   comments: Comment[];
   attachments: Attachment[];
+  checklists: Checklist[];
 }

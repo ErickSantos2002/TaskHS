@@ -1,9 +1,11 @@
 from app.models.user import User
-from app.models.board import Board, BoardMember
+from app.models.board import Board, BoardMember, BoardLabel
 from app.models.list import List
 from app.models.card import Card, CardLabel, CardMember, CardComment, CardAttachment
+from app.models.notification import Notification
 
 __all__ = [
-    "User", "Board", "BoardMember", "List",
+    "User", "Board", "BoardMember", "BoardLabel", "List",
     "Card", "CardLabel", "CardMember", "CardComment", "CardAttachment",
+    "Notification",
 ]

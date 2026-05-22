@@ -1,8 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
+import { api } from "../lib/api";
 import logo from "../assets/logo.png";
+
+interface AppNotification {
+  id: number;
+  type: string;
+  message: string;
+  card_id: number | null;
+  board_id: number | null;
+  read: boolean;
+  created_at: string;
+}
 
 // ── Icons ─────────────────────────────────────────────────────
 
@@ -90,6 +101,55 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [dark, setDark] = useState(() => localStorage.getItem("taskhs-theme") !== "light");
   const [collapsed, setCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+
+  const unread = notifications.filter(n => !n.read).length;
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await api.get<AppNotification[]>("/notifications");
+      setNotifications(data);
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    }
+    if (showNotifications) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [showNotifications]);
+
+  async function handleMarkRead(id: number) {
+    try {
+      await api.post(`/notifications/${id}/read`, {});
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    } catch {}
+  }
+
+  async function handleMarkAllRead() {
+    try {
+      await api.post("/notifications/read-all", {});
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    } catch {}
+  }
+
+  function handleNotificationClick(n: AppNotification) {
+    handleMarkRead(n.id);
+    if (n.board_id) navigate(`/boards/${n.board_id}`);
+    setShowNotifications(false);
+  }
 
   function handleLogout() {
     logout();
@@ -104,32 +164,32 @@ export function MainLayout({ children }: MainLayoutProps) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* ── Sidebar ── */}
       <aside
         className={cn(
           "flex flex-col shrink-0",
-          "bg-white dark:bg-background-surface",
-          "border-r border-slate-200 dark:border-border",
+          "bg-background-sidebar",
+          "border-r border-border",
           "transition-[width] duration-300 ease-in-out overflow-hidden",
           collapsed ? "w-18" : "w-64",
         )}
       >
         {/* Logo */}
         <div className={cn(
-          "flex h-16 shrink-0 items-center",
+          "flex h-16 shrink-0 items-center border-b border-border",
           collapsed ? "justify-center px-0" : "px-5",
         )}>
           {collapsed ? (
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 dark:bg-primary/15">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15">
               <span className="text-sm font-bold text-primary">T</span>
             </div>
           ) : (
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 dark:bg-primary/15 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
                 <img src={logo} alt="" className="w-5 h-5 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
               </div>
-              <span className="font-extrabold text-slate-900 dark:text-slate-100 text-lg tracking-tight">TaskHS</span>
+              <span className="font-bold text-slate-100 text-base tracking-tight">TaskHS</span>
             </div>
           )}
         </div>
@@ -144,25 +204,24 @@ export function MainLayout({ children }: MainLayoutProps) {
               to={to}
               title={collapsed ? label : undefined}
               className={cn(
-                "relative group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-150",
+                "relative group flex items-center w-full rounded-lg text-sm font-medium transition-all duration-200",
                 collapsed ? "justify-center px-0 py-2.5 mx-1" : "gap-3 px-3 py-2",
                 active
                   ? [
-                      "bg-primary/10 dark:bg-primary/15 text-primary",
-                      !collapsed && "border-l-2 border-primary pl-2.5",
+                      "bg-primary/10 text-primary font-semibold",
+                      !collapsed && "shadow-[inset_2px_0_0_#10b981] pl-2.5",
                     ]
                   : [
-                      !collapsed && "border-l-2 border-transparent pl-2.5",
-                      "text-slate-500 dark:text-slate-400",
-                      "hover:bg-slate-100 dark:hover:bg-background-elevated",
-                      "hover:text-slate-900 dark:hover:text-slate-100",
+                      !collapsed && "pl-2.5",
+                      "text-slate-400 dark:text-slate-500",
+                      "hover:bg-background-elevated hover:text-slate-100",
                     ],
               )}
             >
               {icon}
               {!collapsed && <span className="truncate">{label}</span>}
               {collapsed && (
-                <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-slate-900 dark:bg-slate-700 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-background-surface border border-border px-2.5 py-1.5 text-xs font-medium text-slate-200 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                   {label}
                 </span>
               )}
@@ -173,10 +232,10 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Footer */}
         {!collapsed && (
-          <div className="shrink-0 border-t border-slate-200 dark:border-border px-5 py-4">
+          <div className="shrink-0 border-t border-border px-5 py-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-400 dark:text-slate-600">TaskHS</p>
-              <span className="rounded-full bg-slate-100 dark:bg-background-elevated px-2 py-0.5 text-[10px] font-medium text-slate-500">v0.1.0</span>
+              <p className="text-xs text-slate-600">TaskHS</p>
+              <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">v0.1.0</span>
             </div>
           </div>
         )}
@@ -185,9 +244,9 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* ── Main ── */}
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
         {/* Topbar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 dark:border-border bg-white dark:bg-background-surface px-4 md:px-6">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background-sidebar px-4 md:px-6">
           <button
-            className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-background-elevated hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+            className="rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-slate-100 transition-colors duration-200"
             onClick={() => setCollapsed(v => !v)}
           >
             <IconMenu />
@@ -198,7 +257,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <div className="flex items-center gap-1">
             {/* Theme toggle */}
             <button
-              className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-background-elevated hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+              className="rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-slate-100 transition-colors duration-200"
               onClick={toggleTheme}
               title={dark ? "Modo claro" : "Modo escuro"}
             >
@@ -206,25 +265,68 @@ export function MainLayout({ children }: MainLayoutProps) {
             </button>
 
             {/* Bell */}
-            <button className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-background-elevated hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
-              <IconBell />
-            </button>
+            <div className="relative" ref={bellRef}>
+              <button
+                onClick={() => setShowNotifications(v => !v)}
+                className="relative rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-slate-100 transition-colors duration-200"
+              >
+                <IconBell />
+                {unread > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-2 w-80 rounded-xl bg-background-surface border border-border shadow-2xl z-50 flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <p className="text-sm font-semibold text-slate-200">Notificações</p>
+                    {unread > 0 && (
+                      <button onClick={handleMarkAllRead} className="text-xs text-primary hover:underline">Marcar todas como lidas</button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 && (
+                      <p className="text-xs text-slate-500 italic text-center py-8">Nenhuma notificação.</p>
+                    )}
+                    {notifications.map(n => (
+                      <button
+                        key={n.id}
+                        onClick={() => handleNotificationClick(n)}
+                        className={cn(
+                          "w-full text-left px-4 py-3 border-b border-border/50 hover:bg-background-elevated transition-colors flex gap-3 items-start",
+                          !n.read && "bg-primary/5"
+                        )}
+                      >
+                        <span className={cn("w-2 h-2 rounded-full shrink-0 mt-1.5", n.read ? "bg-slate-600" : "bg-primary")} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-slate-200 leading-relaxed">{n.message}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {new Date(n.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* User */}
-            <div className="flex items-center gap-1 ml-1">
+            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
               <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
-                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center text-white text-xs font-bold shadow-sm">
                   {user?.initials ?? "?"}
                 </div>
                 <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-slate-100 leading-tight">{user?.name ?? ""}</p>
+                  <p className="text-sm font-semibold text-slate-100 leading-tight">{user?.name ?? ""}</p>
                   <p className="text-xs text-slate-500 leading-tight">{user?.is_admin ? "Administrador" : "Membro"}</p>
                 </div>
               </div>
               <button
                 onClick={handleLogout}
                 title="Sair"
-                className="rounded-lg p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-background-elevated hover:text-danger transition-colors"
+                className="rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-danger-400 transition-colors duration-200"
               >
                 <IconLogout />
               </button>

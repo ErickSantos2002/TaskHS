@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 import app.models  # noqa: F401 — ensures all models are registered before create_all
-from app.routers import auth, boards, lists, cards
+from app.routers import auth, boards, lists, cards, labels, notifications
 
 
 @asynccontextmanager
@@ -27,6 +27,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")
 app.include_router(lists.router, prefix="/api")
 app.include_router(cards.router, prefix="/api")
+app.include_router(labels.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 
 @app.get("/api/health")

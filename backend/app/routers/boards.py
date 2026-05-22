@@ -4,8 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.board import Board, BoardMember, BoardRole
+from app.models.list import List
+from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttachment, Checklist
 from app.models.user import User
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
+from app.schemas.card import CardOut
+from app.schemas.list import ListOut
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/boards", tags=["boards"])
@@ -63,6 +67,47 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
         raise HTTPException(status_code=403, detail="Apenas o dono pode excluir o board")
     await db.delete(board)
     await db.commit()
+
+
+@router.get("/{board_id}/archived")
+async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_board_or_404(board_id, db)
+
+    lists_result = await db.execute(
+        select(List).where(List.board_id == board_id, List.archived == True)
+    )
+    archived_lists = lists_result.scalars().all()
+
+    list_ids_result = await db.execute(
+        select(List.id).where(List.board_id == board_id)
+    )
+    all_list_ids = [row for row in list_ids_result.scalars().all()]
+
+    cards_result = await db.execute(
+        select(Card)
+        .where(Card.list_id.in_(all_list_ids), Card.archived == True)
+        .options(
+            selectinload(Card.labels),
+            selectinload(Card.members).selectinload(CardMember.user),
+            selectinload(Card.comments).selectinload(CardComment.author),
+            selectinload(Card.attachments),
+            selectinload(Card.checklists).selectinload(Checklist.items),
+        )
+    )
+    archived_cards = cards_result.scalars().all()
+
+    list_titles = {lst.id: lst.title for lst in (await db.execute(select(List.id, List.title).where(List.board_id == board_id))).all()}
+
+    def card_to_dict(card: Card) -> dict:
+        from app.routers.cards import _card_to_dict, _to_list
+        d = _card_to_dict(card)
+        d["list_title"] = list_titles.get(card.list_id, "")
+        return d
+
+    return {
+        "cards": [card_to_dict(c) for c in archived_cards],
+        "lists": [lst for lst in archived_lists],
+    }
 
 
 @router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED)

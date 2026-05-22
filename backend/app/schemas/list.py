@@ -23,6 +23,7 @@ class ListOut(BaseModel):
     description: str | None
     color: str
     position: int
+    archived: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

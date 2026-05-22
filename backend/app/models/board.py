@@ -25,6 +25,19 @@ class Board(Base):
     owner: Mapped["User"] = relationship("User", back_populates="boards", foreign_keys=[owner_id])
     members: Mapped[list["BoardMember"]] = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")
     lists: Mapped[list["List"]] = relationship("List", back_populates="board", cascade="all, delete-orphan", order_by="List.position")
+    labels: Mapped[list["BoardLabel"]] = relationship("BoardLabel", back_populates="board", cascade="all, delete-orphan", order_by="BoardLabel.id")
+
+
+class BoardLabel(Base):
+    __tablename__ = "board_labels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    board_id: Mapped[int] = mapped_column(ForeignKey("boards.id"))
+    name: Mapped[str] = mapped_column(String(60))
+    color: Mapped[str] = mapped_column(String(7), default="#0ea5e9")
+
+    board: Mapped["Board"] = relationship("Board", back_populates="labels")
+    card_assignments: Mapped[list["CardLabel"]] = relationship("CardLabel", back_populates="board_label", cascade="all, delete-orphan")
 
 
 class BoardMember(Base):
