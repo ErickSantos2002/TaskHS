@@ -1,4 +1,4 @@
-const BASE = "http://localhost:8000/api";
+export const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 function authHeaders(): HeadersInit {
   const token = localStorage.getItem("taskhs-token");
@@ -6,7 +6,7 @@ function authHeaders(): HeadersInit {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers },
     ...options,
   });
@@ -26,7 +26,7 @@ export const api = {
   upload: async <T>(path: string, files: File[]): Promise<T> => {
     const fd = new FormData();
     for (const f of files) fd.append("files", f);
-    const res = await fetch(`${BASE}${path}`, { method: "POST", headers: { ...authHeaders() }, body: fd });
+    const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { ...authHeaders() }, body: fd });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail ?? "Erro no upload");
@@ -34,7 +34,7 @@ export const api = {
     return res.json();
   },
   getBlob: async (path: string): Promise<Blob> => {
-    const res = await fetch(`${BASE}${path}`, { headers: { ...authHeaders() } });
+    const res = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders() } });
     if (!res.ok) throw new Error("Falha ao baixar arquivo");
     return res.blob();
   },

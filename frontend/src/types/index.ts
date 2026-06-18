@@ -6,6 +6,7 @@ export interface User {
   email: string;
   initials: string;
   is_admin: boolean;
+  created_at: string;
 }
 
 export interface Board {
