@@ -63,7 +63,14 @@ def _card_to_dict(card: Card) -> dict:
         ],
         "members": [m.user for m in _to_list(card.members) if m.user is not None],
         "comments": _to_list(card.comments),
-        "attachments": _to_list(card.attachments),
+        "attachments": [
+            {
+                "id": a.id, "filename": a.filename, "content_type": a.content_type,
+                "size": a.size, "uploaded_by": a.uploaded_by, "uploaded_at": a.uploaded_at,
+                "is_image": (a.content_type or "").startswith("image/"),
+            }
+            for a in _to_list(card.attachments)
+        ],
         "checklists": _to_list(card.checklists),
     }
 
