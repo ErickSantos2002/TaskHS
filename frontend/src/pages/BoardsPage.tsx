@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
+import { api, API_BASE } from "../lib/api";
 import type { Board } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ const SORT_LABELS: Record<SortOption, string> = {
 
 type LogLine = { type: "info" | "warning" | "error" | "done"; text: string };
 
-function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: (b: Board) => void }) {
+function ImportModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -121,7 +121,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://localhost:8000/api/boards/import", {
+      const res = await fetch(`${API_BASE}/boards/import`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
@@ -685,7 +685,6 @@ export function BoardsPage() {
       {showImport && (
         <ImportModal
           onClose={() => setShowImport(false)}
-          onImported={board => { setBoards(prev => [board, ...prev]); }}
         />
       )}
     </div>
