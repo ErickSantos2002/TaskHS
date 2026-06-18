@@ -23,9 +23,18 @@ class CommentOut(BaseModel):
 class AttachmentOut(BaseModel):
     id: int
     filename: str
-    url: str
+    content_type: str | None = None
+    size: int | None = None
+    uploaded_by: int | None = None
     uploaded_at: datetime
+    is_image: bool = False
+
     model_config = {"from_attributes": True}
+
+    @field_validator("is_image", mode="before")
+    @classmethod
+    def derive_is_image(cls, v: Any, info: Any) -> Any:
+        return v
 
 
 class ChecklistItemOut(BaseModel):
