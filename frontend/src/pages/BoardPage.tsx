@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -68,8 +68,10 @@ const IChat = () => (
   </svg>
 );
 const IGrip = () => (
-  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h16M4 16h16" />
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+    <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+    <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
   </svg>
 );
 const ISpinner = () => (
@@ -782,7 +784,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardU
 
 // ── CardContent ────────────────────────────────────────────────
 
-function CardContent({ card, isDragging = false }: { card: Card; isDragging?: boolean }) {
+function CardContentBase({ card, isDragging = false }: { card: Card; isDragging?: boolean }) {
   const p = PRIORITY[card.priority];
   const due = card.due_date;
   const overdue = due && isOverdue(due);
@@ -792,7 +794,7 @@ function CardContent({ card, isDragging = false }: { card: Card; isDragging?: bo
     <div className={cn(
       "w-full text-left rounded-lg border border-border/60 border-l-4 p-3 transition-all duration-150",
       "bg-background-surface",
-      isDragging ? "shadow-2xl rotate-1 opacity-95 scale-105" : "hover:border-border hover:shadow-md hover:shadow-black/20",
+      isDragging ? "opacity-95" : "hover:border-border hover:shadow-md hover:shadow-black/20",
       p.border,
     )}>
       {/* Labels row */}
@@ -865,26 +867,30 @@ function CardContent({ card, isDragging = false }: { card: Card; isDragging?: bo
   );
 }
 
+const CardContent = memo(CardContentBase);
+
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCard({ card, onClick }: { card: Card; onClick: () => void }) {
+function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card: Card) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
       <div
         {...attributes} {...listeners}
-        onPointerDown={e => e.stopPropagation()}
-        className="absolute top-2 right-2 z-10 p-1 rounded opacity-0 group-hover/card:opacity-100 cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 hover:bg-background-elevated transition-all"
-        title="Arrastar"
+        data-dnd-draggable
+        className="absolute top-1.5 right-1.5 z-10 p-1 rounded-md text-slate-500 opacity-0 group-hover/card:opacity-100 hover:bg-background-elevated hover:text-slate-200 cursor-grab active:cursor-grabbing touch-none transition-opacity"
+        title="Arrastar para mover"
       >
         <IGrip />
       </div>
-      <button type="button" className="w-full text-left" onClick={onClick}>
+      <button type="button" className="w-full text-left" onClick={() => onCardClick(card)}>
         <CardContent card={card} />
       </button>
     </div>
   );
 }
+
+const KanbanCard = memo(KanbanCardBase);
 
 // ── DroppableColumn ────────────────────────────────────────────
 
@@ -1142,7 +1148,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
               <p className="text-xs text-slate-600">Nenhum card</p>
             </div>
           )}
-          {cards.map(card => <KanbanCard key={card.id} card={card} onClick={() => onCardClick(card)} />)}
+          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} />)}
         </DroppableColumn>
       </SortableContext>
 
@@ -1430,12 +1436,19 @@ export function BoardPage() {
     setCardsByList(prev => { const next = { ...prev }; delete next[listId]; return next; });
   }
 
+  function onDragCancel() {
+    setActiveCard(null);
+    setActiveListId(null);
+    document.body.style.cursor = "";
+  }
+
   function onDragStart({ active }: DragStartEvent) {
     const cardId = active.id as number;
     const listId = findListOfCard(cardId) ?? null;
     setActiveCard(findCard(cardId) ?? null);
     setActiveListId(listId);
     currentListIdRef.current = listId;
+    document.body.style.cursor = "none";
   }
 
   function onDragOver({ active, over }: DragOverEvent) {
@@ -1484,6 +1497,7 @@ export function BoardPage() {
     const sourceListId = activeListId;
     setActiveCard(null);
     setActiveListId(null);
+    document.body.style.cursor = "";
     if (!over || !sourceListId) return;
     const activeId   = active.id as number;
     const destListId = resolveListId(over.id);
@@ -1528,7 +1542,7 @@ export function BoardPage() {
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
       <div className="flex flex-col flex-1 min-h-0">
 
         {/* Topbar */}
@@ -1644,7 +1658,7 @@ export function BoardPage() {
                     list={list}
                     cards={filteredCards(list.id)}
                     onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
-                    onCardClick={card => setSelectedCard(card)}
+                    onCardClick={setSelectedCard}
                     onListUpdate={handleListUpdate}
                     onListDelete={handleListDelete}
                   />
@@ -1903,7 +1917,7 @@ export function BoardPage() {
 
       <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
         {activeCard && (
-          <div className="w-[272px] rotate-2 shadow-2xl">
+          <div className="w-[272px] rotate-2 shadow-lg">
             <CardContent card={activeCard} isDragging />
           </div>
         )}
