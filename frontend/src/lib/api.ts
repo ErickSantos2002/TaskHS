@@ -5,11 +5,22 @@ function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// Token expirado/inválido → limpa a sessão e volta pro login.
+function onUnauthorized() {
+  localStorage.removeItem("taskhs-token");
+  localStorage.removeItem("taskhs-user");
+  if (window.location.pathname !== "/login") window.location.assign("/login");
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...authHeaders(), ...options.headers },
     ...options,
   });
+  if (res.status === 401) {
+    onUnauthorized();
+    throw new Error("Sessão expirada. Faça login novamente.");
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail ?? "Erro inesperado");
@@ -27,6 +38,10 @@ export const api = {
     const fd = new FormData();
     for (const f of files) fd.append("files", f);
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { ...authHeaders() }, body: fd });
+    if (res.status === 401) {
+      onUnauthorized();
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail ?? "Erro no upload");
@@ -35,6 +50,10 @@ export const api = {
   },
   getBlob: async (path: string): Promise<Blob> => {
     const res = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders() } });
+    if (res.status === 401) {
+      onUnauthorized();
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
     if (!res.ok) throw new Error("Falha ao baixar arquivo");
     return res.blob();
   },
