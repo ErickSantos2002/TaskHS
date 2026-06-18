@@ -17,8 +17,25 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// true se o JWT não existe ou já passou do exp.
+function isTokenExpired(token: string | null): boolean {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
+    const token = localStorage.getItem("taskhs-token");
+    if (isTokenExpired(token)) {
+      localStorage.removeItem("taskhs-token");
+      localStorage.removeItem("taskhs-user");
+      return null;
+    }
     const raw = localStorage.getItem("taskhs-user");
     return raw ? JSON.parse(raw) : null;
   });
