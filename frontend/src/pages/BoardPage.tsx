@@ -185,24 +185,29 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
 
   // load image thumbnails as blob object URLs
+  const thumbUrlsRef = useRef<string[]>([]);
+
   useEffect(() => {
-    let revoked = false;
-    const created: string[] = [];
+    let cancelled = false;
     (async () => {
       for (const a of attachments) {
         if (a.is_image && !thumbs[a.id]) {
           try {
             const blob = await api.getBlob(`/lists/${card.list_id}/cards/${card.id}/attachments/${a.id}/download`);
-            if (revoked) return;
+            if (cancelled) return;
             const url = URL.createObjectURL(blob);
-            created.push(url);
+            thumbUrlsRef.current.push(url);
             setThumbs(prev => ({ ...prev, [a.id]: url }));
           } catch {}
         }
       }
     })();
-    return () => { revoked = true; created.forEach(URL.revokeObjectURL); };
+    return () => { cancelled = true; };
   }, [attachments, card.id, card.list_id]);
+
+  useEffect(() => {
+    return () => { thumbUrlsRef.current.forEach(URL.revokeObjectURL); };
+  }, []);
 
   async function handleUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
