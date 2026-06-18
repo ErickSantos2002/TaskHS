@@ -51,8 +51,11 @@ export interface Comment {
 export interface Attachment {
   id: number;
   filename: string;
-  url: string;
+  content_type: string | null;
+  size: number | null;
+  uploaded_by: number | null;
   uploaded_at: string;
+  is_image: boolean;
 }
 
 export interface ChecklistItem {
