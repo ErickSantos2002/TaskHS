@@ -13,7 +13,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
-import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem } from "../types";
+import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -135,11 +135,12 @@ const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
+function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
   card: Card;
   listTitle: string;
   lists: BoardList[];
   boardLabels: BoardLabel[];
+  currentUser: { id: number; is_admin: boolean } | null;
   onClose: () => void;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
@@ -166,6 +167,11 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardU
   const [newChecklistTitle, setNewChecklistTitle] = useState("");
   const [addingItemId, setAddingItemId] = useState<number | null>(null);
   const [newItemText, setNewItemText] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>(card.attachments ?? []);
+  const [uploading, setUploading] = useState(false);
+  const [thumbs, setThumbs] = useState<Record<number, string>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTitle(card.title);
@@ -175,6 +181,76 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardU
     setComments(card.comments);
     setChecklists(card.checklists ?? []);
   }, [card.id]);
+
+  useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
+
+  // load image thumbnails as blob object URLs
+  useEffect(() => {
+    let revoked = false;
+    const created: string[] = [];
+    (async () => {
+      for (const a of attachments) {
+        if (a.is_image && !thumbs[a.id]) {
+          try {
+            const blob = await api.getBlob(`/lists/${card.list_id}/cards/${card.id}/attachments/${a.id}/download`);
+            if (revoked) return;
+            const url = URL.createObjectURL(blob);
+            created.push(url);
+            setThumbs(prev => ({ ...prev, [a.id]: url }));
+          } catch {}
+        }
+      }
+    })();
+    return () => { revoked = true; created.forEach(URL.revokeObjectURL); };
+  }, [attachments, card.id, card.list_id]);
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const created = await api.upload<Attachment[]>(`/lists/${card.list_id}/cards/${card.id}/attachments`, Array.from(files));
+      const updated = [...attachments, ...created];
+      setAttachments(updated);
+      onCardUpdate({ id: card.id, attachments: updated });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro no upload");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function handleDownload(a: Attachment) {
+    try {
+      const blob = await api.getBlob(`/lists/${card.list_id}/cards/${card.id}/attachments/${a.id}/download`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = a.filename; link.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+
+  async function handleDeleteAttachment(a: Attachment) {
+    try {
+      await api.del(`/lists/${card.list_id}/cards/${card.id}/attachments/${a.id}`);
+      const updated = attachments.filter(x => x.id !== a.id);
+      setAttachments(updated);
+      onCardUpdate({ id: card.id, attachments: updated });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao excluir");
+    }
+  }
+
+  function canDelete(a: Attachment): boolean {
+    return !!currentUser && (a.uploaded_by === currentUser.id || currentUser.is_admin);
+  }
+
+  function formatSize(bytes: number | null): string {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
 
   useEffect(() => {
     if (showMemberPicker && allUsers.length === 0) {
@@ -620,6 +696,55 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardU
               );
             })}
 
+            {/* Anexos */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  <p className="text-sm font-semibold text-slate-300">Anexos {attachments.length > 0 && <span className="font-normal text-slate-500">({attachments.length})</span>}</p>
+                </div>
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} className="text-xs text-slate-500 hover:text-primary transition-colors disabled:opacity-50">
+                  {uploading ? "Enviando…" : "+ Adicionar"}
+                </button>
+              </div>
+              <input
+                ref={fileRef} type="file" multiple hidden
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                onChange={e => handleUpload(e.target.files)}
+              />
+              {attachments.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">Nenhum anexo.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-1.5">
+                  {attachments.map(a => (
+                    <div key={a.id} className="flex items-center gap-2.5 p-2 rounded-lg bg-background-elevated border border-border group/att">
+                      {a.is_image && thumbs[a.id] ? (
+                        <img src={thumbs[a.id]} alt={a.filename} onClick={() => setLightbox(thumbs[a.id])} className="w-10 h-10 rounded object-cover cursor-pointer shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-background flex items-center justify-center shrink-0 text-slate-400">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-200 truncate">{a.filename}</p>
+                        <p className="text-[10px] text-slate-500">{formatSize(a.size)}</p>
+                      </div>
+                      <button onClick={() => handleDownload(a)} title="Baixar" className="p-1.5 rounded text-slate-500 hover:text-primary hover:bg-background transition-colors">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      </button>
+                      {canDelete(a) && (
+                        <button onClick={() => handleDeleteAttachment(a)} title="Excluir" className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Add checklist */}
             {addingChecklist ? (
               <div className="flex gap-2 items-center p-3 rounded-xl border border-border bg-background-elevated">
@@ -778,6 +903,11 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, onClose, onCardU
 
         </div>
       </div>
+      {lightbox && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-8" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+        </div>
+      )}
     </div>
   );
 }
@@ -1690,6 +1820,7 @@ export function BoardPage() {
           listTitle={lists.find(l => l.id === selectedCard.list_id)?.title ?? ""}
           lists={lists}
           boardLabels={boardLabels}
+          currentUser={currentUser}
           onClose={() => setSelectedCard(null)}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
