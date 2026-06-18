@@ -103,3 +103,25 @@ async def download_attachment(
     if att.url:
         return RedirectResponse(att.url)
     raise HTTPException(status_code=404, detail="Anexo sem arquivo")
+
+
+@router.delete("/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attachment(
+    list_id: int, card_id: int, attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(CardAttachment).where(CardAttachment.id == attachment_id, CardAttachment.card_id == card_id)
+    )
+    att = result.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Anexo não encontrado")
+    if att.uploaded_by != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Apenas o autor do anexo ou um administrador pode excluí-lo")
+    if att.stored_name:
+        path = os.path.join(settings.UPLOAD_DIR, att.stored_name)
+        if os.path.isfile(path):
+            os.remove(path)
+    await db.delete(att)
+    await db.commit()
