@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum
+from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -80,7 +80,11 @@ class CardAttachment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
     filename: Mapped[str] = mapped_column(String(255))
-    url: Mapped[str] = mapped_column(String(1000))
+    url: Mapped[str | None] = mapped_column(String(1000))
+    stored_name: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size: Mapped[int | None] = mapped_column(Integer)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     card: Mapped["Card"] = relationship("Card", back_populates="attachments")

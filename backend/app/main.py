@@ -1,13 +1,16 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 import app.models  # noqa: F401 — ensures all models are registered before create_all
 from app.routers import auth, boards, lists, cards, labels, notifications
+from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield

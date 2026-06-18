@@ -1,0 +1,5 @@
+ALTER TABLE card_attachments ADD COLUMN IF NOT EXISTS stored_name VARCHAR(255);
+ALTER TABLE card_attachments ADD COLUMN IF NOT EXISTS content_type VARCHAR(255);
+ALTER TABLE card_attachments ADD COLUMN IF NOT EXISTS size INTEGER;
+ALTER TABLE card_attachments ADD COLUMN IF NOT EXISTS uploaded_by INTEGER REFERENCES users(id);
+ALTER TABLE card_attachments ALTER COLUMN url DROP NOT NULL;
