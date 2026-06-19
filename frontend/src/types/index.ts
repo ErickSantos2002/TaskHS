@@ -89,3 +89,11 @@ export interface Card {
   attachments: Attachment[];
   checklists: Checklist[];
 }
+
+export interface Reminder {
+  id: number;
+  card_id: number;
+  remind_at: string;
+  fired: boolean;
+  created_at: string;
+}
