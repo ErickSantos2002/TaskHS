@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -6,6 +7,7 @@ from app.database import engine, Base
 import app.models  # noqa: F401 — ensures all models are registered before create_all
 from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders
 from app.core.config import settings
+from app.reminders import reminder_loop
 
 
 @asynccontextmanager
@@ -13,7 +15,11 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    yield
+    task = asyncio.create_task(reminder_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
 
 
 app = FastAPI(title="TaskHS API", version="0.1.0", lifespan=lifespan)
