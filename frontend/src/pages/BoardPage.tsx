@@ -13,7 +13,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
-import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment } from "../types";
+import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment, Reminder } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -167,6 +167,36 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [remindAt, setRemindAt] = useState("");
+  const [addingReminder, setAddingReminder] = useState(false);
+
+  useEffect(() => {
+    api.get<Reminder[]>(`/lists/${card.list_id}/cards/${card.id}/reminders`).then(setReminders).catch(() => {});
+  }, [card.id, card.list_id]);
+
+  async function handleAddReminder() {
+    if (!remindAt || addingReminder) return;
+    setAddingReminder(true);
+    try {
+      const iso = new Date(remindAt).toISOString();
+      const r = await api.post<Reminder>(`/lists/${card.list_id}/cards/${card.id}/reminders`, { remind_at: iso });
+      setReminders(prev => [...prev, r].sort((a, b) => a.remind_at.localeCompare(b.remind_at)));
+      setRemindAt("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao criar lembrete");
+    } finally {
+      setAddingReminder(false);
+    }
+  }
+
+  async function handleDeleteReminder(id: number) {
+    try {
+      await api.del(`/lists/${card.list_id}/cards/${card.id}/reminders/${id}`);
+      setReminders(prev => prev.filter(r => r.id !== id));
+    } catch {}
+  }
 
   useEffect(() => {
     setTitle(card.title);
@@ -739,6 +769,48 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Lembretes */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm font-semibold text-slate-300">Meus lembretes {reminders.length > 0 && <span className="font-normal text-slate-500">({reminders.length})</span>}</p>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="datetime-local"
+                  value={remindAt}
+                  onChange={e => setRemindAt(e.target.value)}
+                  className="text-sm rounded-lg border border-border px-3 py-1.5 bg-transparent text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                <button
+                  onClick={handleAddReminder}
+                  disabled={!remindAt || addingReminder}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 disabled:opacity-40 transition-all"
+                >
+                  {addingReminder ? "…" : "Adicionar"}
+                </button>
+              </div>
+              {reminders.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">Nenhum lembrete pessoal.</p>
+              ) : (
+                <div className="space-y-1">
+                  {reminders.map(r => (
+                    <div key={r.id} className="flex items-center gap-2 p-2 rounded-lg bg-background-elevated border border-border">
+                      <span className="text-xs text-slate-200 flex-1">
+                        {new Date(r.remind_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        {r.fired && <span className="ml-2 text-[10px] text-slate-500">(enviado)</span>}
+                      </span>
+                      <button onClick={() => handleDeleteReminder(r.id)} title="Excluir" className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
                     </div>
                   ))}
                 </div>
