@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, delete as sql_delete
 from datetime import date as _date
 from sqlalchemy.orm import selectinload
 from app.database import get_db, AsyncSessionLocal
@@ -9,6 +9,8 @@ from app.models.board import Board, BoardMember, BoardRole, BoardLabel
 from app.models.list import List
 from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttachment, Checklist, ChecklistItem
 from app.models.user import User
+from app.models.notification import Notification
+from app.models.reminder import Reminder, ReminderSent
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
@@ -230,6 +232,15 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode excluir o board")
+    # limpa tabelas que referenciam cards/board sem cascade no ORM
+    list_ids = (await db.execute(select(List.id).where(List.board_id == board_id))).scalars().all()
+    if list_ids:
+        card_ids = (await db.execute(select(Card.id).where(Card.list_id.in_(list_ids)))).scalars().all()
+        if card_ids:
+            await db.execute(sql_delete(Reminder).where(Reminder.card_id.in_(card_ids)))
+            await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id.in_(card_ids)))
+            await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
+    await db.execute(sql_delete(Notification).where(Notification.board_id == board_id))
     await db.delete(board)
     await db.commit()
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
@@ -8,6 +8,7 @@ from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist,
 from app.models.board import BoardLabel
 from app.models.list import List
 from app.models.notification import Notification
+from app.models.reminder import Reminder, ReminderSent
 from app.models.user import User
 from app.schemas.card import (
     CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut,
@@ -127,6 +128,10 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
+    # tabelas que referenciam o card sem cascade no ORM
+    await db.execute(sql_delete(Notification).where(Notification.card_id == card_id))
+    await db.execute(sql_delete(Reminder).where(Reminder.card_id == card_id))
+    await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id == card_id))
     await db.delete(card)
     await db.commit()
 
