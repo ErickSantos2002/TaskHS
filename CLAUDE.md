@@ -92,6 +92,14 @@ Dois serviços, cada um com seu Dockerfile (ambos rodam **não-root**):
 
 `.dockerignore` em ambos mantém `.env`/`node_modules` fora das imagens.
 
-## Processo de trabalho
+## Processo de trabalho (PADRÃO — sempre seguir)
 
-Specs e planos de features ficam em [docs/superpowers/](docs/superpowers/) (specs + plans datados). O fluxo usado: brainstorming → spec → plano → execução subagent-driven (um subagente por tarefa + review) → review final → merge na `main` + push. Cada feature em sua branch `feat/...`.
+Toda feature/mudança não-trivial segue **sempre** este fluxo, sem reperguntar a cada vez (o Erick já aprovou como padrão):
+
+1. **brainstorming** (skill) — entender e desenhar; sempre apresentar a recomendação nas perguntas.
+2. **spec** — `docs/superpowers/specs/AAAA-MM-DD-<topico>-design.md`, commit, e o Erick revisa.
+3. **plano** — `docs/superpowers/plans/AAAA-MM-DD-<feature>.md` (writing-plans), commit.
+4. **execução subagent-driven** — um subagente implementador por task + review (spec + qualidade) entre cada uma; em branch `feat/...`.
+5. **review final** da branch inteira → **finishing-a-development-branch** → merge na `main` + push.
+
+Não há suíte de testes; a verificação de cada task é manual (curl / navegador / `npm run build`). Cada mudança fecha com uma entrada nova no changelog (ver seção acima). Mudanças pequenas/triviais podem ser commitadas direto na `main` sem todo o ritual, mas o default é o fluxo completo.
