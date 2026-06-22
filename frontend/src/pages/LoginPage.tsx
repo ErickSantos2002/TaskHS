@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import logo from "../assets/logo.png";
+import { APP_VERSION } from "../data/changelog";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -125,7 +126,7 @@ export function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          TaskHS · Health & Safety Tech · v0.1.0
+          TaskHS · Health & Safety Tech · v{APP_VERSION}
         </p>
       </div>
     </div>
