@@ -97,3 +97,13 @@ export interface Reminder {
   fired: boolean;
   created_at: string;
 }
+
+export interface Automation {
+  id: number;
+  board_id: number;
+  trigger_type: string;
+  trigger_list_id: number;
+  action_type: string;
+  enabled: boolean;
+  created_at: string;
+}
