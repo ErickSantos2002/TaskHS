@@ -57,6 +57,8 @@ def _card_to_dict(card: Card) -> dict:
         "due_date": card.due_date,
         "due_date_completed": card.due_date_completed,
         "archived": card.archived,
+        "external_source": card.external_source,
+        "external_id": card.external_id,
         "created_at": card.created_at,
         "updated_at": card.updated_at,
         "labels": [
