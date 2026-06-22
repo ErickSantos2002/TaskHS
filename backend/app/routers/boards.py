@@ -11,6 +11,7 @@ from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttach
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
+from app.models.automation import Automation
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
@@ -241,6 +242,7 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
             await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id.in_(card_ids)))
             await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
     await db.execute(sql_delete(Notification).where(Notification.board_id == board_id))
+    await db.execute(sql_delete(Automation).where(Automation.board_id == board_id))
     await db.delete(board)
     await db.commit()
 

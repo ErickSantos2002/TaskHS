@@ -13,7 +13,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
-import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment, Reminder } from "../types";
+import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment, Reminder, Automation } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -1382,6 +1382,109 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
   );
 }
 
+// ── AutomationsModal ───────────────────────────────────────────
+
+function AutomationsModal({ boardId, lists, onClose }: {
+  boardId: number;
+  lists: { id: number; title: string }[];
+  onClose: () => void;
+}) {
+  const [rules, setRules] = useState<Automation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newListId, setNewListId] = useState<number | "">("");
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setRules(await api.get<Automation[]>(`/boards/${boardId}/automations`));
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [boardId]);
+
+  const listTitle = (id: number) => lists.find(l => l.id === id)?.title ?? `Lista #${id}`;
+
+  const addRule = async () => {
+    if (newListId === "") return;
+    setSaving(true);
+    try {
+      await api.post(`/boards/${boardId}/automations`, { trigger_list_id: newListId });
+      setNewListId("");
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggle = async (r: Automation) => {
+    await api.patch(`/boards/${boardId}/automations/${r.id}`, { enabled: !r.enabled });
+    await load();
+  };
+
+  const remove = async (r: Automation) => {
+    await api.del(`/boards/${boardId}/automations/${r.id}`);
+    await load();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-background-elevated rounded-xl border border-border w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-100">Automações</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-xl leading-none">×</button>
+        </div>
+
+        <div className="rounded-lg border border-border p-3 mb-4">
+          <p className="text-xs text-slate-400 mb-2">Nova regra</p>
+          <p className="text-sm text-slate-300 mb-2">
+            Quando um card for movido para{" "}
+            <select
+              value={newListId}
+              onChange={e => setNewListId(e.target.value === "" ? "" : Number(e.target.value))}
+              className="bg-background border border-border rounded px-2 py-1 text-slate-200 text-sm"
+            >
+              <option value="">selecione a lista…</option>
+              {lists.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
+            </select>
+            , marcar a data de entrega como concluída.
+          </p>
+          <button
+            onClick={addRule}
+            disabled={newListId === "" || saving}
+            className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
+          >
+            Adicionar
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-500">Carregando…</p>
+        ) : rules.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">Nenhuma automação ainda.</p>
+        ) : (
+          <ul className="space-y-2">
+            {rules.map(r => (
+              <li key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-3">
+                <span className={cn("flex-1 text-sm", r.enabled ? "text-slate-200" : "text-slate-500 line-through")}>
+                  Quando movido para <strong>{listTitle(r.trigger_list_id)}</strong>, marcar a data como concluída.
+                </span>
+                <button onClick={() => toggle(r)} className="text-xs px-2 py-1 rounded border border-border text-slate-300 hover:bg-background transition-colors">
+                  {r.enabled ? "Desligar" : "Ligar"}
+                </button>
+                <button onClick={() => remove(r)} className="text-xs px-2 py-1 rounded border border-border text-red-400 hover:bg-red-500/10 transition-colors">
+                  Excluir
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── BoardPage ──────────────────────────────────────────────────
 
 export function BoardPage() {
@@ -1412,6 +1515,7 @@ export function BoardPage() {
   const [archivedTab, setArchivedTab] = useState<"cards" | "lists">("cards");
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [showEditBoard, setShowEditBoard] = useState(false);
+  const [showAutomations, setShowAutomations] = useState(false);
   const [editBoardTitle, setEditBoardTitle] = useState("");
   const [editBoardDescription, setEditBoardDescription] = useState("");
   const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
@@ -1812,6 +1916,16 @@ export function BoardPage() {
                     <IGear />Configurações
                   </button>
                 )}
+                {(currentUser?.id === board.owner_id || currentUser?.is_admin) && (
+                  <button
+                    onClick={() => setShowAutomations(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                    title="Automações do board"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    Automações
+                  </button>
+                )}
                 <button
                   onClick={() => setAddingList(true)}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
@@ -1984,6 +2098,14 @@ export function BoardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showAutomations && (
+        <AutomationsModal
+          boardId={board.id}
+          lists={lists.map(l => ({ id: l.id, title: l.title }))}
+          onClose={() => setShowAutomations(false)}
+        />
       )}
 
       {/* Label Manager Panel */}

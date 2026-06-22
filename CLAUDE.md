@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## O que é
 
-TaskHS é um clone de Trello (quadros/listas/cartões) feito para **substituir o Trello na empresa Health & Safety**. Backend **FastAPI assíncrono + PostgreSQL**, frontend **React 19 + Vite + Tailwind v4**. Interface e mensagens em português. Funcionalidades já implementadas: boards/listas/cards, drag & drop, etiquetas, membros, comentários, checklists, **anexos**, **lembretes**, notificações (sino), import de Trello, admin de usuários. (Falta "automações" para paridade total.)
+TaskHS é um clone de Trello (quadros/listas/cartões) feito para **substituir o Trello na empresa Health & Safety**. Backend **FastAPI assíncrono + PostgreSQL**, frontend **React 19 + Vite + Tailwind v4**. Interface e mensagens em português. Funcionalidades já implementadas: boards/listas/cards, drag & drop, etiquetas, membros, comentários, checklists, **anexos**, **lembretes**, **automações**, notificações (sino), import de Trello, admin de usuários. Paridade com o uso da empresa no Trello está completa.
 
 ## Como rodar
 
@@ -53,9 +53,10 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 - `labels` → `/api/boards/{board_id}/labels`
 - `attachments` → `/api/lists/{list_id}/cards/{card_id}/attachments` (upload multipart, download autenticado, delete autor/admin)
 - `reminders` → `/api/lists/{list_id}/cards/{card_id}/reminders` (lembrete manual pessoal: CRUD)
+- `automations` → `/api/boards/{board_id}/automations` (regras por evento: CRUD; criar/editar/excluir = dono/admin)
 - `notifications` → `/api/notifications` (listar/marcar lida)
 
-**Modelo de dados:** `User` → `Board`(owner) → `BoardMember`/`BoardLabel`/`List` → `Card` → `CardLabel`/`CardMember`/`CardComment`/`CardAttachment`/`Checklist`→`ChecklistItem`. Esses filhos do card têm `cascade="all, delete-orphan"` no ORM. **`Notification`, `Reminder`, `ReminderSent` referenciam `card_id`/`board_id` mas NÃO têm relationship/cascade** — por isso `delete_card`/`delete_board` deletam essas linhas explicitamente antes de excluir (senão FK 500). Papéis: `owner`/`admin`/`member`/`viewer`. Prioridade: `critical`/`high`/`medium`/`low`.
+**Modelo de dados:** `User` → `Board`(owner) → `BoardMember`/`BoardLabel`/`List` → `Card` → `CardLabel`/`CardMember`/`CardComment`/`CardAttachment`/`Checklist`→`ChecklistItem`. Esses filhos do card têm `cascade="all, delete-orphan"` no ORM. **`Notification`, `Reminder`, `ReminderSent`, `Automation` referenciam `card_id`/`board_id`/`trigger_list_id` mas NÃO têm relationship/cascade** — por isso `delete_card`/`delete_board` (e `delete_list` para `Automation.trigger_list_id`) deletam essas linhas explicitamente antes de excluir (senão FK 500). Papéis: `owner`/`admin`/`member`/`viewer`. Prioridade: `critical`/`high`/`medium`/`low`.
 
 **Ordenação fracionária:** `Card.position` é `float` (default 65536); drag & drop = `PATCH` no card mudando `position` (e `list_id` ao trocar de lista). `List.position` é `int`.
 
@@ -64,6 +65,8 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 **Anexos:** arquivos em disco em `UPLOAD_DIR` (default `/app/uploads`, volume `taskhs-uploads`), nome no disco = UUID; nome original no banco. Download é por endpoint autenticado (`FileResponse`), não estático. `CardAttachment` tem `stored_name`/`content_type`/`size`/`uploaded_by`; anexos antigos do Trello têm `url` (externa) e o download redireciona.
 
 **Lembretes:** loop `asyncio` iniciado no `lifespan` ([app/reminders.py](backend/app/reminders.py): `reminder_loop` chama `run_reminder_cycle` a cada 60s, sessão própria). Gera `Notification` (sino) para: **manuais** (`reminders.remind_at <= now`, marca `fired`) e **automáticos** por `due_date` (véspera/dia/atrasado, só membros do card), com dedup via `reminder_sent` (único `card_id,user_id,kind,due_date`). Datas em UTC. **Assume processo único** (uvicorn sem `--workers`); múltiplos workers duplicariam manuais. Para testar o loop sem esperar 60s: `docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())"`.
+
+**Automações:** regras por evento, dirigidas por evento (não é loop como lembretes). Tabela `automations` (genérica: `trigger_type`/`trigger_list_id`/`action_type`/`action_config`/`enabled`). v1 implementa **um gatilho** (`card_moved_to_list`) + **uma ação** (`mark_due_complete`). O motor [app/automations.py](backend/app/automations.py) (`run_card_moved_automations`) é chamado dentro do `PATCH update_card` quando o `list_id` muda — **na mesma transação** do movimento, sem commit próprio, sem cascata. `mark_due_complete` só marca se o card tem `due_date` (senão no-op). Por ser síncrono no request, **roda com múltiplos workers sem duplicar** (diferente dos lembretes). CRUD em `/api/boards/{board_id}/automations`; criar/editar/excluir exige dono/admin (espelha `update_board`). O modelo é genérico de propósito — novos gatilhos/ações são um ramo no motor + opção na UI, sem migration.
 
 **Import de Trello:** `POST /api/boards/import` ([boards.py](backend/app/routers/boards.py)) consome o JSON de export e responde via **SSE**; sessão própria, commit a cada 25 cards.
 

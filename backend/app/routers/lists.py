@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sql_delete
 from app.database import get_db
 from app.models.list import List
 from app.models.card import Card
 from app.models.user import User
 from app.schemas.list import ListCreate, ListUpdate, ListOut
 from app.dependencies import get_current_user
+from app.models.automation import Automation
 
 router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"])
 
@@ -47,6 +48,7 @@ async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSe
 @router.delete("/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     lst = await _get_list_or_404(list_id, board_id, db)
+    await db.execute(sql_delete(Automation).where(Automation.trigger_list_id == list_id))
     await db.delete(lst)
     await db.commit()
 
