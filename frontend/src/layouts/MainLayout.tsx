@@ -232,10 +232,13 @@ export function MainLayout({ children }: MainLayoutProps) {
             <button
               onClick={() => setShowChangelog(true)}
               title="Ver novidades"
-              className="w-full flex items-center justify-between rounded-lg px-1 py-0.5 hover:bg-background-elevated transition-colors"
+              className="group w-full flex flex-col items-start gap-1 -mx-1 rounded-lg px-2 py-1.5 text-left hover:bg-background-elevated transition-colors"
             >
-              <span className="text-xs text-slate-600">TaskHS</span>
-              <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">v{APP_VERSION}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold tracking-tight text-white">TaskHS</span>
+                <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold group-hover:bg-primary/20 transition-colors">v{APP_VERSION}</span>
+              </div>
+              <span className="text-[10px] text-slate-500">© 2026 Health &amp; Safety Tech</span>
             </button>
           </div>
         )}

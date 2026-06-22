@@ -1429,57 +1429,101 @@ function AutomationsModal({ boardId, lists, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-background-elevated rounded-xl border border-border w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-100">Automações</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-xl leading-none">×</button>
-        </div>
-
-        <div className="rounded-lg border border-border p-3 mb-4">
-          <p className="text-xs text-slate-400 mb-2">Nova regra</p>
-          <p className="text-sm text-slate-300 mb-2">
-            Quando um card for movido para{" "}
-            <select
-              value={newListId}
-              onChange={e => setNewListId(e.target.value === "" ? "" : Number(e.target.value))}
-              className="bg-background border border-border rounded px-2 py-1 text-slate-200 text-sm"
-            >
-              <option value="">selecione a lista…</option>
-              {lists.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
-            </select>
-            , marcar a data de entrega como concluída.
-          </p>
-          <button
-            onClick={addRule}
-            disabled={newListId === "" || saving}
-            className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 disabled:opacity-50 transition-colors"
-          >
-            Adicionar
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-border bg-background-surface shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-100">Automações</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Regras que rodam sozinhas neste quadro</p>
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Fechar" className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
-        {loading ? (
-          <p className="text-sm text-slate-500">Carregando…</p>
-        ) : rules.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">Nenhuma automação ainda.</p>
-        ) : (
-          <ul className="space-y-2">
-            {rules.map(r => (
-              <li key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-3">
-                <span className={cn("flex-1 text-sm", r.enabled ? "text-slate-200" : "text-slate-500 line-through")}>
-                  Quando movido para <strong>{listTitle(r.trigger_list_id)}</strong>, marcar a data como concluída.
+        {/* Body */}
+        <div className="max-h-[65vh] overflow-y-auto px-6 py-5 space-y-5">
+          {/* Builder */}
+          <div className="rounded-xl border border-border bg-background-elevated p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Nova regra</p>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 w-14 text-[11px] font-bold uppercase tracking-wide text-primary">Quando</span>
+                <span className="text-sm text-slate-300">um card for movido para</span>
+                <select
+                  value={newListId}
+                  onChange={e => setNewListId(e.target.value === "" ? "" : Number(e.target.value))}
+                  className="flex-1 min-w-0 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
+                >
+                  <option value="">selecione a lista…</option>
+                  {lists.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 w-14 text-[11px] font-bold uppercase tracking-wide text-slate-400">Então</span>
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5 text-sm text-slate-200">
+                  <svg className="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  marcar a data de entrega como concluída
                 </span>
-                <button onClick={() => toggle(r)} className="text-xs px-2 py-1 rounded border border-border text-slate-300 hover:bg-background transition-colors">
-                  {r.enabled ? "Desligar" : "Ligar"}
-                </button>
-                <button onClick={() => remove(r)} className="text-xs px-2 py-1 rounded border border-border text-red-400 hover:bg-red-500/10 transition-colors">
-                  Excluir
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+              </div>
+            </div>
+            <button
+              onClick={addRule}
+              disabled={newListId === "" || saving}
+              className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              {saving ? "Adicionando…" : "Adicionar regra"}
+            </button>
+          </div>
+
+          {/* List */}
+          {loading ? (
+            <p className="text-sm text-slate-500 text-center py-4">Carregando…</p>
+          ) : rules.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-8 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-background-elevated text-slate-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              </div>
+              <p className="text-sm font-medium text-slate-400">Nenhuma automação ainda</p>
+              <p className="text-xs text-slate-600">Crie uma regra acima para automatizar este quadro.</p>
+            </div>
+          ) : (
+            <ul className="space-y-2.5">
+              {rules.map(r => (
+                <li key={r.id} className={cn("flex items-center gap-3 rounded-xl border border-border p-3.5 transition-opacity", !r.enabled && "opacity-55")}>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-sm text-slate-200 leading-snug">
+                      Quando movido para <strong className="font-semibold text-white">{listTitle(r.trigger_list_id)}</strong>
+                    </p>
+                    <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                      <svg className="w-3 h-3 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      marcar a data como concluída
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggle(r)}
+                    role="switch"
+                    aria-checked={r.enabled}
+                    title={r.enabled ? "Desligar" : "Ligar"}
+                    className={cn("relative shrink-0 h-5 w-9 rounded-full transition-colors", r.enabled ? "bg-primary" : "bg-slate-600")}
+                  >
+                    <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform", r.enabled ? "translate-x-[18px]" : "translate-x-0.5")} />
+                  </button>
+                  <button onClick={() => remove(r)} title="Excluir" aria-label="Excluir regra" className="shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
