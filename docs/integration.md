@@ -37,6 +37,10 @@ curl -X POST https://<taskhs>/api/integration/cards \
 ```
 Resposta `200`: o card serializado (inclui `id`, `list_id`, `external_source`, `external_id`).
 
+## Observações
+
+`board` e `list` são resolvidos **por nome**: se já existir um board ou lista com esse nome (inclusive criado manualmente por um usuário), a integração o reutiliza em vez de criar outro. A integração nunca lê nem altera boards/listas de outros contextos — apenas escreve nos boards cujos nomes ela mesma envia. Escolha nomes de board improváveis de colidir com boards criados por humanos (ex.: "Ordens de Serviço — GestorHS" em vez de "Tarefas").
+
 ## `DELETE /api/integration/cards` — remover
 
 Para quando a entidade externa é excluída. Cancelar/finalizar **não** usa este
