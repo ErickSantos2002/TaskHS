@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -22,3 +22,11 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
     return user
+
+
+async def require_integration_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> None:
+    from app.core.config import settings
+    if not settings.INTEGRATION_API_KEY or x_api_key != settings.INTEGRATION_API_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key inválida")
