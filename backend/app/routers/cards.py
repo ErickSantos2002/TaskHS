@@ -15,6 +15,7 @@ from app.schemas.card import (
     ChecklistCreate, ChecklistOut, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemOut,
 )
 from app.dependencies import get_current_user
+from app.automations import run_card_moved_automations
 
 
 class CardCopyBody(BaseModel):
@@ -119,8 +120,12 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
     if not card:
         raise HTTPException(status_code=404, detail="Card não encontrado")
     data = body.model_dump(exclude_none=True)
+    old_list_id = card.list_id
     for k, v in data.items():
         setattr(card, k, v)
+    new_list_id = card.list_id
+    if old_list_id != new_list_id:
+        await run_card_moved_automations(db, card, old_list_id, new_list_id)
     await db.commit()
     return _card_to_dict(card)
 
