@@ -4,6 +4,8 @@ import { cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../lib/api";
 import logo from "../assets/logo.png";
+import { APP_VERSION } from "../data/changelog";
+import { ChangelogModal } from "../components/ChangelogModal";
 
 interface AppNotification {
   id: number;
@@ -96,6 +98,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
 
   const unread = notifications.filter(n => !n.read).length;
@@ -226,10 +229,14 @@ export function MainLayout({ children }: MainLayoutProps) {
         {/* Footer */}
         {!collapsed && (
           <div className="shrink-0 border-t border-border px-5 py-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-600">TaskHS</p>
-              <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">v0.1.0</span>
-            </div>
+            <button
+              onClick={() => setShowChangelog(true)}
+              title="Ver novidades"
+              className="w-full flex items-center justify-between rounded-lg px-1 py-0.5 hover:bg-background-elevated transition-colors"
+            >
+              <span className="text-xs text-slate-600">TaskHS</span>
+              <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold">v{APP_VERSION}</span>
+            </button>
           </div>
         )}
       </aside>
@@ -332,6 +339,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           {children}
         </main>
       </div>
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   );
 }

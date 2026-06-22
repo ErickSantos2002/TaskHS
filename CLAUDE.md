@@ -41,6 +41,10 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
 - **Token JWT dura 8h** (`ACCESS_TOKEN_EXPIRE_MINUTES=480`, default no config). O frontend faz **auto-logout → /login** em qualquer `401` (no `api.ts`) e checa o `exp` do token no load do `AuthContext`.
 - **Autorização é mínima:** quase todo endpoint exige apenas `get_current_user`, **sem checar membership do board**. Exceções: `update_board`/`delete_board` (dono/admin), rotas admin (`get_admin_user`, exige `is_admin`), delete de anexo (autor/admin), delete de lembrete (dono). Não assuma membership validado upstream.
 
+## Changelog / versionamento (OBRIGATÓRIO)
+
+**Toda mudança no sistema deve terminar com uma entrada nova no changelog** — `frontend/src/data/changelog.ts`. Adicionar um objeto `ChangelogVersion` **no topo** do array `CHANGELOG` (mais recente primeiro), com `version`, `date` (ISO `YYYY-MM-DD`) e os `changes` (cada um `{ kind: "novidade" | "melhoria" | "correcao", text }`). Versionamento semântico: correção → patch (`1.0.x`), melhoria → minor (`1.x.0`), novidade grande → minor/major. A versão exibida no rodapé da sidebar e no LoginPage deriva de `CHANGELOG[0]` (`APP_VERSION`) — basta editar o array, não há string de versão cravada em outro lugar. **Não considerar uma feature/fix concluída sem essa entrada.** O rodapé "TaskHS · vX.Y.Z" da sidebar é um botão ("Ver novidades") que abre o `ChangelogModal` ([frontend/src/components/ChangelogModal.tsx](frontend/src/components/ChangelogModal.tsx)).
+
 ## Arquitetura do backend
 
 SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`; auth JWT Bearer (`get_current_user` em [dependencies.py](backend/app/dependencies.py)); bcrypt + HS256 em [core/security.py](backend/app/core/security.py). Config em `.env` via pydantic-settings ([config.py](backend/app/core/config.py): `DATABASE_URL`, `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `UPLOAD_DIR`, `CORS_ORIGINS`).
