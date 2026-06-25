@@ -57,6 +57,8 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
         card.due_date = body.due_date
     if "priority" in sent and body.priority is not None:
         card.priority = body.priority
+    if "archived" in sent:
+        card.archived = body.archived
     if card.list_id != lst.id:
         card.list_id = lst.id
         card.position = await _last_position(db, lst.id)
@@ -80,6 +82,7 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
             position=await _last_position(db, lst.id),
             external_source=body.source,
             external_id=body.external_id,
+            archived=body.archived or False,
         )
         db.add(card)
         try:
