@@ -88,7 +88,7 @@ se a lista mudou, **move** o card. Tudo numa única transação.
 | `description` | string \| null | — | Descrição (texto livre). |
 | `due_date` | string (`YYYY-MM-DD`) \| null | — | Data de entrega. |
 | `priority` | string \| null | — | Um de: `critical`, `high`, `medium`, `low`. Default `medium` na criação. |
-| `archived` | bool \| null | — | `true` arquiva o card (some do quadro), `false` desarquiva. Omitido = não altera. |
+| `archived` | bool \| null | — | `true` arquiva o card (some do quadro), `false` desarquiva. `null` ou omitido = não altera. |
 
 **Exemplo:**
 ```bash
