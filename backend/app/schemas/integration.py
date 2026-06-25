@@ -12,6 +12,7 @@ class IntegrationCardIn(BaseModel):
     description: str | None = None
     due_date: date | None = None
     priority: Priority | None = None
+    archived: bool | None = None
 
 
 class IntegrationCardRef(BaseModel):
