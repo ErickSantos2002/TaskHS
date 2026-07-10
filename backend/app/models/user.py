@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime
+import enum
+from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+
+class Role(str, enum.Enum):
+    administrador = "administrador"
+    coordenador = "coordenador"
+    membro = "membro"
 
 
 class User(Base):
@@ -13,8 +20,16 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     initials: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    role: Mapped[Role] = mapped_column(SAEnum(Role, native_enum=False, length=20), default=Role.membro)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == Role.administrador
+
+    @property
+    def is_elevated(self) -> bool:
+        return self.role in (Role.administrador, Role.coordenador)
 
     boards: Mapped[list["Board"]] = relationship("Board", back_populates="owner", foreign_keys="Board.owner_id")
     board_memberships: Mapped[list["BoardMember"]] = relationship("BoardMember", back_populates="user")

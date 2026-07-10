@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update as sql_update, delete as sql_delete
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, Role
 from app.schemas.user import UserCreate, UserOut, TokenOut, LoginIn, UserAdminCreate, UserAdminUpdate
 from app.core.security import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
@@ -11,6 +11,12 @@ from app.dependencies import get_current_user
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
+    return current_user
+
+
+async def get_elevated_user(current_user: User = Depends(get_current_user)) -> User:
+    if not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores e coordenadores")
     return current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])

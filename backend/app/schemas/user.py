@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
+from app.models.user import Role
 
 
 class UserCreate(BaseModel):
@@ -15,6 +16,7 @@ class UserOut(BaseModel):
     email: str
     initials: str
     is_active: bool
+    role: Role
     is_admin: bool
     created_at: datetime
 
@@ -32,11 +34,11 @@ class UserAdminCreate(BaseModel):
     email: EmailStr
     password: str
     initials: str
-    is_admin: bool = False
+    role: Role = Role.membro
 
 
 class UserAdminUpdate(BaseModel):
-    is_admin: bool
+    role: Role
 
 
 class LoginIn(BaseModel):
