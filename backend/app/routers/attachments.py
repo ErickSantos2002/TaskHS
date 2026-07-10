@@ -117,7 +117,7 @@ async def delete_attachment(
     att = result.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Anexo não encontrado")
-    if att.uploaded_by != current_user.id and not current_user.is_admin:
+    if att.uploaded_by != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o autor do anexo ou um administrador pode excluí-lo")
     if att.stored_name:
         path = os.path.join(settings.UPLOAD_DIR, att.stored_name)
