@@ -20,7 +20,7 @@ async def _get_board_or_404(board_id: int, db: AsyncSession) -> Board:
 
 
 def _require_owner_or_admin(board: Board, user: User) -> None:
-    if board.owner_id != user.id and not user.is_admin:
+    if board.owner_id != user.id and not user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode gerenciar automações")
 
 

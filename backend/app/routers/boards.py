@@ -219,7 +219,7 @@ async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_u
 @router.patch("/{board_id}", response_model=BoardOut)
 async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
-    if board.owner_id != current_user.id and not current_user.is_admin:
+    if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(board, field, value)
@@ -231,7 +231,7 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
 @router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
-    if board.owner_id != current_user.id and not current_user.is_admin:
+    if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode excluir o board")
     # limpa tabelas que referenciam cards/board sem cascade no ORM
     list_ids = (await db.execute(select(List.id).where(List.board_id == board_id))).scalars().all()

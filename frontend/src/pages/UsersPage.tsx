@@ -5,8 +5,15 @@ import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import type { User } from "../types";
 
-// ── Icons ─────────────────────────────────────────────────────
+type Role = "administrador" | "coordenador" | "membro";
 
+const ROLE_LABEL: Record<Role, string> = {
+  administrador: "Administrador",
+  coordenador: "Coordenador",
+  membro: "Membro",
+};
+
+// ── Icons ─────────────────────────────────────────────────────
 const IPlus = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -15,11 +22,6 @@ const IPlus = () => (
 const ITrash = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-);
-const IShield = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
   </svg>
 );
 const ISpinner = () => (
@@ -35,13 +37,12 @@ const IX = () => (
 );
 
 // ── New User Modal ─────────────────────────────────────────────
-
-function NewUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: (u: User) => void }) {
-  const [form, setForm] = useState({ name: "", email: "", password: "", initials: "", is_admin: false });
+function NewUserModal({ canAssignAdmin, onClose, onCreated }: { canAssignAdmin: boolean; onClose: () => void; onCreated: (u: User) => void }) {
+  const [form, setForm] = useState({ name: "", email: "", password: "", initials: "", role: "membro" as Role });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function set(field: string, value: string | boolean) {
+  function set(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }));
     setError("");
   }
@@ -122,24 +123,18 @@ function NewUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
             />
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <div
-              onClick={() => set("is_admin", !form.is_admin)}
-              className={cn(
-                "w-10 h-6 rounded-full transition-colors relative shrink-0",
-                form.is_admin ? "bg-primary" : "bg-slate-200 dark:bg-border"
-              )}
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Perfil</label>
+            <select
+              value={form.role}
+              onChange={e => set("role", e.target.value)}
+              className="w-full text-sm rounded-lg border border-slate-200 dark:border-border bg-transparent px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
-              <span className={cn(
-                "absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform",
-                form.is_admin ? "translate-x-5" : "translate-x-1"
-              )} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Administrador</p>
-              <p className="text-xs text-slate-400">Pode gerenciar usuários e boards</p>
-            </div>
-          </label>
+              <option value="membro">Membro</option>
+              <option value="coordenador">Coordenador</option>
+              {canAssignAdmin && <option value="administrador">Administrador</option>}
+            </select>
+          </div>
 
           {error && <p className="text-xs text-red-500 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
 
@@ -162,7 +157,6 @@ function NewUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 }
 
 // ── UsersPage ──────────────────────────────────────────────────
-
 export function UsersPage() {
   const { user: me } = useAuth();
   const navigate = useNavigate();
@@ -172,14 +166,24 @@ export function UsersPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
+  const iAmAdmin = me?.role === "administrador";
+  const iAmElevated = me?.role === "administrador" || me?.role === "coordenador";
+
   useEffect(() => {
-    if (!me?.is_admin) { navigate("/boards", { replace: true }); return; }
+    if (!iAmElevated) { navigate("/boards", { replace: true }); return; }
     api.get<User[]>("/auth/users").then(setUsers).finally(() => setLoading(false));
   }, [me]);
 
-  async function handleToggleAdmin(user: User) {
+  // um coordenador não gerencia administradores
+  function canManage(u: User): boolean {
+    if (u.id === me?.id) return false;
+    if (u.role === "administrador" && !iAmAdmin) return false;
+    return true;
+  }
+
+  async function handleChangeRole(user: User, role: Role) {
     try {
-      const updated = await api.patch<User>(`/auth/users/${user.id}`, { is_admin: !user.is_admin });
+      const updated = await api.patch<User>(`/auth/users/${user.id}`, { role });
       setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
     } catch {}
   }
@@ -244,61 +248,56 @@ export function UsersPage() {
                   </td>
                   <td className="px-5 py-4 text-slate-500 dark:text-slate-400">{u.email}</td>
                   <td className="px-5 py-4">
-                    <span className={cn(
-                      "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full",
-                      u.is_admin
-                        ? "bg-primary/10 text-primary"
-                        : "bg-slate-100 dark:bg-background-elevated text-slate-500"
-                    )}>
-                      {u.is_admin && <IShield />}
-                      {u.is_admin ? "Administrador" : "Membro"}
-                    </span>
+                    {canManage(u) ? (
+                      <select
+                        value={u.role}
+                        onChange={e => handleChangeRole(u, e.target.value as Role)}
+                        className="text-xs font-semibold rounded-lg border border-slate-200 dark:border-border bg-transparent px-2 py-1 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      >
+                        <option value="membro">Membro</option>
+                        <option value="coordenador">Coordenador</option>
+                        {iAmAdmin && <option value="administrador">Administrador</option>}
+                      </select>
+                    ) : (
+                      <span className={cn(
+                        "inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full",
+                        u.role === "membro" ? "bg-slate-100 dark:bg-background-elevated text-slate-500" : "bg-primary/10 text-primary"
+                      )}>
+                        {ROLE_LABEL[u.role]}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-4 text-slate-400 text-xs">
                     {new Date(u.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-1">
-                      {u.id !== me?.id && (
-                        <>
-                          <button
-                            onClick={() => handleToggleAdmin(u)}
-                            title={u.is_admin ? "Remover admin" : "Tornar admin"}
-                            className={cn(
-                              "p-2 rounded-lg transition-colors text-xs",
-                              u.is_admin
-                                ? "text-primary hover:bg-primary/10"
-                                : "text-slate-400 hover:text-primary hover:bg-primary/10"
-                            )}
-                          >
-                            <IShield />
-                          </button>
-                          {confirmDeleteId === u.id ? (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="text-xs px-2 py-1 rounded-lg border border-slate-200 dark:border-border text-slate-500 hover:bg-slate-50 dark:hover:bg-background-elevated transition-colors"
-                              >
-                                Cancelar
-                              </button>
-                              <button
-                                onClick={() => handleDelete(u.id)}
-                                disabled={deletingId === u.id}
-                                className="text-xs px-2 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold"
-                              >
-                                {deletingId === u.id ? "…" : "Confirmar"}
-                              </button>
-                            </div>
-                          ) : (
+                      {canManage(u) && (
+                        confirmDeleteId === u.id ? (
+                          <div className="flex items-center gap-1">
                             <button
-                              onClick={() => setConfirmDeleteId(u.id)}
-                              title="Excluir usuário"
-                              className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-xs px-2 py-1 rounded-lg border border-slate-200 dark:border-border text-slate-500 hover:bg-slate-50 dark:hover:bg-background-elevated transition-colors"
                             >
-                              <ITrash />
+                              Cancelar
                             </button>
-                          )}
-                        </>
+                            <button
+                              onClick={() => handleDelete(u.id)}
+                              disabled={deletingId === u.id}
+                              className="text-xs px-2 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold"
+                            >
+                              {deletingId === u.id ? "…" : "Confirmar"}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(u.id)}
+                            title="Excluir usuário"
+                            className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          >
+                            <ITrash />
+                          </button>
+                        )
                       )}
                     </div>
                   </td>
@@ -311,6 +310,7 @@ export function UsersPage() {
 
       {showModal && (
         <NewUserModal
+          canAssignAdmin={iAmAdmin}
           onClose={() => setShowModal(false)}
           onCreated={u => setUsers(prev => [...prev, u].sort((a, b) => a.name.localeCompare(b.name)))}
         />

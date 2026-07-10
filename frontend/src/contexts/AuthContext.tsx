@@ -7,6 +7,7 @@ interface User {
   email: string;
   initials: string;
   is_admin: boolean;
+  role: "administrador" | "coordenador" | "membro";
 }
 
 interface AuthContextValue {

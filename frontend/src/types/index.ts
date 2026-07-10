@@ -6,6 +6,7 @@ export interface User {
   email: string;
   initials: string;
   is_admin: boolean;
+  role: "administrador" | "coordenador" | "membro";
   created_at: string;
 }
 
