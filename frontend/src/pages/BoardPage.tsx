@@ -135,7 +135,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   listTitle: string;
   lists: BoardList[];
   boardLabels: BoardLabel[];
-  currentUser: { id: number; is_admin: boolean } | null;
+  currentUser: { id: number; is_admin: boolean; role: "administrador" | "coordenador" | "membro" } | null;
   onClose: () => void;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
@@ -272,7 +272,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   }
 
   function canDelete(a: Attachment): boolean {
-    return !!currentUser && (a.uploaded_by === currentUser.id || currentUser.is_admin);
+    return !!currentUser && (a.uploaded_by === currentUser.id || currentUser.role === "administrador" || currentUser.role === "coordenador");
   }
 
   function formatSize(bytes: number | null): string {
@@ -1951,7 +1951,7 @@ export function BoardPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                   Arquivados
                 </button>
-                {(currentUser?.id === board.owner_id || currentUser?.is_admin) && (
+                {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={openEditBoard}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -1960,7 +1960,7 @@ export function BoardPage() {
                     <IGear />Configurações
                   </button>
                 )}
-                {(currentUser?.id === board.owner_id || currentUser?.is_admin) && (
+                {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={() => setShowAutomations(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"

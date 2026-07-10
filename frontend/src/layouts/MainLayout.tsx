@@ -192,7 +192,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-0.5">
-          {NAV_ITEMS.filter(item => !item.adminOnly || user?.is_admin).map(({ label, icon, to }) => {
+          {NAV_ITEMS.filter(item => !item.adminOnly || user?.role === "administrador" || user?.role === "coordenador").map(({ label, icon, to }) => {
             const active = to === "/" ? location.pathname === "/" || location.pathname === "/dashboard" : location.pathname.startsWith(to);
             return (
             <Link
@@ -323,7 +323,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-semibold text-slate-100 leading-tight">{user?.name ?? ""}</p>
-                  <p className="text-xs text-slate-500 leading-tight">{user?.is_admin ? "Administrador" : "Membro"}</p>
+                  <p className="text-xs text-slate-500 leading-tight">{user?.role === "administrador" ? "Administrador" : user?.role === "coordenador" ? "Coordenador" : "Membro"}</p>
                 </div>
               </div>
               <button
