@@ -18,6 +18,8 @@ from app.schemas.list import ListOut
 from app.dependencies import get_current_user
 import json as _json
 from datetime import datetime as _dt
+from app.models.audit import AuditLog
+from app.audit_context import get_actor
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -88,6 +90,7 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 
     async def generate():
         async with AsyncSessionLocal() as db:
+            db.sync_session.info["audit_silent"] = True
             try:
                 data = _json.loads(content)
                 board_name: str = data.get("name", "Board Importado")
@@ -199,6 +202,19 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
                         yield _sse("warning", message=f"Erro no card '{tcard.get('name','?')[:30]}': {str(e)[:80]}")
 
                 await db.commit()
+
+                actor = get_actor()
+                db.sync_session.info["audit_silent"] = False
+                db.add(AuditLog(
+                    actor_type=actor.actor_type, actor_user_id=actor.user_id,
+                    actor_name=(actor.name or "sistema")[:120], actor_email=(actor.email[:255] if actor.email else None),
+                    action="criar", entity_type="quadro", entity_id=board.id,
+                    entity_label=board.title[:255], board_id=board.id,
+                    summary=f'importou o quadro "{board.title}" do Trello ({len(list_map)} listas, {ok} cards)',
+                    ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
+                ))
+                await db.commit()
+
                 yield _sse("done", board_id=board.id, imported=ok, errors=errors)
 
             except Exception as e:

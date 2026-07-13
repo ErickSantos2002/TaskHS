@@ -7,6 +7,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { BoardsPage } from "./pages/BoardsPage";
 import { BoardPage } from "./pages/BoardPage";
 import { UsersPage } from "./pages/UsersPage";
+import { LogsPage } from "./pages/LogsPage";
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
                     <Route path="boards" element={<BoardsPage />} />
                     <Route path="boards/:id" element={<BoardPage />} />
                     <Route path="usuarios" element={<UsersPage />} />
+                    <Route path="logs" element={<LogsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </MainLayout>

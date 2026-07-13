@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
+from app.audit_context import set_actor_identity
 
 bearer = HTTPBearer()
 
@@ -21,6 +22,7 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+    set_actor_identity("usuario", user.id, user.name, user.email)
     return user
 
 
@@ -30,3 +32,4 @@ async def require_integration_key(
     from app.core.config import settings
     if not settings.INTEGRATION_API_KEY or x_api_key != settings.INTEGRATION_API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key inválida")
+    set_actor_identity("integracao", None, "integração", None)

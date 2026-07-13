@@ -12,6 +12,7 @@ from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
 from app.routers.cards import _card_options, _card_to_dict
+from app.audit_context import set_actor_identity
 
 router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[Depends(require_integration_key)])
 
@@ -66,6 +67,7 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
 
 @router.post("/cards")
 async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db)):
+    set_actor_identity("integracao", None, body.source, None)
     sent = body.model_dump(exclude_unset=True)
     board = await _ensure_board(db, body.board)
     lst = await _ensure_list(db, board.id, body.list)
@@ -104,6 +106,7 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
 
 @router.delete("/cards", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_external_card(body: IntegrationCardRef, db: AsyncSession = Depends(get_db)):
+    set_actor_identity("integracao", None, body.source, None)
     card = (await db.execute(
         select(Card).where(Card.external_source == body.source, Card.external_id == body.external_id)
     )).scalar_one_or_none()

@@ -76,12 +76,21 @@ function IconLogout() {
   );
 }
 
+function IconLogs() {
+  return (
+    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  );
+}
+
 // ── Nav items ─────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: <IconDashboard />, to: "/",        adminOnly: false },
-  { label: "Boards",    icon: <IconBoards />,    to: "/boards",  adminOnly: false },
-  { label: "Usuários",  icon: <IconUsers />,     to: "/usuarios", adminOnly: true },
+  { label: "Dashboard", icon: <IconDashboard />, to: "/",         adminOnly: false, adminStrict: false },
+  { label: "Boards",    icon: <IconBoards />,    to: "/boards",   adminOnly: false, adminStrict: false },
+  { label: "Usuários",  icon: <IconUsers />,     to: "/usuarios",  adminOnly: true,  adminStrict: false },
+  { label: "Logs",      icon: <IconLogs />,      to: "/logs",      adminOnly: true,  adminStrict: true },
 ];
 
 // ── Layout ────────────────────────────────────────────────────
@@ -192,7 +201,11 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-0.5">
-          {NAV_ITEMS.filter(item => !item.adminOnly || user?.role === "administrador" || user?.role === "coordenador").map(({ label, icon, to }) => {
+          {NAV_ITEMS.filter(item =>
+            item.adminStrict
+              ? user?.role === "administrador"
+              : !item.adminOnly || user?.role === "administrador" || user?.role === "coordenador"
+          ).map(({ label, icon, to }) => {
             const active = to === "/" ? location.pathname === "/" || location.pathname === "/dashboard" : location.pathname.startsWith(to);
             return (
             <Link
