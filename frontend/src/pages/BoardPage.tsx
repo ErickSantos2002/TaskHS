@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   DndContext, DragOverlay, closestCorners,
@@ -1534,6 +1534,7 @@ function AutomationsModal({ boardId, lists, onClose }: {
 export function BoardPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user: currentUser } = useAuth();
   const boardId = Number(id);
 
@@ -1613,6 +1614,23 @@ export function BoardPage() {
       setCardsByList(Object.fromEntries(entries));
     }).finally(() => setLoading(false));
   }, [boardId]);
+
+  // Deep link: /boards/:id?card=<id> abre o card já aberto (usado pelos links da página de Logs).
+  useEffect(() => {
+    const cardId = Number(searchParams.get("card"));
+    if (!cardId) return;
+    const alvo = Object.values(cardsByList).flat().find(c => c.id === cardId);
+    if (alvo) setSelectedCard(alvo);
+  }, [searchParams, cardsByList]);
+
+  function fecharCard() {
+    setSelectedCard(null);
+    if (searchParams.get("card")) {
+      const p = new URLSearchParams(searchParams);
+      p.delete("card");
+      setSearchParams(p, { replace: true });
+    }
+  }
 
   function findListOfCard(cardId: number): number | undefined {
     for (const [listId, cards] of Object.entries(cardsByList)) {
@@ -2057,7 +2075,7 @@ export function BoardPage() {
           lists={lists}
           boardLabels={boardLabels}
           currentUser={currentUser}
-          onClose={() => setSelectedCard(null)}
+          onClose={fecharCard}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}

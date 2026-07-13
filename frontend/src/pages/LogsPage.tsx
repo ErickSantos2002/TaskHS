@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -162,6 +162,26 @@ export function LogsPage() {
                   <p className="text-slate-500">
                     {l.actor_type} · {l.actor_email ?? "—"} · {l.ip ?? "—"} · {l.path ?? "—"}
                   </p>
+
+                  {/* Atalhos: não mostra link para a entidade que a própria linha excluiu (não existe mais). */}
+                  {(() => {
+                    const mostraQuadro = !!l.board_id && !(l.action === "excluir" && l.entity_type === "quadro");
+                    const mostraCard = !!l.card_id && !!l.board_id && !(l.action === "excluir" && l.entity_type === "card");
+                    if (!mostraQuadro && !mostraCard) return null;
+                    const chip = "inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 font-semibold hover:bg-primary/20 transition-colors";
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500">Abrir:</span>
+                        {mostraQuadro && (
+                          <Link to={`/boards/${l.board_id}`} className={chip}>Quadro #{l.board_id}</Link>
+                        )}
+                        {mostraCard && (
+                          <Link to={`/boards/${l.board_id}?card=${l.card_id}`} className={chip}>Card #{l.card_id}</Link>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {l.changes ? (
                     <table className="w-full">
                       <thead>
