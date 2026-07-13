@@ -209,8 +209,10 @@ def _describe(session, obj, action, changes):
 
     elif t is Automation:
         board_id = obj.board_id
-        label = obj.action_type
-        summary = f"{verb} uma automação no quadro"
+        lst = session.get(List, obj.trigger_list_id) if obj.trigger_list_id else None
+        nome_lista = lst.title if lst else obj.trigger_list_id
+        label = nome_lista if nome_lista is None else str(nome_lista)
+        summary = f'{verb} uma automação (quando um card for movido para "{nome_lista}")'
 
     elif t is User:
         eid, label = obj.id, obj.name
@@ -262,6 +264,9 @@ def _audit_before_flush(session, flush_context, instances):
 
 @event.listens_for(Session, "after_flush")
 def _audit_after_flush(session, flush_context):
+    if session.info.get("audit_silent"):
+        session.info.pop("_audit_pending", None)
+        return
     pending = session.info.pop("_audit_pending", None)
     if not pending:
         return
@@ -289,3 +294,13 @@ def _audit_after_flush(session, flush_context):
             })
         if rows:
             session.execute(insert(AuditLog), rows)
+
+
+@event.listens_for(Session, "after_rollback")
+def _audit_after_rollback(session):
+    session.info.pop("_audit_pending", None)
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _audit_after_soft_rollback(session, previous_transaction):
+    session.info.pop("_audit_pending", None)
