@@ -108,3 +108,22 @@ export interface Automation {
   enabled: boolean;
   created_at: string;
 }
+
+export interface AuditLog {
+  id: number;
+  created_at: string;
+  actor_type: string;
+  actor_user_id: number | null;
+  actor_name: string;
+  actor_email: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  entity_label: string | null;
+  board_id: number | null;
+  card_id: number | null;
+  summary: string;
+  changes: Record<string, { de: unknown; para: unknown }> | null;
+  ip: string | null;
+  path: string | null;
+}
