@@ -1265,7 +1265,9 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
   }
 
   return (
-    <div className="flex flex-col w-[272px] shrink-0 rounded-xl overflow-hidden" style={{ backgroundColor: "rgba(13, 22, 36, 0.85)" }}>
+    // max-h-full: a coluna cresce até o fim da área do quadro e para ali — daí o scroll
+    // passa a acontecer DENTRO da lista (na área de cards), e não na página.
+    <div className="flex flex-col w-[272px] shrink-0 max-h-full rounded-xl overflow-hidden" style={{ backgroundColor: "rgba(13, 22, 36, 0.85)" }}>
       {/* Column header */}
       <div className="px-3 py-2.5 shrink-0 border-b border-white/5">
         <div className="flex items-center justify-between gap-2">
@@ -2035,7 +2037,9 @@ export function BoardPage() {
               onMouseUp={onBoardMouseUp}
               onMouseLeave={onBoardMouseUp}
             >
-              <div className="inline-flex gap-3 h-full p-3 items-start">
+              {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
+                  O botão/form de "Adicionar lista" tem self-start, então continua curto. */}
+              <div className="inline-flex gap-3 h-full p-3 items-stretch">
                 {lists.map(list => (
                   <KanbanColumn
                     key={list.id}
