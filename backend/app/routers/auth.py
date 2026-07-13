@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User, Role
 from app.schemas.user import UserCreate, UserOut, TokenOut, LoginIn, UserAdminCreate, UserAdminUpdate
 from app.core.security import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
+from app.models.audit import AuditLog
+from app.audit_context import get_actor
 
 
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
@@ -44,8 +46,23 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
+    actor = get_actor()
     if not user or not verify_password(body.password, user.password_hash):
+        db.add(AuditLog(
+            actor_type="usuario", actor_user_id=(user.id if user else None),
+            actor_name=(user.name if user else body.email), actor_email=body.email,
+            action="login_falhou", entity_type="sessao", entity_id=(user.id if user else None),
+            entity_label=body.email, summary=f"tentativa de login falhou ({body.email})",
+            ip=actor.ip, path=actor.path,
+        ))
+        await db.commit()
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    db.add(AuditLog(
+        actor_type="usuario", actor_user_id=user.id, actor_name=user.name, actor_email=user.email,
+        action="login", entity_type="sessao", entity_id=user.id, entity_label=user.email,
+        summary=f'"{user.name}" entrou no sistema', ip=actor.ip, path=actor.path,
+    ))
+    await db.commit()
     token = create_access_token(user.email)
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
@@ -105,5 +122,5 @@ async def admin_delete_user(user_id: int, db: AsyncSession = Depends(get_db), cu
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if user.role == Role.administrador and current_user.role != Role.administrador:
         raise HTTPException(status_code=403, detail="Apenas administradores podem excluir administradores")
-    await db.execute(sql_delete(User).where(User.id == user_id))
+    await db.delete(user)
     await db.commit()

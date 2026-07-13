@@ -2,14 +2,18 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import engine, Base
+from fastapi.exception_handlers import http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.database import engine, Base, AsyncSessionLocal
 import app.models  # noqa: F401 — ensures all models are registered before create_all
 import app.audit  # noqa: F401 — registra os listeners de auditoria
 from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders, automations, integration
 from app.core.config import settings
 from app.reminders import reminder_loop
-from app.audit_context import set_request_actor
+from app.audit_context import set_request_actor, get_actor
+from app.models.audit import AuditLog
 
 
 @asynccontextmanager
@@ -40,6 +44,25 @@ async def audit_context_middleware(request: Request, call_next):
     ip = request.client.host if request.client else None
     set_request_actor(ip, f"{request.method} {request.url.path}")
     return await call_next(request)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def audit_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 403:
+        actor = get_actor()
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(AuditLog(
+                    actor_type=actor.actor_type, actor_user_id=actor.user_id,
+                    actor_name=actor.name, actor_email=actor.email,
+                    action="acesso_negado", entity_type="sessao",
+                    summary=f"tentativa bloqueada: {exc.detail}",
+                    ip=actor.ip, path=actor.path,
+                ))
+                await db.commit()
+        except Exception:
+            pass
+    return await http_exception_handler(request, exc)
 
 
 app.include_router(auth.router, prefix="/api")
