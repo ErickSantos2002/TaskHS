@@ -172,13 +172,21 @@ export function LogsPage() {
                         </tr>
                       </thead>
                       <tbody className="text-slate-600 dark:text-slate-300">
-                        {Object.entries(l.changes).map(([campo, v]) => (
-                          <tr key={campo} className="border-t border-slate-200 dark:border-border">
-                            <td className="py-1 pr-3 font-medium">{campo}</td>
-                            <td className="py-1 pr-3 text-slate-400">{String(v?.de ?? "—")}</td>
-                            <td className="py-1">{String(v?.para ?? "—")}</td>
-                          </tr>
-                        ))}
+                        {Object.entries(l.changes).map(([campo, v]) => {
+                          // Tolera o formato antigo de exclusão (valor solto, sem de/para):
+                          // registros gravados antes da correção mostram o valor em "De".
+                          const par =
+                            v !== null && typeof v === "object" && ("de" in v || "para" in v)
+                              ? (v as { de: unknown; para: unknown })
+                              : { de: v as unknown, para: null };
+                          return (
+                            <tr key={campo} className="border-t border-slate-200 dark:border-border">
+                              <td className="py-1 pr-3 font-medium">{campo}</td>
+                              <td className="py-1 pr-3 text-slate-400">{String(par.de ?? "—")}</td>
+                              <td className="py-1">{String(par.para ?? "—")}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   ) : (

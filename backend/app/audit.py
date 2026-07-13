@@ -76,14 +76,17 @@ def _diff(obj) -> dict:
 
 
 def _snapshot(obj) -> dict:
-    """Valores atuais (usado no DELETE, onde não há histórico)."""
+    """Valores atuais no DELETE (não há histórico), no MESMO formato de diff usado em
+    criar/editar: {campo: {"de": valor, "para": None}} — ou seja, "existia X, agora não existe".
+    Sem isso a tela (que espera de/para) não conseguiria exibir o que foi excluído."""
     st = inspect(obj)
     out: dict = {}
     for attr in st.mapper.column_attrs:
         key = attr.key
         if key in IGNORED_FIELDS:
             continue
-        out[key] = "***" if key in SENSITIVE else _json_safe(getattr(obj, key, None))
+        valor = "***" if key in SENSITIVE else _json_safe(getattr(obj, key, None))
+        out[key] = {"de": valor, "para": None}
     return out
 
 
