@@ -1,13 +1,14 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 import app.models  # noqa: F401 — ensures all models are registered before create_all
 from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders, automations, integration
 from app.core.config import settings
 from app.reminders import reminder_loop
+from app.audit_context import set_request_actor
 
 
 @asynccontextmanager
@@ -31,6 +32,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def audit_context_middleware(request: Request, call_next):
+    ip = request.client.host if request.client else None
+    set_request_actor(ip, f"{request.method} {request.url.path}")
+    return await call_next(request)
+
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")

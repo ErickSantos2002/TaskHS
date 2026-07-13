@@ -5,6 +5,7 @@ from app.models.card import Card, CardLabel, CardMember, CardComment, CardAttach
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.automation import Automation
+from app.models.audit import AuditLog
 
 __all__ = [
     "User", "Board", "BoardMember", "BoardLabel", "List",
@@ -12,4 +13,5 @@ __all__ = [
     "Notification",
     "Reminder", "ReminderSent",
     "Automation",
+    "AuditLog",
 ]
