@@ -43,10 +43,10 @@ export function LogsPage() {
 
   const isAdmin = me?.role === "administrador";
 
-  const buildQuery = useCallback((off: number) => {
+  const [appliedBase, setAppliedBase] = useState("");   // filtros aplicados (sem limit/offset)
+
+  const currentBase = useCallback(() => {
     const p = new URLSearchParams();
-    p.set("limit", String(PAGE));
-    p.set("offset", String(off));
     if (fActor) p.set("actor_user_id", fActor);
     if (fAction) p.set("action", fAction);
     if (fEntity) p.set("entity_type", fEntity);
@@ -56,38 +56,40 @@ export function LogsPage() {
     return p.toString();
   }, [fActor, fAction, fEntity, fFrom, fTo, fQ]);
 
-  const load = useCallback(async (off: number, append: boolean, query?: string) => {
+  const load = useCallback(async (off: number, append: boolean, base: string) => {
     setLoading(true);
     try {
-      const qs = query ?? buildQuery(off);
-      const data = await api.get<{ total: number; items: AuditLog[] }>(`/logs?${qs}`);
+      const p = new URLSearchParams(base);
+      p.set("limit", String(PAGE));
+      p.set("offset", String(off));
+      const data = await api.get<{ total: number; items: AuditLog[] }>(`/logs?${p.toString()}`);
       setTotal(data.total);
       setOffset(off);
       setLogs(prev => (append ? [...prev, ...data.items] : data.items));
     } finally {
       setLoading(false);
     }
-  }, [buildQuery]);
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) { navigate("/boards", { replace: true }); return; }
     api.get<User[]>("/auth/users").then(setUsers).catch(() => {});
-    load(0, false);
+    load(0, false, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
   function aplicar() {
+    const base = currentBase();
+    setAppliedBase(base);
     setExpanded(null);
-    load(0, false);
+    load(0, false, base);
   }
 
   function limpar() {
     setFActor(""); setFAction(""); setFEntity(""); setFFrom(""); setFTo(""); setFQ("");
+    setAppliedBase("");
     setExpanded(null);
-    const p = new URLSearchParams();
-    p.set("limit", String(PAGE));
-    p.set("offset", "0");
-    load(0, false, p.toString());
+    load(0, false, "");
   }
 
   const inputCls = "text-sm rounded-lg border border-slate-200 dark:border-border bg-transparent px-2.5 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -191,7 +193,7 @@ export function LogsPage() {
         {logs.length < total && (
           <div className="flex justify-center">
             <button
-              onClick={() => load(offset + PAGE, true)}
+              onClick={() => load(offset + PAGE, true, appliedBase)}
               disabled={loading}
               className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-200 dark:border-border text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-background-elevated disabled:opacity-50 transition-colors"
             >

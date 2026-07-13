@@ -125,6 +125,10 @@ def _describe(session, obj, action, changes):
             n_de = l_de.title if l_de else de
             n_para = l_para.title if l_para else para
             summary = f'moveu o card "{obj.title}" de "{n_de}" para "{n_para}"'
+        elif action == "editar" and set(changes) == {"due_date_completed"}:
+            marcou = (changes.get("due_date_completed") or {}).get("para")
+            acao = "marcou" if marcou else "desmarcou"
+            summary = f'{acao} a data de entrega como concluída no card "{obj.title}"'
         else:
             summary = f'{verb} o card "{obj.title}"'
 
@@ -279,8 +283,8 @@ def _audit_after_flush(session, flush_context):
                 "created_at": datetime.now(timezone.utc),
                 "actor_type": actor.actor_type,
                 "actor_user_id": actor.user_id,
-                "actor_name": actor.name,
-                "actor_email": actor.email,
+                "actor_name": (actor.name or "sistema")[:120],
+                "actor_email": (actor.email[:255] if actor.email else None),
                 "action": action,
                 "entity_type": etype,
                 "entity_id": eid,
@@ -289,8 +293,8 @@ def _audit_after_flush(session, flush_context):
                 "card_id": card_id,
                 "summary": summary,
                 "changes": json.dumps(changes, ensure_ascii=False) if changes else None,
-                "ip": actor.ip,
-                "path": actor.path,
+                "ip": (actor.ip[:45] if actor.ip else None),
+                "path": (actor.path[:255] if actor.path else None),
             })
         if rows:
             session.execute(insert(AuditLog), rows)

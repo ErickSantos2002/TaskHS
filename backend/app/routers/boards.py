@@ -207,11 +207,11 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
                 db.sync_session.info["audit_silent"] = False
                 db.add(AuditLog(
                     actor_type=actor.actor_type, actor_user_id=actor.user_id,
-                    actor_name=actor.name, actor_email=actor.email,
+                    actor_name=(actor.name or "sistema")[:120], actor_email=(actor.email[:255] if actor.email else None),
                     action="criar", entity_type="quadro", entity_id=board.id,
-                    entity_label=board.title, board_id=board.id,
+                    entity_label=board.title[:255], board_id=board.id,
                     summary=f'importou o quadro "{board.title}" do Trello ({len(list_map)} listas, {ok} cards)',
-                    ip=actor.ip, path=actor.path,
+                    ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
                 ))
                 await db.commit()
 

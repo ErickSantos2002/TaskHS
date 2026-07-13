@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -14,6 +15,8 @@ from app.core.config import settings
 from app.reminders import reminder_loop
 from app.audit_context import set_request_actor, get_actor
 from app.models.audit import AuditLog
+
+logger = logging.getLogger("audit")
 
 
 @asynccontextmanager
@@ -54,14 +57,14 @@ async def audit_http_exception_handler(request: Request, exc: StarletteHTTPExcep
             async with AsyncSessionLocal() as db:
                 db.add(AuditLog(
                     actor_type=actor.actor_type, actor_user_id=actor.user_id,
-                    actor_name=actor.name, actor_email=actor.email,
+                    actor_name=(actor.name or "sistema")[:120], actor_email=(actor.email[:255] if actor.email else None),
                     action="acesso_negado", entity_type="sessao",
                     summary=f"tentativa bloqueada: {exc.detail}",
-                    ip=actor.ip, path=actor.path,
+                    ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
                 ))
                 await db.commit()
         except Exception:
-            pass
+            logger.exception("falha ao registrar acesso_negado")
     return await http_exception_handler(request, exc)
 
 

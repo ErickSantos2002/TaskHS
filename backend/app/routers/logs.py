@@ -13,6 +13,9 @@ from app.schemas.audit import AuditLogOut, AuditLogPage
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
+# Brasil não tem horário de verão desde 2019 — offset fixo, sem depender de tzdata.
+TZ_BR = timezone(timedelta(hours=-3))
+
 
 @router.get("", response_model=AuditLogPage)
 async def list_logs(
@@ -41,9 +44,9 @@ async def list_logs(
     if card_id is not None:
         conds.append(AuditLog.card_id == card_id)
     if date_from:
-        conds.append(AuditLog.created_at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+        conds.append(AuditLog.created_at >= datetime.combine(date_from, time.min, tzinfo=TZ_BR))
     if date_to:
-        conds.append(AuditLog.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc))
+        conds.append(AuditLog.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=TZ_BR))
     if q:
         conds.append(AuditLog.summary.ilike(f"%{q}%"))
 

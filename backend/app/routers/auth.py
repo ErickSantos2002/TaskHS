@@ -50,17 +50,17 @@ async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(body.password, user.password_hash):
         db.add(AuditLog(
             actor_type="usuario", actor_user_id=(user.id if user else None),
-            actor_name=(user.name if user else body.email), actor_email=body.email,
+            actor_name=(user.name if user else body.email)[:120], actor_email=body.email[:255],
             action="login_falhou", entity_type="sessao", entity_id=(user.id if user else None),
-            entity_label=body.email, summary=f"tentativa de login falhou ({body.email})",
-            ip=actor.ip, path=actor.path,
+            entity_label=body.email[:255], summary=f"tentativa de login falhou ({body.email})",
+            ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
         ))
         await db.commit()
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     db.add(AuditLog(
-        actor_type="usuario", actor_user_id=user.id, actor_name=user.name, actor_email=user.email,
-        action="login", entity_type="sessao", entity_id=user.id, entity_label=user.email,
-        summary=f'"{user.name}" entrou no sistema', ip=actor.ip, path=actor.path,
+        actor_type="usuario", actor_user_id=user.id, actor_name=user.name[:120], actor_email=user.email[:255],
+        action="login", entity_type="sessao", entity_id=user.id, entity_label=user.email[:255],
+        summary=f'"{user.name}" entrou no sistema', ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
     ))
     await db.commit()
     token = create_access_token(user.email)
