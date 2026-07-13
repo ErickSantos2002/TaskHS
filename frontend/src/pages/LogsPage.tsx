@@ -56,10 +56,11 @@ export function LogsPage() {
     return p.toString();
   }, [fActor, fAction, fEntity, fFrom, fTo, fQ]);
 
-  const load = useCallback(async (off: number, append: boolean) => {
+  const load = useCallback(async (off: number, append: boolean, query?: string) => {
     setLoading(true);
     try {
-      const data = await api.get<{ total: number; items: AuditLog[] }>(`/logs?${buildQuery(off)}`);
+      const qs = query ?? buildQuery(off);
+      const data = await api.get<{ total: number; items: AuditLog[] }>(`/logs?${qs}`);
       setTotal(data.total);
       setOffset(off);
       setLogs(prev => (append ? [...prev, ...data.items] : data.items));
@@ -83,7 +84,10 @@ export function LogsPage() {
   function limpar() {
     setFActor(""); setFAction(""); setFEntity(""); setFFrom(""); setFTo(""); setFQ("");
     setExpanded(null);
-    setTimeout(() => load(0, false), 0);
+    const p = new URLSearchParams();
+    p.set("limit", String(PAGE));
+    p.set("offset", "0");
+    load(0, false, p.toString());
   }
 
   const inputCls = "text-sm rounded-lg border border-slate-200 dark:border-border bg-transparent px-2.5 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/40";
