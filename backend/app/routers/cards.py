@@ -185,7 +185,7 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
     await db.flush()
 
     for lbl in _to_list(original.labels):
-        db.add(CardLabel(card_id=new_card.id, label=lbl.label, color=lbl.color))
+        db.add(CardLabel(card_id=new_card.id, label_id=lbl.label_id))
 
     for m in _to_list(original.members):
         db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
@@ -328,6 +328,7 @@ async def create_checklist(list_id: int, card_id: int, body: ChecklistCreate, db
 
 @router.delete("/{card_id}/checklists/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_checklist(list_id: int, card_id: int, checklist_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(select(Checklist).where(Checklist.id == checklist_id, Checklist.card_id == card_id))
     checklist = result.scalar_one_or_none()
     if checklist:
@@ -337,6 +338,7 @@ async def delete_checklist(list_id: int, card_id: int, checklist_id: int, db: As
 
 @router.post("/{card_id}/checklists/{checklist_id}/items", response_model=ChecklistItemOut, status_code=status.HTTP_201_CREATED)
 async def add_checklist_item(list_id: int, card_id: int, checklist_id: int, body: ChecklistItemCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     exists = await db.execute(select(Checklist.id).where(Checklist.id == checklist_id, Checklist.card_id == card_id))
     if not exists.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Checklist não encontrado")
@@ -349,7 +351,16 @@ async def add_checklist_item(list_id: int, card_id: int, checklist_id: int, body
 
 @router.patch("/{card_id}/checklists/{checklist_id}/items/{item_id}", response_model=ChecklistItemOut)
 async def update_checklist_item(list_id: int, card_id: int, checklist_id: int, item_id: int, body: ChecklistItemUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(ChecklistItem).where(ChecklistItem.id == item_id, ChecklistItem.checklist_id == checklist_id))
+    await _get_card_or_404(card_id, list_id, db)
+    result = await db.execute(
+        select(ChecklistItem)
+        .join(Checklist, Checklist.id == ChecklistItem.checklist_id)
+        .where(
+            ChecklistItem.id == item_id,
+            ChecklistItem.checklist_id == checklist_id,
+            Checklist.card_id == card_id,
+        )
+    )
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
@@ -363,7 +374,16 @@ async def update_checklist_item(list_id: int, card_id: int, checklist_id: int, i
 
 @router.delete("/{card_id}/checklists/{checklist_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_checklist_item(list_id: int, card_id: int, checklist_id: int, item_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(ChecklistItem).where(ChecklistItem.id == item_id, ChecklistItem.checklist_id == checklist_id))
+    await _get_card_or_404(card_id, list_id, db)
+    result = await db.execute(
+        select(ChecklistItem)
+        .join(Checklist, Checklist.id == ChecklistItem.checklist_id)
+        .where(
+            ChecklistItem.id == item_id,
+            ChecklistItem.checklist_id == checklist_id,
+            Checklist.card_id == card_id,
+        )
+    )
     item = result.scalar_one_or_none()
     if item:
         await db.delete(item)
