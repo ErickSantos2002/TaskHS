@@ -306,7 +306,14 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     lst = await db.execute(select(List).where(List.id == list_id))
     lst_obj = lst.scalar_one_or_none()
     board_id = lst_obj.board_id if lst_obj else None
-    members_result = await db.execute(select(CardMember).where(CardMember.card_id == card_id))
+    # So notifica quem e membro do quadro: a notificacao leva o titulo do card e um
+    # trecho do comentario. Mesma rede do loop de lembretes — se a invariante furar
+    # por um caminho imprevisto, aqui o custo e zero em vez de vazamento.
+    members_result = await db.execute(
+        select(CardMember)
+        .join(BoardMember, BoardMember.user_id == CardMember.user_id)
+        .where(CardMember.card_id == card_id, BoardMember.board_id == board_id)
+    )
     for m in members_result.scalars().all():
         if m.user_id != current_user.id:
             db.add(Notification(
