@@ -177,9 +177,28 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
         for r in lembretes_fora:
             await db.delete(r)
 
+        # Mesma logica para as etiquetas: BoardLabel e do quadro, nao do card. Sem
+        # isto o card levaria pro quadro B uma etiqueta com nome/cor do quadro A —
+        # exatamente o que o add_label bloqueia na entrada.
+        etiquetas_do_destino = (
+            select(BoardLabel.id).where(BoardLabel.board_id == quadro_destino)
+        )
+        etiquetas_fora = (await db.execute(
+            select(CardLabel).where(
+                CardLabel.card_id == card.id,
+                CardLabel.label_id.notin_(etiquetas_do_destino),
+            )
+        )).scalars().all()
+        for cl in etiquetas_fora:
+            await db.delete(cl)
+
     if old_list_id != new_list_id:
         await run_card_moved_automations(db, card, old_list_id, new_list_id)
     await db.commit()
+    # expire_on_commit=False + selectinload antes da limpeza acima: sem isto, a
+    # resposta ainda mostraria os membros/etiquetas removidos ha 2 linhas (o
+    # banco fica certo, mas o cliente recebe o estado de ANTES da limpeza).
+    await db.refresh(card, ["members", "labels"])
     return _card_to_dict(card)
 
 
@@ -224,8 +243,16 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
     db.add(new_card)
     await db.flush()
 
+    # A etiqueta pertence a um quadro. Copiar para OUTRO quadro nao pode levar as
+    # etiquetas da origem junto — e a mesma trava que o add_label impoe.
+    etiquetas_do_destino = set((await db.execute(
+        select(BoardLabel.id)
+        .join(List, List.board_id == BoardLabel.board_id)
+        .where(List.id == target_list_id)
+    )).scalars().all())
     for lbl in _to_list(original.labels):
-        db.add(CardLabel(card_id=new_card.id, label_id=lbl.label_id))
+        if lbl.label_id in etiquetas_do_destino:
+            db.add(CardLabel(card_id=new_card.id, label_id=lbl.label_id))
 
     # Copiar para OUTRO quadro nao pode levar junto quem nao e membro de la — o
     # assert_board_access_by_list_id acima valida quem COPIA, nao quem e copiado.
