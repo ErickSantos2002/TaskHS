@@ -9,9 +9,10 @@ from app.core.config import settings
 from app.models.card import Card, CardAttachment
 from app.models.user import User
 from app.schemas.card import AttachmentOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_list_id
 
-router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"])
+router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"],
+                   dependencies=[Depends(require_board_access_by_list_id)])
 
 ALLOWED_TYPES: dict[str, str] = {
     "application/pdf": ".pdf",

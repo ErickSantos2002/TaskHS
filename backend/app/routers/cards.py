@@ -14,7 +14,7 @@ from app.schemas.card import (
     CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut,
     ChecklistCreate, ChecklistOut, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemOut,
 )
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_list_id
 from app.automations import run_card_moved_automations
 
 
@@ -22,7 +22,8 @@ class CardCopyBody(BaseModel):
     title: str | None = None
     target_list_id: int | None = None
 
-router = APIRouter(prefix="/lists/{list_id}/cards", tags=["cards"])
+router = APIRouter(prefix="/lists/{list_id}/cards", tags=["cards"],
+                   dependencies=[Depends(require_board_access_by_list_id)])
 
 
 def _card_options():

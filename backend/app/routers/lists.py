@@ -6,10 +6,11 @@ from app.models.list import List
 from app.models.card import Card
 from app.models.user import User
 from app.schemas.list import ListCreate, ListUpdate, ListOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_board_id
 from app.models.automation import Automation
 
-router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"])
+router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"],
+                   dependencies=[Depends(require_board_access_by_board_id)])
 
 
 async def _get_list_or_404(list_id: int, board_id: int, db: AsyncSession) -> List:

@@ -15,7 +15,7 @@ from app.models.automation import Automation
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_board_id
 import json as _json
 from datetime import datetime as _dt
 from app.models.audit import AuditLog
@@ -228,7 +228,7 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 
 
 @router.get("/{board_id}", response_model=BoardOut)
-async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     return await _get_board_or_404(board_id, db)
 
 
@@ -264,7 +264,7 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
 
 
 @router.get("/{board_id}/archived")
-async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     await _get_board_or_404(board_id, db)
 
     lists_result = await db.execute(
@@ -307,6 +307,8 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
 @router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED)
 async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
     member = BoardMember(board_id=board.id, user_id=body.user_id, role=body.role)
     db.add(member)
     await db.commit()
