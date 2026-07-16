@@ -347,15 +347,29 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
 @router.get("/{board_id}/members", response_model=list[BoardMemberOut])
 async def list_members(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     await _get_board_or_404(board_id, db)
+
+    # Quantos cards DESTE quadro cada pessoa ocupa. Subquery agregada: uma query
+    # a mais no total, nao uma por membro.
+    atribuidos = (
+        select(CardMember.user_id.label("user_id"), func.count(CardMember.id).label("n"))
+        .join(Card, Card.id == CardMember.card_id)
+        .join(List, List.id == Card.list_id)
+        .where(List.board_id == board_id)
+        .group_by(CardMember.user_id)
+        .subquery()
+    )
+
     q = await db.execute(
-        select(BoardMember, User)
+        select(BoardMember, User, func.coalesce(atribuidos.c.n, 0))
         .join(User, User.id == BoardMember.user_id)
+        .outerjoin(atribuidos, atribuidos.c.user_id == BoardMember.user_id)
         .where(BoardMember.board_id == board_id)
         .order_by(User.name)
     )
     return [
-        {"id": u.id, "name": u.name, "email": u.email, "initials": u.initials, "board_role": bm.role}
-        for bm, u in q.all()
+        {"id": u.id, "name": u.name, "email": u.email, "initials": u.initials,
+         "board_role": bm.role, "assigned_cards": n}
+        for bm, u, n in q.all()
     ]
 
 
@@ -400,6 +414,23 @@ async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(
     )).scalar_one_or_none()
     if membro is None:
         raise HTTPException(status_code=404, detail="Membro não encontrado")
+
+    # Mantem a invariante: quem nao alcanca o quadro nao pode figurar nos cards
+    # dele. Sem esta limpeza, a pessoa sai do quadro mas continua recebendo
+    # lembrete com o titulo dos cards em que ficou pendurada.
+    cards_do_quadro = (
+        select(Card.id).join(List, List.id == Card.list_id).where(List.board_id == board_id)
+    )
+    await db.execute(
+        sql_delete(CardMember).where(
+            CardMember.user_id == user_id, CardMember.card_id.in_(cards_do_quadro)
+        )
+    )
+    await db.execute(
+        sql_delete(Reminder).where(
+            Reminder.user_id == user_id, Reminder.card_id.in_(cards_do_quadro)
+        )
+    )
 
     await db.delete(membro)
     await db.commit()
