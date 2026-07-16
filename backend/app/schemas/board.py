@@ -42,3 +42,14 @@ class BoardMemberOut(BaseModel):
     email: str
     initials: str
     board_role: BoardRole
+
+
+class BoardListOut(BoardOut):
+    """Item da listagem de quadros.
+
+    Só a listagem tem esses campos; GET /boards/{id} segue devolvendo BoardOut,
+    porque a tela do quadro não desenha cadeado.
+    """
+    can_open: bool
+    owner_name: str
+    members: list[BoardMemberOut]
