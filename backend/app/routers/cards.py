@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sql_delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
@@ -287,7 +288,15 @@ async def add_card_member(list_id: int, card_id: int, user_id: int, db: AsyncSes
             card_id=card_id,
             board_id=board_id,
         ))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Corrida: outra requisicao inseriu entre o SELECT e o commit. O unique do
+        # banco e a rede — o pre-check acima e so otimizacao. Idempotente: quem
+        # perdeu a corrida devolve ok, e a Notification dela cai no rollback (a
+        # da requisicao vencedora ja foi).
+        await db.rollback()
+        return {"ok": True}
     return {"ok": True}
 
 

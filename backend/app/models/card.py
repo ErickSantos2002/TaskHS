@@ -55,6 +55,9 @@ class CardLabel(Base):
 
 class CardMember(Base):
     __tablename__ = "card_members"
+    __table_args__ = (
+        UniqueConstraint("card_id", "user_id", name="card_members_card_user_uniq"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
