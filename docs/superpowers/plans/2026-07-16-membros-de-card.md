@@ -450,7 +450,7 @@ echo "4) ela sumiu dos DOIS cards:"
 for c in $C1 $C2; do curl -s "http://localhost:8000/api/lists/$L/cards/$c" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   card", d["id"], "-> membros:", [m["name"] for m in d["members"]])'; done
 
 echo "5) o lembrete pessoal dela sumiu (0 linhas):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c "SELECT count(*) FROM reminders r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$B AND r.user_id=14;"
+./scripts/psql-dev.sh -t -c "SELECT count(*) FROM reminders r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$B AND r.user_id=14;"
 
 echo "6) o dono continua protegido:"
 curl -s -w "   <- HTTP %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$B/members/1" -H "Authorization: Bearer $ADMIN"
@@ -802,18 +802,18 @@ C=$(curl -s -X POST "http://localhost:8000/api/lists/$L/cards" -H "Authorization
 curl -s -o /dev/null -X POST "http://localhost:8000/api/lists/$L/cards/$C/members/1" -H "Authorization: Bearer $ADMIN"
 
 # a Adriana (14) entra a FORCA, direto no banco: e a invariante furada
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c \
+./scripts/psql-dev.sh -c \
   "INSERT INTO card_members (card_id, user_id) VALUES ($C, 14);"
 
 echo "quem esta no card agora (a Adriana esta pendurada, sem ser membro do quadro):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c \
+./scripts/psql-dev.sh -t -c \
   "SELECT u.name FROM card_members cm JOIN users u ON u.id=cm.user_id WHERE cm.card_id=$C;"
 
 echo "rodando o ciclo de lembretes a mao:"
 docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())" && echo "   ok"
 
 echo "quem recebeu notificacao deste card (esperado: SO o Erick H.):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c \
+./scripts/psql-dev.sh -c \
   "SELECT u.name, n.message FROM notifications n JOIN users u ON u.id=n.user_id WHERE n.card_id=$C;"
 
 echo "LIMPEZA:"
@@ -1223,16 +1223,16 @@ echo "5) mover para o quadro B (a Adriana nao e de la — tem que sair):"
 curl -s -o /dev/null -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LB}"
 curl -s "http://localhost:8000/api/lists/$LB/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   membros:", [m["name"] for m in json.load(sys.stdin)["members"]])'
 echo "6) a rede: CardMember orfao nao recebe lembrete:"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -q -c "INSERT INTO card_members (card_id, user_id) VALUES ($CA, 14);"
+./scripts/psql-dev.sh -q -c "INSERT INTO card_members (card_id, user_id) VALUES ($CA, 14);"
 docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())" >/dev/null && echo "   ciclo rodou"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c \
+./scripts/psql-dev.sh -t -c \
   "SELECT '   notificou: '||u.name FROM notifications n JOIN users u ON u.id=n.user_id WHERE n.card_id=$CA;"
 
 echo "LIMPEZA:"
 curl -s -o /dev/null -w "   apaga A: %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$A" -H "Authorization: Bearer $ADMIN"
 curl -s -o /dev/null -w "   apaga B: %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$B" -H "Authorization: Bearer $ADMIN"
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   boards restantes:", [b["id"] for b in json.load(sys.stdin)])'
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c "SELECT '   card_members restantes: '||count(*) FROM card_members;"
+./scripts/psql-dev.sh -t -c "SELECT '   card_members restantes: '||count(*) FROM card_members;"
 ```
 
 Esperado: `403` · `404` · `201` · `Adriana Paz 1` · `membros: ['Erick H.']` ·

@@ -47,6 +47,26 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
   - O router `integration` fica fora disso — usa `X-API-Key` e não tem usuário.
 - **`GET /api/auth/users` é elevado-only** (devolve papel, e-mail, `is_active` — dados de gestão). Para **seletor de pessoas**, use **`GET /api/auth/users/basic`** (`{id, name, initials}`, qualquer autenticado). Usar o `/auth/users` num seletor quebra a tela para os membros comuns — já aconteceu.
 
+## Segredos: NUNCA em arquivo versionado (OBRIGATÓRIO)
+
+**Este repositório é PÚBLICO** (`github.com/ErickSantos2002/TaskHS`). Tudo que entra
+num commit — código, doc, plano, spec, mensagem de commit — vai para a internet.
+
+**Nunca escreva credencial em lugar versionado.** Isso já custou caro: os planos
+traziam o comando `psql` com a senha do banco inline, e a senha do **banco de
+produção** ficou pública no GitHub de **2026-06-18 a 2026-07-16** (~1 mês), com a
+porta do Postgres aberta para a internet e o usuário sendo **superuser**.
+
+- **Para rodar SQL:** use **`./scripts/psql-dev.sh`**, que lê a credencial do
+  `backend/.env` (gitignorado). Ex.: `./scripts/psql-dev.sh -c "SELECT count(*) FROM users;"`,
+  `./scripts/psql-dev.sh -f backend/migrations/00X_algo.sql`.
+- **Nunca** cole em doc/plano/chat: senha, `PGPASSWORD=`, `SECRET_KEY`,
+  `INTEGRATION_API_KEY`, ou `DATABASE_URL` completa.
+- **Nunca** faça `cat backend/.env` nem `grep` que imprima o valor de um segredo —
+  use `grep -c` para só confirmar presença.
+- Segredo que vaza não se "desvaza": a correção é **rotacionar**, não apagar o
+  commit. Se acontecer, avise o Erick imediatamente — a rotação é no Easypanel.
+
 ## Changelog / versionamento (OBRIGATÓRIO)
 
 **Toda mudança no sistema deve terminar com uma entrada nova no changelog** — `frontend/src/data/changelog.ts`. Adicionar um objeto `ChangelogVersion` **no topo** do array `CHANGELOG` (mais recente primeiro), com `version`, `date` (ISO `YYYY-MM-DD`) e os `changes` (cada um `{ kind: "novidade" | "melhoria" | "correcao", text }`). Versionamento semântico: correção → patch (`1.0.x`), melhoria → minor (`1.x.0`), novidade grande → minor/major. A versão exibida no rodapé da sidebar e no LoginPage deriva de `CHANGELOG[0]` (`APP_VERSION`) — basta editar o array, não há string de versão cravada em outro lugar. **Não considerar uma feature/fix concluída sem essa entrada.** O rodapé "TaskHS · vX.Y.Z" da sidebar é um botão ("Ver novidades") que abre o `ChangelogModal` ([frontend/src/components/ChangelogModal.tsx](frontend/src/components/ChangelogModal.tsx)).

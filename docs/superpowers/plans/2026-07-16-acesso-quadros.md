@@ -387,7 +387,7 @@ Step 6.
 - [ ] **Step 8: Limpar o card de teste da integração**
 
 ```bash
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+./scripts/psql-dev.sh \
   -c "DELETE FROM cards WHERE external_source = 'teste-plano';"
 ```
 Esperado: `DELETE 1`. **Não apagar nada de `audit_log`.**
@@ -495,14 +495,14 @@ END $$;
 - [ ] **Step 3: Rodar a migration**
 
 ```bash
-cd /home/ericks/github/TaskHS && PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+cd /home/ericks/github/TaskHS && ./scripts/psql-dev.sh \
   -f backend/migrations/004_board_members_unique.sql
 ```
 Esperado: `DELETE 0` e `DO`.
 
 Conferir que a constraint existe:
 ```bash
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c "\d board_members" | grep uniq
+./scripts/psql-dev.sh -c "\d board_members" | grep uniq
 ```
 Esperado: uma linha citando `board_members_board_user_uniq` como UNIQUE.
 
