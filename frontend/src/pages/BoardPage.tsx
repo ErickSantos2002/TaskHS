@@ -1571,8 +1571,10 @@ export function BoardPage() {
   const [deletingBoard, setDeletingBoard] = useState(false);
   const [boardMembers, setBoardMembers] = useState<BoardMemberOut[]>([]);
   const [todosUsuarios, setTodosUsuarios] = useState<UserBasic[]>([]);
+  const [membrosLoading, setMembrosLoading] = useState(false);
+  const [membrosFalhou, setMembrosFalhou] = useState(false);
   const [erroMembro, setErroMembro] = useState<string | null>(null);
-  const [salvandoMembro, setSalvandoMembro] = useState(false);
+  const [mutandoMembro, setMutandoMembro] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -1629,8 +1631,23 @@ export function BoardPage() {
 
   useEffect(() => {
     if (!showEditBoard || !boardId) return;
-    api.get<BoardMemberOut[]>(`/boards/${boardId}/members`).then(setBoardMembers).catch(() => {});
-    api.get<UserBasic[]>("/auth/users/basic").then(setTodosUsuarios).catch(() => {});
+    setMembrosLoading(true);
+    setMembrosFalhou(false);
+    setErroMembro(null);
+    // Os dois juntos de propósito: com só um deles, a tela ofereceria adicionar
+    // quem já é membro — e o backend recusaria com 409.
+    Promise.all([
+      api.get<BoardMemberOut[]>(`/boards/${boardId}/members`),
+      api.get<UserBasic[]>("/auth/users/basic"),
+    ]).then(([ms, us]) => {
+      setBoardMembers(ms);
+      setTodosUsuarios(us);
+    }).catch(e => {
+      console.error("Falha ao carregar os membros do quadro", e);
+      setBoardMembers([]);
+      setTodosUsuarios([]);
+      setMembrosFalhou(true);
+    }).finally(() => setMembrosLoading(false));
   }, [showEditBoard, boardId]);
 
   // Deep link: /boards/:id?card=<id> abre o card já aberto (usado pelos links da página de Logs).
@@ -1787,6 +1804,12 @@ export function BoardPage() {
     setEditBoardDescription(board.description ?? "");
     setEditBoardColor(board.color);
     setConfirmDeleteBoard(false);
+    // Não depender só do efeito de carregamento: zera erro e a lista de membros
+    // (que pode ser de OUTRO quadro, com e-mails) antes mesmo do refetch rodar.
+    setErroMembro(null);
+    setBoardMembers([]);
+    setTodosUsuarios([]);
+    setMembrosFalhou(false);
     setShowEditBoard(true);
   }
 
@@ -1817,25 +1840,37 @@ export function BoardPage() {
   }
 
   async function handleAddBoardMember(userId: number) {
-    setSalvandoMembro(true);
+    setMutandoMembro(true);
     setErroMembro(null);
     try {
       await api.post(`/boards/${boardId}/members`, { user_id: userId, role: "member" });
-      setBoardMembers(await api.get<BoardMemberOut[]>(`/boards/${boardId}/members`));
     } catch (e) {
       setErroMembro(e instanceof ApiError ? e.message : "Não foi possível adicionar.");
+      setMutandoMembro(false);
+      return;
+    }
+    // A partir daqui a pessoa JÁ foi adicionada — se o refetch falhar, a mensagem
+    // não pode dizer que a adição falhou.
+    try {
+      setBoardMembers(await api.get<BoardMemberOut[]>(`/boards/${boardId}/members`));
+    } catch (e) {
+      console.error("Falha ao recarregar os membros", e);
+      setErroMembro("Membro adicionado, mas a lista não recarregou. Reabra as configurações.");
     } finally {
-      setSalvandoMembro(false);
+      setMutandoMembro(false);
     }
   }
 
   async function handleRemoveBoardMember(userId: number) {
+    setMutandoMembro(true);
     setErroMembro(null);
     try {
       await api.del(`/boards/${boardId}/members/${userId}`);
       setBoardMembers(prev => prev.filter(m => m.id !== userId));
     } catch (e) {
       setErroMembro(e instanceof ApiError ? e.message : "Não foi possível remover.");
+    } finally {
+      setMutandoMembro(false);
     }
   }
 
@@ -2203,60 +2238,71 @@ export function BoardPage() {
                   </p>
                 </div>
 
-                {erroMembro && (
-                  <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{erroMembro}</p>
+                {membrosLoading ? (
+                  <p className="text-xs text-slate-500">Carregando…</p>
+                ) : membrosFalhou ? (
+                  <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+                    Não foi possível carregar os membros do quadro. Feche e reabra as configurações para tentar de novo.
+                  </p>
+                ) : (
+                  <>
+                    {erroMembro && (
+                      <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{erroMembro}</p>
+                    )}
+
+                    <div className="space-y-1.5">
+                      {boardMembers.map(m => {
+                        const ehDono = m.board_role === "owner";
+                        return (
+                          <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-background-elevated px-3 py-2">
+                            <div className="w-7 h-7 rounded-full bg-background-surface border border-border flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0">
+                              {m.initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-200 truncate">{m.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">{m.email}</p>
+                            </div>
+                            {ehDono ? (
+                              <span className="text-[10px] font-semibold text-slate-500 shrink-0">dono</span>
+                            ) : (
+                              <button
+                                onClick={() => handleRemoveBoardMember(m.id)}
+                                disabled={mutandoMembro}
+                                title={`Remover ${m.name}`}
+                                className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+                              >
+                                <IX />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(() => {
+                      // O /auth/users/basic ja devolve so usuarios ativos, ordenados por nome.
+                      const disponiveis = todosUsuarios.filter(
+                        u => !boardMembers.some(m => m.id === u.id)
+                      );
+                      if (disponiveis.length === 0) {
+                        return <p className="text-[11px] text-slate-500 italic">Todo mundo já está neste quadro.</p>;
+                      }
+                      return (
+                        <select
+                          value=""
+                          disabled={mutandoMembro}
+                          onChange={e => { if (e.target.value) handleAddBoardMember(Number(e.target.value)); }}
+                          className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                        >
+                          <option value="">{mutandoMembro ? "Aguarde…" : "Adicionar membro…"}</option>
+                          {disponiveis.map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </>
                 )}
-
-                <div className="space-y-1.5">
-                  {boardMembers.map(m => {
-                    const ehDono = m.board_role === "owner";
-                    return (
-                      <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-background-elevated px-3 py-2">
-                        <div className="w-7 h-7 rounded-full bg-background-surface border border-border flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0">
-                          {m.initials}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-200 truncate">{m.name}</p>
-                          <p className="text-[10px] text-slate-500 truncate">{m.email}</p>
-                        </div>
-                        {ehDono ? (
-                          <span className="text-[10px] font-semibold text-slate-500 shrink-0">dono</span>
-                        ) : (
-                          <button
-                            onClick={() => handleRemoveBoardMember(m.id)}
-                            title={`Remover ${m.name}`}
-                            className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-                          >
-                            <IX />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {(() => {
-                  // O /auth/users/basic ja devolve so usuarios ativos, ordenados por nome.
-                  const disponiveis = todosUsuarios.filter(
-                    u => !boardMembers.some(m => m.id === u.id)
-                  );
-                  if (disponiveis.length === 0) {
-                    return <p className="text-[11px] text-slate-500 italic">Todo mundo já está neste quadro.</p>;
-                  }
-                  return (
-                    <select
-                      value=""
-                      disabled={salvandoMembro}
-                      onChange={e => { if (e.target.value) handleAddBoardMember(Number(e.target.value)); }}
-                      className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
-                    >
-                      <option value="">{salvandoMembro ? "Adicionando…" : "Adicionar membro…"}</option>
-                      {disponiveis.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  );
-                })()}
               </div>
             </div>
             <div className="border-t border-border p-5 shrink-0">
