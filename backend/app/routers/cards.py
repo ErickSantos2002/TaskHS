@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
 from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
-from app.models.board import BoardLabel
+from app.models.board import BoardLabel, BoardMember
 from app.models.list import List
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
@@ -251,11 +251,35 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)
 async def add_card_member(list_id: int, card_id: int, user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
+
+    lst = (await db.execute(select(List).where(List.id == list_id))).scalar_one_or_none()
+    board_id = lst.board_id if lst else None
+
+    alvo = (await db.execute(
+        select(User).where(User.id == user_id, User.is_active == True)
+    )).scalar_one_or_none()
+    if alvo is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # A invariante desta branch: quem esta no card esta no quadro. Sem isto, a
+    # pessoa recebe notificacao e lembrete com o TITULO de um card que ela nao
+    # consegue abrir.
+    eh_membro = (await db.execute(
+        select(BoardMember.id)
+        .where(BoardMember.board_id == board_id, BoardMember.user_id == user_id)
+        .limit(1)
+    )).scalars().first() is not None
+    if not eh_membro:
+        raise HTTPException(status_code=403, detail="Essa pessoa não é membro deste quadro")
+
+    ja = (await db.execute(
+        select(CardMember.id).where(CardMember.card_id == card_id, CardMember.user_id == user_id).limit(1)
+    )).scalars().first()
+    if ja is not None:
+        return {"ok": True}
+
     db.add(CardMember(card_id=card_id, user_id=user_id))
     if user_id != current_user.id:
-        lst = await db.execute(select(List).where(List.id == list_id))
-        lst_obj = lst.scalar_one_or_none()
-        board_id = lst_obj.board_id if lst_obj else None
         db.add(Notification(
             user_id=user_id,
             type="card_member",
