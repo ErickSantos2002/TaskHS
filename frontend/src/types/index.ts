@@ -110,7 +110,7 @@ export interface Card {
   created_at: string;
   updated_at: string;
   labels: Label[];
-  members: User[];
+  members: UserBasic[];
   comments: Comment[];
   attachments: Attachment[];
   checklists: Checklist[];
