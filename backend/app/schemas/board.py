@@ -42,6 +42,7 @@ class BoardMemberOut(BaseModel):
     email: str
     initials: str
     board_role: BoardRole
+    assigned_cards: int
 
 
 class BoardMemberBriefOut(BaseModel):

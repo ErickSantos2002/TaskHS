@@ -4,3 +4,6 @@ __pycache__/
 .env
 .venv/
 venv/
+
+# senhas das contas de verificacao (nunca versionar — repo publico)
+.env.dev-users

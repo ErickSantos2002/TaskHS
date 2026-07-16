@@ -34,6 +34,9 @@ export interface UserBasic {
 export interface BoardMemberOut extends UserBasic {
   email: string;
   board_role: "owner" | "admin" | "member" | "viewer";
+  /** Quantos cards DESTE quadro a pessoa ocupa (arquivados inclusive).
+   *  Remover do quadro tira ela de todos — daí a confirmação. */
+  assigned_cards: number;
 }
 
 /** Item de GET /boards. Tipo separado de `Board` porque só a listagem tem

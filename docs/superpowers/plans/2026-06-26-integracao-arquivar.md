@@ -121,7 +121,7 @@ async def main():
         print([x[0] for x in r.fetchall()])
 asyncio.run(main())
 "
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # DELETE /api/boards/<id> para cada id retornado, com o token
 ```
 Confirmar que não sobrou board `ZZ Arquivar Teste%` no banco.

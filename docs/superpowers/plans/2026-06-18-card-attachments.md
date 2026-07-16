@@ -22,7 +22,7 @@
 ```bash
 cd /home/ericks/github/TaskHS
 TOKEN=$(curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' \
+  -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 echo "TOKEN length: ${#TOKEN}"   # expect a long non-zero number
 # Pick a real list_id and card_id from board 20:
@@ -137,7 +137,7 @@ ALTER TABLE card_attachments ALTER COLUMN url DROP NOT NULL;
 
 Run:
 ```bash
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+./scripts/psql-dev.sh \
   -f /home/ericks/github/TaskHS/backend/migrations/001_card_attachments.sql
 ```
 Expected output: a series of `ALTER TABLE` lines, no errors.
@@ -148,7 +148,7 @@ Run:
 ```bash
 cd /home/ericks/github/TaskHS && docker compose up -d --build 2>&1 | tail -3
 sleep 3 && curl -s localhost:8000/api/health
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+./scripts/psql-dev.sh \
   -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='card_attachments' ORDER BY column_name;"
 ```
 Expected: `{"status":"ok"}` and the column list includes `content_type, size, stored_name, uploaded_by`.

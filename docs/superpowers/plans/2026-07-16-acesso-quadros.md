@@ -77,9 +77,9 @@ tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
 
-ADMIN=$(tok healthsafetyti@gmail.com admin123)            # Erick H. (id 1) — administrador, owner do quadro 20
-COORD=$(tok np@healthsafetytech.com mudar123)             # Nicholson Pimentel (id 3) — coordenador
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)   # Adriana Paz (id 14) — membro comum, NÃO é membro do quadro 20
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")            # Erick H. (id 1) — administrador, owner do quadro 20
+COORD=$(tok "$TASKHS_COORD_EMAIL" "$TASKHS_COORD_PW")             # Nicholson Pimentel (id 3) — coordenador
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")   # Adriana Paz (id 14) — membro comum, NÃO é membro do quadro 20
 ```
 
 **Estado do banco (verificado em 2026-07-16):** existe um único quadro, id **20**
@@ -387,7 +387,7 @@ Step 6.
 - [ ] **Step 8: Limpar o card de teste da integração**
 
 ```bash
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+./scripts/psql-dev.sh \
   -c "DELETE FROM cards WHERE external_source = 'teste-plano';"
 ```
 Esperado: `DELETE 1`. **Não apagar nada de `audit_log`.**
@@ -495,14 +495,14 @@ END $$;
 - [ ] **Step 3: Rodar a migration**
 
 ```bash
-cd /home/ericks/github/TaskHS && PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+cd /home/ericks/github/TaskHS && ./scripts/psql-dev.sh \
   -f backend/migrations/004_board_members_unique.sql
 ```
 Esperado: `DELETE 0` e `DO`.
 
 Conferir que a constraint existe:
 ```bash
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c "\d board_members" | grep uniq
+./scripts/psql-dev.sh -c "\d board_members" | grep uniq
 ```
 Esperado: uma linha citando `board_members_board_user_uniq` como UNIQUE.
 
@@ -1292,14 +1292,14 @@ cd /home/ericks/github/TaskHS/frontend && npm run build
 Esperado: build sem erro de TypeScript.
 
 No navegador (reiniciar `npm run dev` se tiver trocado de branch):
-1. Logar como **Adriana** (`comercial02@healthsafetytech.com` / `mudar123`) e ir
+1. Logar como **Adriana** (`comercial02@healthsafetytech.com` / (senha em `backend/.env.dev-users`)) e ir
    em `/boards` → o quadro "Serviço" **aparece**, apagado, com cadeado e o
    avatar do Erick H.
 2. Clicar nele → não navega; aparece o aviso *"Você não é membro deste quadro.
    Fale com Erick H. para pedir acesso."*, que some em 5s.
 3. Digitar `/boards/20` na URL → tela "Você não é membro deste quadro", **sem**
    erro no console.
-4. Logar como **coordenador** (`np@healthsafetytech.com` / `mudar123`) → o mesmo
+4. Logar como **coordenador** (`np@healthsafetytech.com` / (senha em `backend/.env.dev-users`)) → o mesmo
    quadro aparece normal, abre.
 5. Logar como **admin** → abre normal, sem regressão.
 
@@ -1681,9 +1681,9 @@ Antes do review final da branch inteira, rodar a bateria completa de uma vez —
 cd /home/ericks/github/TaskHS
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
-COORD=$(tok np@healthsafetytech.com mudar123)
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
+COORD=$(tok "$TASKHS_COORD_EMAIL" "$TASKHS_COORD_PW")
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")
 
 echo "== nao-membro: tudo 403 =="
 for p in /api/boards/20 /api/boards/20/lists /api/boards/20/labels /api/boards/20/archived /api/boards/20/automations /api/boards/20/members /api/lists/20/cards; do
@@ -1927,8 +1927,8 @@ essa é a configuração que expõe o furo. Monte, ataque, e desmonte:
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)   # Adriana, user 14
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")   # Adriana, user 14
 
 # Quadro A: da Adriana (ela cria, entao e dona e membro)
 A=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $MEMBRO" \

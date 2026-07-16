@@ -17,7 +17,7 @@
 - **Banco remoto de produção** — há **27 usuários reais** (1 admin + 26 membros criados). A migração faz backfill preservando o admin. Limpar dados de teste criados na verificação.
 - **`role` é a fonte da verdade;** `is_admin` = `role == administrador` (propriedade). "elevado" = `role in (administrador, coordenador)`.
 - **Regras coord×admin** (verbatim do spec): coordenador não cria/promove a Administrador, nem edita/exclui um Administrador.
-- **Login admin p/ testes:** `healthsafetyti@gmail.com` / `admin123` (token em `access_token`).
+- **Login admin p/ testes:** `healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`) (token em `access_token`).
 - **Convenção de changelog (CLAUDE.md):** fecha com entrada nova (`v1.2.0`).
 - **Tudo em pt-BR.** Commits terminam com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
@@ -310,7 +310,7 @@ docker ps --format '{{.Names}} {{.Ports}}' | grep 8000   # ver quem ocupa
 # se for outro projeto, pare-o: docker stop <nome>
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 ```
 Cenários (criar um coordenador de teste, logar como ele, checar limites):
 ```bash

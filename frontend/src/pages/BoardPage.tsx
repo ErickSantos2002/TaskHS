@@ -130,8 +130,9 @@ const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
   card: Card;
+  boardId: number;
   listTitle: string;
   lists: BoardList[];
   boardLabels: BoardLabel[];
@@ -151,6 +152,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
+  const [erroMembroCard, setErroMembroCard] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -284,9 +286,11 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
 
   useEffect(() => {
     if (showMemberPicker && allUsers.length === 0) {
-      api.get<UserBasic[]>("/auth/users/basic").then(setAllUsers).catch(() => {});
+      // Membros do QUADRO, nao as 27 pessoas da empresa: so eles podem ser
+      // atribuidos (o backend recusa o resto com 403).
+      api.get<BoardMemberOut[]>(`/boards/${boardId}/members`).then(setAllUsers).catch(() => {});
     }
-  }, [showMemberPicker]);
+  }, [showMemberPicker, boardId]);
 
   async function patchCard(fields: Record<string, unknown>) {
     try {
@@ -340,13 +344,18 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   }
 
   async function handleAddMember(user: UserBasic) {
+    setErroMembroCard(null);
     try {
       await api.post(`/lists/${card.list_id}/cards/${card.id}/members/${user.id}`, {});
       const updated = [...members, user];
       setMembers(updated);
       onCardUpdate({ id: card.id, members: updated });
       setShowMemberPicker(false);
-    } catch {}
+    } catch (e) {
+      // O backend recusa quem nao e membro do quadro. Sem isto, o clique nao faz
+      // nada e a pessoa nao sabe por que.
+      setErroMembroCard(e instanceof ApiError ? e.message : "Não foi possível adicionar.");
+    }
   }
 
   async function handleRemoveMember(userId: number) {
@@ -574,11 +583,14 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
                   </div>
                 ))}
                 <div className="relative">
-                  <button onClick={() => setShowMemberPicker(p => !p)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-dashed border-border text-slate-500 hover:border-primary hover:text-primary transition-colors text-xs">
+                  <button onClick={() => { setErroMembroCard(null); setShowMemberPicker(p => !p); }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-dashed border-border text-slate-500 hover:border-primary hover:text-primary transition-colors text-xs">
                     <IUserPlus /><span>Adicionar</span>
                   </button>
                   {showMemberPicker && (
                     <div className="absolute top-full left-0 mt-1 z-20 w-52 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
+                      {erroMembroCard && (
+                        <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2">{erroMembroCard}</p>
+                      )}
                       {availableUsers.length === 0 ? (
                         <p className="text-xs text-slate-500 p-3 text-center">{allUsers.length === 0 ? "Carregando…" : "Todos já adicionados"}</p>
                       ) : availableUsers.map(u => (
@@ -1575,6 +1587,7 @@ export function BoardPage() {
   const [membrosFalhou, setMembrosFalhou] = useState(false);
   const [erroMembro, setErroMembro] = useState<string | null>(null);
   const [mutandoMembro, setMutandoMembro] = useState(false);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState<BoardMemberOut | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -1634,6 +1647,7 @@ export function BoardPage() {
     setMembrosLoading(true);
     setMembrosFalhou(false);
     setErroMembro(null);
+    setConfirmandoRemocao(null);
     // Os dois juntos de propósito: com só um deles, a tela ofereceria adicionar
     // quem já é membro — e o backend recusaria com 409.
     Promise.all([
@@ -1810,6 +1824,7 @@ export function BoardPage() {
     setBoardMembers([]);
     setTodosUsuarios([]);
     setMembrosFalhou(false);
+    setConfirmandoRemocao(null);
     setShowEditBoard(true);
   }
 
@@ -2163,6 +2178,7 @@ export function BoardPage() {
       {selectedCard && (
         <CardDetailModal
           card={selectedCard}
+          boardId={boardId}
           listTitle={lists.find(l => l.id === selectedCard.list_id)?.title ?? ""}
           lists={lists}
           boardLabels={boardLabels}
@@ -2266,7 +2282,7 @@ export function BoardPage() {
                               <span className="text-[10px] font-semibold text-slate-500 shrink-0">dono</span>
                             ) : (
                               <button
-                                onClick={() => handleRemoveBoardMember(m.id)}
+                                onClick={() => (m.assigned_cards > 0 ? setConfirmandoRemocao(m) : handleRemoveBoardMember(m.id))}
                                 disabled={mutandoMembro}
                                 title={`Remover ${m.name}`}
                                 className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
@@ -2278,6 +2294,32 @@ export function BoardPage() {
                         );
                       })}
                     </div>
+
+                    {confirmandoRemocao && (
+                      <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 space-y-2">
+                        <p className="text-xs text-slate-200">
+                          <strong className="font-semibold">{confirmandoRemocao.name}</strong> está em{" "}
+                          {confirmandoRemocao.assigned_cards} card{confirmandoRemocao.assigned_cards !== 1 ? "s" : ""} deste quadro.
+                          Remover do quadro também tira essa pessoa desses cards e apaga os lembretes
+                          pessoais que ela criou aqui.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setConfirmandoRemocao(null)}
+                            className="flex-1 py-1.5 rounded-lg border border-border text-xs font-medium text-slate-400 hover:bg-background-elevated transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => { const alvo = confirmandoRemocao; setConfirmandoRemocao(null); handleRemoveBoardMember(alvo.id); }}
+                            disabled={mutandoMembro}
+                            className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                          >
+                            {mutandoMembro ? "Removendo…" : "Remover mesmo assim"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {(() => {
                       // O /auth/users/basic ja devolve so usuarios ativos, ordenados por nome.

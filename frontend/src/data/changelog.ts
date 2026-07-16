@@ -14,6 +14,17 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.4.1",
+    date: "2026-07-16",
+    changes: [
+      { kind: "correcao", text: "Cartões voltaram a mostrar TODOS os membros, comentários, etiquetas, anexos e checklists. Havia uma falha que fazia cada cartão exibir apenas um item de cada — e impedia excluir um quadro que tivesse um cartão assim." },
+      { kind: "correcao", text: "Só quem é membro do quadro pode ser atribuído a um cartão, como no Trello. Antes dava para atribuir qualquer pessoa da empresa, e ela recebia notificação e lembretes de um cartão que não conseguia abrir." },
+      { kind: "correcao", text: "Remover alguém de um quadro agora tira essa pessoa dos cartões dela ali e apaga os lembretes pessoais dela no quadro. A tela avisa quantos cartões serão afetados antes de confirmar." },
+      { kind: "correcao", text: "Mover ou copiar um cartão para outro quadro agora deixa para trás quem não é membro do quadro de destino, e as etiquetas que não existem lá." },
+      { kind: "correcao", text: "Notificações de comentário e lembretes de vencimento só vão para quem é membro do quadro." },
+    ],
+  },
+  {
     version: "1.4.0",
     date: "2026-07-16",
     changes: [

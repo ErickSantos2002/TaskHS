@@ -84,9 +84,9 @@ tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
 
-ADMIN=$(tok healthsafetyti@gmail.com admin123)            # Erick H. (id 1) — administrador
-COORD=$(tok np@healthsafetytech.com mudar123)             # Nicholson Pimentel (id 3) — coordenador
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)   # Adriana Paz (id 14) — membro comum
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")            # Erick H. (id 1) — administrador
+COORD=$(tok "$TASKHS_COORD_EMAIL" "$TASKHS_COORD_PW")             # Nicholson Pimentel (id 3) — coordenador
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")   # Adriana Paz (id 14) — membro comum
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ```
 
@@ -134,7 +134,7 @@ Esperado: branch `feat/membros-de-card`, working tree limpo.
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 # quadro do admin; a Adriana (14) NAO e membro
@@ -225,7 +225,7 @@ Esperado: `{"status":"ok"}`
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t1 depois"}' | jid)
@@ -247,7 +247,7 @@ curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/
 curl -s "http://localhost:8000/api/lists/$L/cards/$C" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   membros no card:", [m["name"] for m in d["members"]])'
 
 echo "5) a Adriana recebeu UMA notificacao (nao duas):"
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")
 curl -s http://localhost:8000/api/notifications -H "Authorization: Bearer $MEMBRO" | python3 -c 'import sys,json; d=json.load(sys.stdin); n=[x for x in d if x.get("type")=="card_member"]; print("   notificacoes card_member:", len(n)); [print("   ->", x["message"]) for x in n[:3]]'
 
 echo "LIMPEZA:"
@@ -423,8 +423,8 @@ Esperado: `{"status":"ok"}`
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t2"}' | jid)
@@ -450,7 +450,7 @@ echo "4) ela sumiu dos DOIS cards:"
 for c in $C1 $C2; do curl -s "http://localhost:8000/api/lists/$L/cards/$c" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   card", d["id"], "-> membros:", [m["name"] for m in d["members"]])'; done
 
 echo "5) o lembrete pessoal dela sumiu (0 linhas):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c "SELECT count(*) FROM reminders r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$B AND r.user_id=14;"
+./scripts/psql-dev.sh -t -c "SELECT count(*) FROM reminders r JOIN cards c ON c.id=r.card_id JOIN lists l ON l.id=c.list_id WHERE l.board_id=$B AND r.user_id=14;"
 
 echo "6) o dono continua protegido:"
 curl -s -w "   <- HTTP %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$B/members/1" -H "Authorization: Bearer $ADMIN"
@@ -490,13 +490,23 @@ EOF
 
 ---
 
-### Task 3: Mover card entre quadros tira quem não é do destino
+### Task 3: Mover **e copiar** card entre quadros tira quem não é do destino
 
 O terceiro caminho que quebra a invariante — e o menos óbvio: os `CardMember` **viajam
-junto com o card**.
+junto com o card**. Vale para os **dois** endpoints que levam um card para outro quadro:
+`update_card` (mover) e `copy_card` (copiar).
+
+> **Por que o `copy_card` está aqui:** ele não estava na spec nem na versão original
+> deste plano — descoberto pelo review da Task 1, que perguntou "sobrou algum caminho
+> que crie `CardMember` sem passar pela validação?". `copy_card` (`cards.py:190-191`)
+> faz `db.add(CardMember(card_id=new_card.id, user_id=m.user_id))` para cada membro do
+> original, e aceita `target_list_id` no **corpo**. O
+> `assert_board_access_by_list_id` da linha `:165` valida o acesso de **quem copia**,
+> não a membresia de **quem é copiado**. É o mesmo furo do mover, pela porta do copiar.
 
 **Files:**
 - Modify: `backend/app/routers/cards.py:117-143` (`update_card`)
+- Modify: `backend/app/routers/cards.py:~190-191` (`copy_card`, o laço de membros)
 
 **Interfaces:**
 - Consumes: `assert_board_access_by_list_id(list_id, user, db)` (de
@@ -588,6 +598,34 @@ Notas:
   `sql_delete` já está (`cards.py:3`: `from sqlalchemy import select, delete as sql_delete`),
   `BoardMember` veio na Task 1.
 
+- [ ] **Step 1b: `copy_card` — o mesmo furo, pela porta do copiar**
+
+Em `backend/app/routers/cards.py`, no `copy_card`, o laço de hoje (~linha 190) é:
+
+```python
+    for m in _to_list(original.members):
+        db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
+```
+
+Copiar um card para outro quadro leva as pessoas do quadro de origem junto. Trocar por:
+
+```python
+    # Copiar para OUTRO quadro nao pode levar junto quem nao e membro de la — o
+    # assert_board_access_by_list_id acima valida quem COPIA, nao quem e copiado.
+    membros_do_destino = set((await db.execute(
+        select(BoardMember.user_id)
+        .join(List, List.board_id == BoardMember.board_id)
+        .where(List.id == target_list_id)
+    )).scalars().all())
+    for m in _to_list(original.members):
+        if m.user_id in membros_do_destino:
+            db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
+```
+
+A query resolve `lista de destino → quadro → membros` de uma vez. Quando o destino é o
+**mesmo** quadro (o caso comum), todos os membros do card já são membros do quadro pela
+invariante da Task 1, então ninguém é filtrado — nenhuma mudança de comportamento.
+
 - [ ] **Step 2: Verificar**
 
 ```bash
@@ -600,7 +638,7 @@ Precisa de dois quadros e de alguém que seja membro só de um:
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 # Quadro A: admin + Adriana. Quadro B: so o admin.
@@ -622,7 +660,15 @@ echo "2) mover DENTRO do quadro A (caso comum — nao pode tirar ninguem):"
 curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LA2}"
 curl -s "http://localhost:8000/api/lists/$LA2/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   ", [m["name"] for m in json.load(sys.stdin)["members"]])'
 
-echo "3) mover para o quadro B (a Adriana nao e membro de la — tem que sair):"
+echo "3) COPIAR para o quadro B (a Adriana nao e membro de la — nao pode ir junto):"
+curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/api/lists/$LA2/cards/$CA/copy" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"target_list_id\": $LB}"
+curl -s "http://localhost:8000/api/lists/$LB/cards" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   copia no B ->", [m["name"] for m in d[0]["members"]] if d else "nenhum card")'
+
+echo "3b) COPIAR dentro do proprio quadro A (nao pode filtrar ninguem):"
+curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/api/lists/$LA2/cards/$CA/copy" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{}'
+curl -s "http://localhost:8000/api/lists/$LA2/cards" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   copias no A ->", [sorted(m["name"] for m in c["members"]) for c in d])'
+
+echo "4) mover para o quadro B (a Adriana nao e membro de la — tem que sair):"
 curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X PATCH "http://localhost:8000/api/lists/$LA2/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LB}"
 curl -s "http://localhost:8000/api/lists/$LB/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   ", [m["name"] for m in json.load(sys.stdin)["members"]])'
 
@@ -632,9 +678,13 @@ curl -s -o /dev/null -w "   apaga B: HTTP %{http_code}\n" -X DELETE "http://loca
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   boards restantes:", [b["id"] for b in json.load(sys.stdin)])'
 ```
 
-Esperado: `['Adriana Paz', 'Erick H.']` · `200` e **os dois continuam** (mover dentro do
-mesmo quadro não tira ninguém) · `200` e sobra **só** `['Erick H.']` ·
-`boards restantes: [20]`.
+Esperado, em ordem:
+- `['Adriana Paz', 'Erick H.']` — o card comeca com os dois
+- `200` e **os dois continuam** — mover dentro do mesmo quadro nao tira ninguem
+- a copia no quadro B tem **so** `['Erick H.']` — a Adriana nao foi junto
+- as copias dentro do A tem **os dois** — copiar no mesmo quadro nao filtra ninguem
+- `200` e o card movido para o B sobra com **so** `['Erick H.']`
+- `boards restantes: [20]`
 
 - [ ] **Step 3: Commit**
 
@@ -789,7 +839,7 @@ banco:
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ONTEM=$(date -u -d 'yesterday' +%Y-%m-%d)
 
@@ -802,18 +852,18 @@ C=$(curl -s -X POST "http://localhost:8000/api/lists/$L/cards" -H "Authorization
 curl -s -o /dev/null -X POST "http://localhost:8000/api/lists/$L/cards/$C/members/1" -H "Authorization: Bearer $ADMIN"
 
 # a Adriana (14) entra a FORCA, direto no banco: e a invariante furada
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c \
+./scripts/psql-dev.sh -c \
   "INSERT INTO card_members (card_id, user_id) VALUES ($C, 14);"
 
 echo "quem esta no card agora (a Adriana esta pendurada, sem ser membro do quadro):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c \
+./scripts/psql-dev.sh -t -c \
   "SELECT u.name FROM card_members cm JOIN users u ON u.id=cm.user_id WHERE cm.card_id=$C;"
 
 echo "rodando o ciclo de lembretes a mao:"
 docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())" && echo "   ok"
 
 echo "quem recebeu notificacao deste card (esperado: SO o Erick H.):"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c \
+./scripts/psql-dev.sh -c \
   "SELECT u.name, n.message FROM notifications n JOIN users u ON u.id=n.user_id WHERE n.card_id=$C;"
 
 echo "LIMPEZA:"
@@ -1076,13 +1126,13 @@ do `tsconfig.app.json` — variável sem uso quebra o build.
 
 **Não reinicie o Vite** (porta 5173) — é do usuário.
 
-No navegador, como admin (`healthsafetyti@gmail.com` / `admin123`). Monte o cenário
+No navegador, como admin (`healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`)). Monte o cenário
 por curl e olhe a tela:
 
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t5"}' | jid)
 L=$(curl -s -X POST "http://localhost:8000/api/boards/$B/lists" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"l"}' | jid)
@@ -1200,7 +1250,7 @@ Com todas as tasks fechadas, a invariante tem que valer nos quatro caminhos de u
 cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ONTEM=$(date -u -d 'yesterday' +%Y-%m-%d)
 
@@ -1223,16 +1273,16 @@ echo "5) mover para o quadro B (a Adriana nao e de la — tem que sair):"
 curl -s -o /dev/null -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LB}"
 curl -s "http://localhost:8000/api/lists/$LB/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   membros:", [m["name"] for m in json.load(sys.stdin)["members"]])'
 echo "6) a rede: CardMember orfao nao recebe lembrete:"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -q -c "INSERT INTO card_members (card_id, user_id) VALUES ($CA, 14);"
+./scripts/psql-dev.sh -q -c "INSERT INTO card_members (card_id, user_id) VALUES ($CA, 14);"
 docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())" >/dev/null && echo "   ciclo rodou"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c \
+./scripts/psql-dev.sh -t -c \
   "SELECT '   notificou: '||u.name FROM notifications n JOIN users u ON u.id=n.user_id WHERE n.card_id=$CA;"
 
 echo "LIMPEZA:"
 curl -s -o /dev/null -w "   apaga A: %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$A" -H "Authorization: Bearer $ADMIN"
 curl -s -o /dev/null -w "   apaga B: %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$B" -H "Authorization: Bearer $ADMIN"
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   boards restantes:", [b["id"] for b in json.load(sys.stdin)])'
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -t -c "SELECT '   card_members restantes: '||count(*) FROM card_members;"
+./scripts/psql-dev.sh -t -c "SELECT '   card_members restantes: '||count(*) FROM card_members;"
 ```
 
 Esperado: `403` · `404` · `201` · `Adriana Paz 1` · `membros: ['Erick H.']` ·

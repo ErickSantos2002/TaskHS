@@ -22,7 +22,7 @@
 - **`password_hash` NUNCA aparece** no `changes` (mascarar como `"***"`).
 - **Ponto técnico:** dentro dos handlers de flush a execução está **dentro do greenlet** do SQLAlchemy async → consultas síncronas (`session.get`, `session.execute`) **são permitidas**; usar `with session.no_autoflush:` para evitar flush reentrante.
 - **Página `/logs` = Administrador estrito** (`get_admin_user`); Coordenador recebe **403**.
-- **Login admin p/ testes:** `healthsafetyti@gmail.com` / `admin123` (token em `access_token`).
+- **Login admin p/ testes:** `healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`) (token em `access_token`).
 - **Changelog (CLAUDE.md):** fecha com **v1.3.0**. Tudo em pt-BR.
 - **Commits** terminam com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
@@ -525,7 +525,7 @@ import app.audit  # noqa: F401 — registra os listeners de auditoria
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # cria um quadro descartável -> deve gerar 1 log "criou o quadro"
 curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"title":"ZZ Auditoria Teste"}' | python3 -c 'import sys,json;print("board id",json.load(sys.stdin)["id"])'
 docker compose exec -T backend python -c "
@@ -703,7 +703,7 @@ Usar os contadores de listas/cards que o import já mantém para o SSE (se os no
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
 # login OK
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # login falho
 curl -s -o /dev/null -w 'login errado: %{http_code}\n' -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"errada"}'
 docker compose exec -T backend python -c "
@@ -827,7 +827,7 @@ app.include_router(logs.router, prefix="/api")
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # admin lista
 curl -s "http://localhost:8000/api/logs?limit=3" -H "Authorization: Bearer $ADM" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("total",d["total"]);[print(" -",i["action"],i["entity_type"],"|",i["summary"]) for i in d["items"]]'
 # filtro por acao + busca
@@ -1186,7 +1186,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+ADM=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # marca o ponto de corte: só olhamos logs criados a partir daqui
 MARK=$(docker compose exec -T backend python -c "
 import asyncio
@@ -1209,7 +1209,7 @@ Escrever e rodar `/tmp/claude-1000/audit-e2e.sh` (temporário, **não commitar**
 set -euo pipefail
 B=http://localhost:8000/api
 J='Content-Type: application/json'
-ADM=$(curl -s -X POST $B/auth/login -H "$J" -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+ADM=$(curl -s -X POST $B/auth/login -H "$J" -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 A="Authorization: Bearer $ADM"
 id() { python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'; }
 
@@ -1254,7 +1254,7 @@ curl -s -o /dev/null -X POST $B/integration/cards -H "$J" -H "X-API-Key: $KEY" \
   -d '{"source":"gestorhs","external_id":"e2e-1","board":"ZZ Auditoria E2E Integracao","list":"Recebido","title":"OS e2e"}'
 # 16. login falho + login OK
 curl -s -o /dev/null -X POST $B/auth/login -H "$J" -d '{"email":"healthsafetyti@gmail.com","password":"errada"}' || true
-curl -s -o /dev/null -X POST $B/auth/login -H "$J" -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}'
+curl -s -o /dev/null -X POST $B/auth/login -H "$J" -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}'
 # 17. tentativa bloqueada (coordenador em /logs -> 403)
 COORD=$(curl -s -X POST $B/auth/login -H "$J" -d '{"email":"coordlog@example.com","password":"teste123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s -o /dev/null -w 'coord /logs: %{http_code}\n' $B/logs -H "Authorization: Bearer $COORD"

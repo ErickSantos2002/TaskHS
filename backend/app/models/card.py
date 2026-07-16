@@ -1,4 +1,3 @@
-from __future__ import annotations
 from datetime import datetime, date, timezone
 from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -34,12 +33,18 @@ class Card(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    labels: Mapped[list["CardLabel"]] = relationship("CardLabel", back_populates="card", cascade="all, delete-orphan", uselist=True)
+    members: Mapped[list["CardMember"]] = relationship("CardMember", back_populates="card", cascade="all, delete-orphan", uselist=True)
+    comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan", uselist=True)
+    attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan", uselist=True)
+    checklists: Mapped[list["Checklist"]] = relationship("Checklist", back_populates="card", cascade="all, delete-orphan", uselist=True)
+
+    # ATENCAO: declarada DEPOIS das colecoes acima, de proposito. O nome `list`
+    # sombreia o builtin dentro do corpo da classe — se vier antes, as anotacoes
+    # `Mapped[list["X"]]` seguintes resolvem `list` para ESTE relationship e viram
+    # Mapped[NotImplemented], fazendo o SQLAlchemy mapear as colecoes como
+    # uselist=False (um card so mostraria UM membro, UM comentario...).
     list: Mapped["List"] = relationship("List", back_populates="cards")
-    labels: Mapped[list["CardLabel"]] = relationship("CardLabel", back_populates="card", cascade="all, delete-orphan")
-    members: Mapped[list["CardMember"]] = relationship("CardMember", back_populates="card", cascade="all, delete-orphan")
-    comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan")
-    attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan")
-    checklists: Mapped[list["Checklist"]] = relationship("Checklist", back_populates="card", cascade="all, delete-orphan")
 
 
 class CardLabel(Base):
@@ -55,6 +60,9 @@ class CardLabel(Base):
 
 class CardMember(Base):
     __tablename__ = "card_members"
+    __table_args__ = (
+        UniqueConstraint("card_id", "user_id", name="card_members_card_user_uniq"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))

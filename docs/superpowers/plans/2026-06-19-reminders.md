@@ -24,7 +24,7 @@
 ```bash
 cd /home/ericks/github/TaskHS
 TOKEN=$(curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' \
+  -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 LID=$(curl -s localhost:8000/api/boards/20/lists -H "Authorization: Bearer $TOKEN" \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
@@ -32,7 +32,7 @@ CID=$(curl -s localhost:8000/api/lists/$LID/cards -H "Authorization: Bearer $TOK
   | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
 echo "TOKEN len=${#TOKEN} LID=$LID CID=$CID"   # expect long token + two ints
 ```
-PSQL for DB checks: `PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco`
+PSQL for DB checks: `./scripts/psql-dev.sh
 
 ---
 
@@ -125,7 +125,7 @@ Run:
 ```bash
 cd /home/ericks/github/TaskHS && docker compose up -d --build 2>&1 | tail -2 && sleep 4
 curl -s localhost:8000/api/health; echo
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco \
+./scripts/psql-dev.sh \
   -tAc "SELECT table_name FROM information_schema.tables WHERE table_name IN ('reminders','reminder_sent') ORDER BY table_name;"
 ```
 Expected: `{"status":"ok"}` then two lines: `reminder_sent` and `reminders`.
@@ -397,17 +397,17 @@ echo "--- due notifications for this user ---"
 curl -s "localhost:8000/api/notifications" -H "Authorization: Bearer $TOKEN" \
   | python3 -c 'import sys,json; ns=json.load(sys.stdin); print([n["message"] for n in ns if n["type"]=="reminder_due"][:3])'
 echo "--- reminder_sent rows (expect >=1) ---"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -tAc \
+./scripts/psql-dev.sh -tAc \
   "SELECT kind FROM reminder_sent WHERE card_id=$CID AND user_id=$USERID;"
 echo "--- run cycle again: should NOT add duplicates ---"
 docker compose exec -T backend python -c "import asyncio; from app.reminders import run_reminder_cycle; asyncio.run(run_reminder_cycle())"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -tAc \
+./scripts/psql-dev.sh -tAc \
   "SELECT count(*) FROM reminder_sent WHERE card_id=$CID AND user_id=$USERID;"
 echo "--- CLEANUP: revert due date, remove member, drop test rows ---"
 curl -s -X PATCH "localhost:8000/api/lists/$LID/cards/$CID" -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"due_date":null}' >/dev/null
 curl -s -o /dev/null -X DELETE "localhost:8000/api/lists/$LID/cards/$CID/members/$USERID" -H "Authorization: Bearer $TOKEN"
-PGPASSWORD=administrador psql -h 62.72.11.28 -p 9874 -U administrador -d taskhs-banco -c \
+./scripts/psql-dev.sh -c \
   "DELETE FROM reminder_sent WHERE card_id=$CID AND user_id=$USERID; DELETE FROM notifications WHERE card_id=$CID AND type IN ('reminder_due','reminder_manual'); DELETE FROM reminders WHERE card_id=$CID;"
 ```
 Expected: the due-notifications list shows a `due_day` message (`"<card>" vence hoje`); `reminder_sent` has a `due_day` row; the count after the second cycle is unchanged (dedup works); cleanup runs without error.

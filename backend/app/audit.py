@@ -23,6 +23,20 @@ from app.models.reminder import Reminder
 from app.models.user import User
 
 # Tipos auditados. Notification, ReminderSent e AuditLog ficam de fora (ruído / recursão).
+#
+# ⚠️ ARMADILHA: para EXCLUIR qualquer tipo desta lista, use o ORM
+# (`await db.delete(obj)`), NUNCA bulk delete (`db.execute(sql_delete(X).where(...))`).
+# Os listeners abaixo leem `session.deleted`, e bulk delete não passa pelo
+# unit-of-work — logo não popula `session.deleted` e a exclusão some do log.
+#
+# Isso falha em SILÊNCIO: o sintoma é a ausência de uma linha, que ninguém nota até
+# precisar dela meses depois. Já aconteceu (2026-07-16, `remove_member` em
+# `routers/boards.py`): remover alguém que ocupava 12 cards gerava UMA linha
+# ("excluiu o membro_quadro") e as 12 atribuições evaporavam sem rastro.
+#
+# Se a lista for grande e o loop do ORM doer, a saída é gravar o AuditLog à mão —
+# não é abrir mão do registro. Exceção aceita: quando o pai já é auditado e os
+# filhos são consequência óbvia (ex.: `delete_board` apaga os lembretes do quadro).
 ENTITY_TYPES: dict[type, str] = {
     Board: "quadro",
     List: "lista",
