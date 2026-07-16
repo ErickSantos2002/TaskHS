@@ -61,25 +61,39 @@ async def require_board_access_by_board_id(
     return current_user
 
 
+async def user_can_access_list(list_id: int, user: User, db: AsyncSession) -> bool:
+    """A regra crua: esta pessoa alcança o quadro desta lista?
+
+    Elevado (administrador/coordenador) alcança qualquer um. Lista inexistente
+    devolve False para não-elevado — o JOIN não acha nada — o que é o que
+    queremos: não revelar a existência de listas de quadros alheios.
+    """
+    if user.is_elevated:
+        return True
+    q = await db.execute(
+        select(BoardMember.id)
+        .join(ListModel, ListModel.board_id == BoardMember.board_id)
+        .where(ListModel.id == list_id, BoardMember.user_id == user.id)
+        .limit(1)
+    )
+    return q.scalars().first() is not None
+
+
+async def assert_board_access_by_list_id(list_id: int, user: User, db: AsyncSession) -> None:
+    """A mesma tranca, para chamar DENTRO de um endpoint.
+
+    Existe porque alguns endpoints recebem a lista de destino no CORPO da
+    requisição, e a dependency de router só valida o que está na URL.
+    """
+    if not await user_can_access_list(list_id, user, db):
+        raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+
+
 async def require_board_access_by_list_id(
     list_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Mesma tranca, para routers cujo prefixo tem {list_id} e não {board_id}.
-
-    Resolve lista -> quadro no próprio JOIN. Lista inexistente cai em 403 (e não
-    404) para não revelar a existência de listas de quadros alheios; para o
-    usuário elevado, o gate passa e o endpoint devolve o 404 normal.
-    """
-    if current_user.is_elevated:
-        return current_user
-    q = await db.execute(
-        select(BoardMember.id)
-        .join(ListModel, ListModel.board_id == BoardMember.board_id)
-        .where(ListModel.id == list_id, BoardMember.user_id == current_user.id)
-        .limit(1)
-    )
-    if q.scalars().first() is None:
-        raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+    """Tranca dos routers cujo prefixo tem {list_id}."""
+    await assert_board_access_by_list_id(list_id, current_user, db)
     return current_user
