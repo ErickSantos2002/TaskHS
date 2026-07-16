@@ -1725,3 +1725,309 @@ curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | pyt
 curl -s http://localhost:8000/api/boards/20/members -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("membros do 20:", [m["id"] for m in json.load(sys.stdin)])'
 ```
 Esperado: `boards: [20]` e `membros do 20: [1]`.
+
+---
+
+### Task 7: Fechar a escrita cross-board em `cards.py`
+
+**Origem:** achado do review da Task 1, confirmado no código e **aprovado pelo Erick**
+para entrar nesta branch. A tranca das Tasks 1-3 fecha **leitura**, mas quatro
+caminhos de **escrita** passam por baixo dela: o gate lê o `list_id` da **URL**, e
+esses endpoints aceitam o destino no **corpo** da requisição.
+
+São bugs **pré-existentes** (não são regressão da feature) e hoje não são
+exploráveis, porque ninguém é membro de quadro nenhum além do dono. Mas viram
+exploráveis **exatamente quando a membresia começar a ser usada**, que é o ponto
+da feature. Nenhuma outra task toca `cards.py`, então sem esta eles atravessam a
+branch inteira e vão para produção — a branch chama-se "tranca de quadros" e
+entregaria a porta dos fundos aberta.
+
+**Files:**
+- Modify: `backend/app/dependencies.py` (extrair a regra para uso fora de dependency)
+- Modify: `backend/app/routers/cards.py` (`update_card`, `copy_card`, `remove_card_member`, `remove_label`, `add_label`)
+
+**Interfaces:**
+- Consumes: `require_board_access_by_list_id` (Task 1); `_get_card_or_404(card_id, list_id, db)` (`cards.py:83`, já existe e já levanta 404).
+- Produces:
+  - `user_can_access_list(list_id: int, user: User, db: AsyncSession) -> bool` — a regra crua.
+  - `assert_board_access_by_list_id(list_id: int, user: User, db: AsyncSession) -> None` — levanta `403 "Você não é membro deste quadro"`. É a versão chamável **dentro** de um endpoint, para quando o destino vem no corpo.
+
+- [ ] **Step 1: Extrair a regra, sem duplicá-la**
+
+Em `backend/app/dependencies.py`, a lógica hoje vive dentro da dependency
+`require_board_access_by_list_id`. Extraia-a para que a mesma regra sirva aos dois
+usos (dependency de router e checagem dentro do endpoint) — **uma fonte de verdade
+só**, como manda a restrição global.
+
+Substitua `require_board_access_by_list_id` inteira por:
+
+```python
+async def user_can_access_list(list_id: int, user: User, db: AsyncSession) -> bool:
+    """A regra crua: esta pessoa alcança o quadro desta lista?
+
+    Elevado (administrador/coordenador) alcança qualquer um. Lista inexistente
+    devolve False para não-elevado — o JOIN não acha nada — o que é o que
+    queremos: não revelar a existência de listas de quadros alheios.
+    """
+    if user.is_elevated:
+        return True
+    q = await db.execute(
+        select(BoardMember.id)
+        .join(ListModel, ListModel.board_id == BoardMember.board_id)
+        .where(ListModel.id == list_id, BoardMember.user_id == user.id)
+        .limit(1)
+    )
+    return q.scalars().first() is not None
+
+
+async def assert_board_access_by_list_id(list_id: int, user: User, db: AsyncSession) -> None:
+    """A mesma tranca, para chamar DENTRO de um endpoint.
+
+    Existe porque alguns endpoints recebem a lista de destino no CORPO da
+    requisição, e a dependency de router só valida o que está na URL.
+    """
+    if not await user_can_access_list(list_id, user, db):
+        raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+
+
+async def require_board_access_by_list_id(
+    list_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Tranca dos routers cujo prefixo tem {list_id}."""
+    await assert_board_access_by_list_id(list_id, current_user, db)
+    return current_user
+```
+
+Não mexa em `require_board_access_by_board_id`.
+
+- [ ] **Step 2: `update_card` — o destino vem no corpo**
+
+`backend/app/routers/cards.py`, `update_card` (~linha 118). `CardUpdate.list_id`
+(`schemas/card.py:81`) é campo de corpo; o `setattr` do laço aplica ele e o
+`run_card_moved_automations` dispara as automações **do quadro de destino**.
+
+Ataque hoje: membro do quadro A faz `PATCH /lists/<lista_do_A>/cards/<card>` com
+`{"list_id": <lista_do_B>}` → o gate valida a lista do A (dela) e passa → o card vai
+para o quadro B e aciona as automações de lá, sem ela poder nem ler o B.
+
+Depois de obter o `card` e o `data` (`data = body.model_dump(exclude_none=True)`),
+**antes** do laço de `setattr`, acrescente:
+
+```python
+    # O destino vem no CORPO: a tranca do router so validou o list_id da URL.
+    # Sem isto, um membro do quadro A move um card para o quadro B — e dispara as
+    # automacoes de la — sem poder nem ler o B.
+    if "list_id" in data and data["list_id"] != card.list_id:
+        await assert_board_access_by_list_id(data["list_id"], current_user, db)
+        destino = (await db.execute(
+            select(List.id).where(List.id == data["list_id"]).limit(1)
+        )).scalars().first()
+        if destino is None:
+            raise HTTPException(status_code=404, detail="Lista de destino não encontrada")
+```
+
+**A ordem importa:** a checagem de acesso vem **antes** da de existência. Invertida,
+um não-membro distinguiria "lista não existe" (404) de "lista existe mas é de outro
+quadro" (403) e enumeraria listas alheias. Como está, o não-membro leva 403 nos dois
+casos; só o elevado chega a ver o 404.
+
+- [ ] **Step 3: `copy_card` — mesma forma, via `target_list_id`**
+
+`cards.py`, `copy_card` (~linha 148). `target_list_id = body.target_list_id or list_id`
+(~linha 152) entra sem nenhuma checagem.
+
+Logo **depois** da linha que calcula `target_list_id` e **antes** de qualquer uso
+dela, acrescente:
+
+```python
+    if target_list_id != list_id:
+        # Mesmo buraco do update_card: destino no corpo, gate so na URL.
+        await assert_board_access_by_list_id(target_list_id, current_user, db)
+        destino = (await db.execute(
+            select(List.id).where(List.id == target_list_id).limit(1)
+        )).scalars().first()
+        if destino is None:
+            raise HTTPException(status_code=404, detail="Lista de destino não encontrada")
+```
+
+- [ ] **Step 4: `remove_card_member` — não amarra o card à lista**
+
+`cards.py`, `remove_card_member` (~linha 253). Ao contrário dos endpoints irmãos,
+esta função **não** chama `_get_card_or_404`: ela seleciona `CardMember` só por
+`card_id` + `user_id`, então o `list_id` da URL não restringe nada.
+
+Ataque hoje: `DELETE /lists/<lista_do_A>/cards/<card_do_B>/members/<user>` → o gate
+valida a lista do A e passa → remove o membro de um card do quadro B.
+
+Acrescente a primeira linha do corpo, como os irmãos já fazem:
+
+```python
+    await _get_card_or_404(card_id, list_id, db)
+```
+
+- [ ] **Step 5: `remove_label` — idêntico**
+
+`cards.py`, `remove_label` (~linha 277). Mesmo problema: seleciona `CardLabel` por
+`card_id` + `label_id`, sem escopo de lista.
+
+Acrescente a primeira linha do corpo:
+
+```python
+    await _get_card_or_404(card_id, list_id, db)
+```
+
+- [ ] **Step 6: `add_label` — a etiqueta pode ser de outro quadro**
+
+`cards.py`, `add_label` (~linha 266). Ele **chama** `_get_card_or_404` (bom), mas
+nada amarra `body.label_id` a uma etiqueta **do quadro do card**.
+
+Vazamento hoje: a pessoa põe uma etiqueta do quadro B num card **dela** e depois lê o
+próprio card — `_card_to_dict` devolve `{"label": <nome da etiqueta do B>, "color": ...}`.
+Enumerando `label_id`, ela lê nome e cor de todas as etiquetas de todos os quadros,
+através da tranca.
+
+Depois do `_get_card_or_404` e **antes** do `existing`, acrescente:
+
+```python
+    # A etiqueta tem que ser do MESMO quadro do card; senao da para colar uma
+    # etiqueta de outro quadro no proprio card e ler nome/cor dela de volta.
+    etiqueta = (await db.execute(
+        select(BoardLabel.id)
+        .join(List, List.board_id == BoardLabel.board_id)
+        .where(BoardLabel.id == body.label_id, List.id == list_id)
+        .limit(1)
+    )).scalars().first()
+    if etiqueta is None:
+        raise HTTPException(status_code=404, detail="Etiqueta não encontrada neste quadro")
+```
+
+`BoardLabel` e `List` já estão importados em `cards.py` (linhas 8 e 9).
+
+- [ ] **Step 7: Acrescentar o import em `cards.py`**
+
+A linha 17 já é `from app.dependencies import get_current_user, require_board_access_by_list_id`.
+Estenda:
+
+```python
+from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
+```
+
+- [ ] **Step 8: Verificar**
+
+```bash
+docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
+```
+Esperado: `{"status":"ok"}`
+
+Esta verificação precisa de **dois quadros** e de alguém que seja membro de um só —
+essa é a configuração que expõe o furo. Monte, ataque, e desmonte:
+
+```bash
+tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
+ADMIN=$(tok healthsafetyti@gmail.com admin123)
+MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)   # Adriana, user 14
+
+# Quadro A: da Adriana (ela cria, entao e dona e membro)
+A=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $MEMBRO" \
+  -H 'Content-Type: application/json' -d '{"title":"zzz A da Adriana","color":"#0ea5e9"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+LA=$(curl -s -X POST "http://localhost:8000/api/boards/$A/lists" -H "Authorization: Bearer $MEMBRO" \
+  -H 'Content-Type: application/json' -d '{"title":"lista A"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+CA=$(curl -s -X POST "http://localhost:8000/api/lists/$LA/cards" -H "Authorization: Bearer $MEMBRO" \
+  -H 'Content-Type: application/json' -d '{"title":"card da Adriana"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+
+# Quadro B: do admin. A Adriana NAO e membro.
+B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"title":"zzz B do admin","color":"#ef4444"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+LB=$(curl -s -X POST "http://localhost:8000/api/boards/$B/lists" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"title":"lista B"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+CB=$(curl -s -X POST "http://localhost:8000/api/lists/$LB/cards" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"title":"card do admin"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+EB=$(curl -s -X POST "http://localhost:8000/api/boards/$B/labels" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"name":"SEGREDO DO QUADRO B","color":"#ef4444"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+
+echo "A=$A LA=$LA CA=$CA | B=$B LB=$LB CB=$CB EB=$EB"
+echo
+echo "1) mover card DELA para a lista do B (Step 2):"
+curl -s -o /dev/null -w "   HTTP %{http_code}  (esperado 403)\n" -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" \
+  -H "Authorization: Bearer $MEMBRO" -H 'Content-Type: application/json' -d "{\"list_id\": $LB}"
+
+echo "2) copiar card DELA para a lista do B (Step 3):"
+curl -s -o /dev/null -w "   HTTP %{http_code}  (esperado 403)\n" -X POST "http://localhost:8000/api/lists/$LA/cards/$CA/copy" \
+  -H "Authorization: Bearer $MEMBRO" -H 'Content-Type: application/json' -d "{\"target_list_id\": $LB}"
+
+echo "3) remover membro de um card DO B, pela lista dela (Step 4):"
+curl -s -o /dev/null -w "   HTTP %{http_code}  (esperado 404)\n" -X DELETE "http://localhost:8000/api/lists/$LA/cards/$CB/members/1" \
+  -H "Authorization: Bearer $MEMBRO"
+
+echo "4) remover etiqueta de um card DO B, pela lista dela (Step 5):"
+curl -s -o /dev/null -w "   HTTP %{http_code}  (esperado 404)\n" -X DELETE "http://localhost:8000/api/lists/$LA/cards/$CB/labels/$EB" \
+  -H "Authorization: Bearer $MEMBRO"
+
+echo "5) colar etiqueta do B no card DELA (Step 6):"
+curl -s -w "   <- HTTP %{http_code}  (esperado 404)\n" -X POST "http://localhost:8000/api/lists/$LA/cards/$CA/labels" \
+  -H "Authorization: Bearer $MEMBRO" -H 'Content-Type: application/json' -d "{\"label_id\": $EB}"
+
+echo "6) NAO houve regressao — ela ainda mexe no quadro dela:"
+curl -s -o /dev/null -w "   mover dentro do A: HTTP %{http_code}  (esperado 200)\n" -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" \
+  -H "Authorization: Bearer $MEMBRO" -H 'Content-Type: application/json' -d '{"title":"card renomeado pela dona"}'
+
+echo "7) o admin (elevado) continua passando em tudo:"
+curl -s -o /dev/null -w "   admin move card do B: HTTP %{http_code}  (esperado 200)\n" -X PATCH "http://localhost:8000/api/lists/$LB/cards/$CB" \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"admin renomeou"}'
+
+echo
+echo "LIMPEZA:"
+curl -s -o /dev/null -w "   apaga A: HTTP %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$A" -H "Authorization: Bearer $ADMIN"
+curl -s -o /dev/null -w "   apaga B: HTTP %{http_code}\n" -X DELETE "http://localhost:8000/api/boards/$B" -H "Authorization: Bearer $ADMIN"
+curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   boards restantes:", [b["id"] for b in json.load(sys.stdin)])'
+```
+
+Esperado: `403`, `403`, `404`, `404`, `404`, `200`, `200`, e ao final
+`boards restantes: [20]`.
+
+**Se algum dos cinco primeiros devolver `200`, o furo continua aberto** — investigue
+e reporte, não maquie.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add backend/app/dependencies.py backend/app/routers/cards.py
+git commit -m "$(cat <<'EOF'
+fix(seg): fecha a escrita cross-board em cards.py
+
+A tranca das tasks anteriores fecha leitura, mas o gate le o list_id da
+URL e estes endpoints aceitam o destino no CORPO — entao um membro do
+quadro A escrevia no quadro B sem poder nem ler o B:
+
+- update_card: {"list_id": <lista do B>} movia o card e ainda disparava
+  as automacoes do B
+- copy_card: idem via target_list_id
+- remove_card_member e remove_label: nao amarravam o card a lista do
+  path (nao chamavam _get_card_or_404 como os endpoints irmaos)
+- add_label: nao validava que a etiqueta e do quadro do card, o que
+  permitia ler nome/cor de etiqueta de qualquer quadro
+
+Todos pre-existentes, mas so viram explorateis quando a membresia comeca
+a ser usada — que e o ponto desta branch.
+
+A regra continua tendo uma fonte so: user_can_access_list/
+assert_board_access_by_list_id em dependencies.py, de onde a dependency
+de router tambem passa a derivar.
+
+Nas checagens, o acesso vem antes da existencia: invertido, um nao-membro
+distinguiria "lista nao existe" de "lista de outro quadro" e enumeraria.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+EOF
+)"
+```
