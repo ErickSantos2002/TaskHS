@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, delete as sql_delete
+from sqlalchemy.exc import IntegrityError
 from datetime import date as _date
 from sqlalchemy.orm import selectinload
 from app.database import get_db, AsyncSessionLocal
@@ -325,6 +326,9 @@ async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Dep
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
 
+    if body.role == BoardRole.owner:
+        raise HTTPException(status_code=400, detail="O dono do quadro é definido na criação e não pode ser atribuído aqui")
+
     alvo = (await db.execute(select(User).where(User.id == body.user_id, User.is_active == True))).scalar_one_or_none()
     if alvo is None:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -336,7 +340,11 @@ async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Dep
         raise HTTPException(status_code=409, detail="Essa pessoa já é membro do quadro")
 
     db.add(BoardMember(board_id=board.id, user_id=body.user_id, role=body.role))
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Essa pessoa já é membro do quadro")
     return {"ok": True}
 
 

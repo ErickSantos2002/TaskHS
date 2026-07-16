@@ -12,7 +12,9 @@ DELETE FROM board_members a
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'board_members_board_user_uniq'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'board_members_board_user_uniq'
+       AND conrelid = 'board_members'::regclass
   ) THEN
     ALTER TABLE board_members
       ADD CONSTRAINT board_members_board_user_uniq UNIQUE (board_id, user_id);
