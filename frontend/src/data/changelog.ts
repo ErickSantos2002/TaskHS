@@ -14,6 +14,19 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.4.0",
+    date: "2026-07-16",
+    changes: [
+      { kind: "novidade", text: "Todos os quadros da empresa agora aparecem na listagem: os que você não participa vêm com cadeado, mostrando quem são os membros e com quem falar para pedir acesso." },
+      { kind: "novidade", text: "Configurações do board agora tem a seção Membros do quadro, para adicionar e remover pessoas — antes não havia nenhuma tela para isso." },
+      { kind: "correcao", text: "Correção de segurança: quadros de que você não é membro agora ficam realmente inacessíveis. Antes, qualquer pessoa logada conseguia abrir qualquer quadro pelo endereço e ler listas, cards, comentários e anexos." },
+      { kind: "correcao", text: "Correção de segurança: apenas o dono do quadro (ou um administrador) pode gerenciar os membros. Antes, qualquer pessoa podia se adicionar a qualquer quadro, inclusive como dona." },
+      { kind: "correcao", text: "Correção de segurança: não é mais possível mover, copiar ou alterar cards, checklists, etiquetas e anexos de um quadro do qual você não participa." },
+      { kind: "correcao", text: "Membros comuns voltaram a conseguir atribuir pessoas aos cards — o seletor de membros ficava travado em \"Carregando…\" para quem não era administrador." },
+      { kind: "correcao", text: "Copiar um cartão que tivesse etiquetas dava erro e não copiava. Agora funciona." },
+    ],
+  },
+  {
     version: "1.3.1",
     date: "2026-07-13",
     changes: [
