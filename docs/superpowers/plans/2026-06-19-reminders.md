@@ -24,7 +24,7 @@
 ```bash
 cd /home/ericks/github/TaskHS
 TOKEN=$(curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' \
+  -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 LID=$(curl -s localhost:8000/api/boards/20/lists -H "Authorization: Bearer $TOKEN" \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')

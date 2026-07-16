@@ -19,7 +19,7 @@
 - **Deletar um card limpa `Notification`/`Reminder`/`ReminderSent` por `card_id`** — exatamente como o `delete_card` atual. **NÃO** deletar `Automation` (automações referenciam `trigger_list_id`/`board_id`, nunca `card_id`). *(O spec §4 mencionou "automations" por engano; o correto é não tocar nelas ao apagar um card.)*
 - **Mover/criar card pela integração NÃO dispara o loop de automações** (escreve `card.list_id` direto, sem passar pelo `update_card`) — comportamento desejado no v1.
 - **Convenção de changelog (CLAUDE.md):** a feature fecha com uma entrada nova em `frontend/src/data/changelog.ts`.
-- **Tudo em pt-BR.** Login admin p/ obter dados de teste: `healthsafetyti@gmail.com` / `admin123` (token em `access_token`).
+- **Tudo em pt-BR.** Login admin p/ obter dados de teste: `healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`) (token em `access_token`).
 - **Commits** terminam com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
 ---
@@ -109,7 +109,7 @@ asyncio.run(main())
 Expected: `['external_id', 'external_source']`.
 Regressão: o login e a listagem de cards de um board continuam funcionando (o `_card_to_dict` agora inclui os dois campos):
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # pegar um list_id qualquer e listar cards — deve retornar 200 com external_source/external_id (null) nos cards
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $TOKEN" | python3 -c 'import sys,json;b=json.load(sys.stdin);print("boards ok:",len(b))'
 ```
@@ -381,7 +381,7 @@ Expected: (a) `401`; (b) `401`; (c) `criado id … list … prio Priority.high`;
 
 Limpeza: apagar o board de teste e seus cards/listas (via API admin ou SQL). Ex.: descobrir o board pelo título e `DELETE /api/boards/{id}` com o token admin:
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $TOKEN" | python3 -c "import sys,json;[print(b['id'],b['title']) for b in json.load(sys.stdin)]"
 # DELETE /api/boards/<id_do_board_de_teste> com o token
 ```

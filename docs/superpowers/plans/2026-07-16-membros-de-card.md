@@ -84,9 +84,9 @@ tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' -d "{\"email\":\"$1\",\"password\":\"$2\"}" \
   | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
 
-ADMIN=$(tok healthsafetyti@gmail.com admin123)            # Erick H. (id 1) — administrador
-COORD=$(tok np@healthsafetytech.com mudar123)             # Nicholson Pimentel (id 3) — coordenador
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)   # Adriana Paz (id 14) — membro comum
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")            # Erick H. (id 1) — administrador
+COORD=$(tok "$TASKHS_COORD_EMAIL" "$TASKHS_COORD_PW")             # Nicholson Pimentel (id 3) — coordenador
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")   # Adriana Paz (id 14) — membro comum
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ```
 
@@ -134,7 +134,7 @@ Esperado: branch `feat/membros-de-card`, working tree limpo.
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 # quadro do admin; a Adriana (14) NAO e membro
@@ -225,7 +225,7 @@ Esperado: `{"status":"ok"}`
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t1 depois"}' | jid)
@@ -247,7 +247,7 @@ curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/
 curl -s "http://localhost:8000/api/lists/$L/cards/$C" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   membros no card:", [m["name"] for m in d["members"]])'
 
 echo "5) a Adriana recebeu UMA notificacao (nao duas):"
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")
 curl -s http://localhost:8000/api/notifications -H "Authorization: Bearer $MEMBRO" | python3 -c 'import sys,json; d=json.load(sys.stdin); n=[x for x in d if x.get("type")=="card_member"]; print("   notificacoes card_member:", len(n)); [print("   ->", x["message"]) for x in n[:3]]'
 
 echo "LIMPEZA:"
@@ -423,8 +423,8 @@ Esperado: `{"status":"ok"}`
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
-MEMBRO=$(tok comercial02@healthsafetytech.com mudar123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
+MEMBRO=$(tok "$TASKHS_MEMBRO_EMAIL" "$TASKHS_MEMBRO_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t2"}' | jid)
@@ -638,7 +638,7 @@ Precisa de dois quadros e de alguém que seja membro só de um:
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 
 # Quadro A: admin + Adriana. Quadro B: so o admin.
@@ -839,7 +839,7 @@ banco:
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ONTEM=$(date -u -d 'yesterday' +%Y-%m-%d)
 
@@ -1126,13 +1126,13 @@ do `tsconfig.app.json` — variável sem uso quebra o build.
 
 **Não reinicie o Vite** (porta 5173) — é do usuário.
 
-No navegador, como admin (`healthsafetyti@gmail.com` / `admin123`). Monte o cenário
+No navegador, como admin (`healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`)). Monte o cenário
 por curl e olhe a tela:
 
 ```bash
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 B=$(curl -s -X POST http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"zzz t5"}' | jid)
 L=$(curl -s -X POST "http://localhost:8000/api/boards/$B/lists" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{"title":"l"}' | jid)
@@ -1250,7 +1250,7 @@ Com todas as tasks fechadas, a invariante tem que valer nos quatro caminhos de u
 cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 tok() { curl -s -m 15 -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))'; }
-ADMIN=$(tok healthsafetyti@gmail.com admin123)
+ADMIN=$(tok "$TASKHS_ADMIN_EMAIL" "$TASKHS_ADMIN_PW")
 jid() { python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])'; }
 ONTEM=$(date -u -d 'yesterday' +%Y-%m-%d)
 

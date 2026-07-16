@@ -15,7 +15,7 @@
 - **`verbatimModuleSyntax` está ligado:** importar tipos com `import type` (ou qualificador `type` inline). `npm run build` quebra se um tipo for importado como valor.
 - **Fonte única de versão:** nada de string de versão cravada — sidebar e LoginPage leem `APP_VERSION` de `src/data/changelog.ts`. O `v0.1.0` antigo deve sumir.
 - **Tudo em pt-BR.** Usar as classes de tema já existentes (`bg-background-surface`, `bg-background-elevated`, `border-border`, `text-slate-*`, `primary`).
-- **Frontend dev server** roda em `localhost:5173` (Vite/HMR); backend em `8000`. Login p/ navegador: `healthsafetyti@gmail.com` / `admin123`.
+- **Frontend dev server** roda em `localhost:5173` (Vite/HMR); backend em `8000`. Login p/ navegador: `healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`).
 - **Commits** terminam com `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 
 ---

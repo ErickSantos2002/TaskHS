@@ -27,7 +27,7 @@ npm run build      # tsc -b && vite build  — PASSA (os erros TS pré-existente
 npm run lint
 ```
 
-Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyti@gmail.com` / `admin123` (admin).
+Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyti@gmail.com` / (senha em `backend/.env.dev-users`) (admin).
 
 **Não há suíte de testes** (nem pytest, nem testes no front). A verificação do projeto é manual (curl / navegador). Não invente comandos de teste.
 
@@ -52,20 +52,36 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
 **Este repositório é PÚBLICO** (`github.com/ErickSantos2002/TaskHS`). Tudo que entra
 num commit — código, doc, plano, spec, mensagem de commit — vai para a internet.
 
-**Nunca escreva credencial em lugar versionado.** Isso já custou caro: os planos
-traziam o comando `psql` com a senha do banco inline, e a senha do **banco de
-produção** ficou pública no GitHub de **2026-06-18 a 2026-07-16** (~1 mês), com a
-porta do Postgres aberta para a internet e o usuário sendo **superuser**.
+**Nunca escreva credencial em lugar versionado.** Isso já custou caro **duas vezes no
+mesmo dia (2026-07-16)**:
+
+1. Os planos traziam o comando `psql` com a **senha do banco de produção** inline —
+   pública no GitHub de **2026-06-18 a 2026-07-16** (~1 mês), com a porta do Postgres
+   aberta para a internet e o usuário sendo **superuser**.
+2. As **senhas de login de contas reais** (`admin` e as 26 do time) estavam em **12
+   arquivos** — inclusive neste `CLAUDE.md` e no `.claude/settings.json` — como
+   "tokens da bateria de verificação". Públicas desde junho, e **funcionando no site no
+   ar**: bastava clonar o repo e logar como administrador em produção.
+
+O padrão dos dois: a senha entrou como parte de um comando de verificação, e ninguém
+reparou porque parecia "só um teste".
 
 - **Para rodar SQL:** use **`./scripts/psql-dev.sh`**, que lê a credencial do
   `backend/.env` (gitignorado). Ex.: `./scripts/psql-dev.sh -c "SELECT count(*) FROM users;"`,
   `./scripts/psql-dev.sh -f backend/migrations/00X_algo.sql`.
-- **Nunca** cole em doc/plano/chat: senha, `PGPASSWORD=`, `SECRET_KEY`,
-  `INTEGRATION_API_KEY`, ou `DATABASE_URL` completa.
+- **Para logar nas baterias de verificação:** as senhas vêm de variáveis de ambiente
+  (`$TASKHS_ADMIN_PW` etc.), lidas de `backend/.env.dev-users` (gitignorado). Copie de
+  `backend/.env.dev-users.example` e faça
+  `set -a; source backend/.env.dev-users; set +a`.
+- **Nunca** cole em doc/plano/spec/commit/chat: senha de banco **ou de login**,
+  `PGPASSWORD=`, `SECRET_KEY`, `INTEGRATION_API_KEY`, ou `DATABASE_URL` completa.
 - **Nunca** faça `cat backend/.env` nem `grep` que imprima o valor de um segredo —
   use `grep -c` para só confirmar presença.
-- Segredo que vaza não se "desvaza": a correção é **rotacionar**, não apagar o
-  commit. Se acontecer, avise o Erick imediatamente — a rotação é no Easypanel.
+- Antes de commitar um plano ou doc:
+  `git grep -nE "password|PGPASSWORD|senha.*=|123" -- <arquivo>`.
+- Segredo que vaza não se "desvaza": a correção é **rotacionar**, não apagar o commit.
+  Se acontecer, **avise o Erick imediatamente** e diga o que ele consegue rotacionar
+  sozinho (senha de login é na própria tela de Usuários; a do banco é no Easypanel).
 
 ## Changelog / versionamento (OBRIGATÓRIO)
 

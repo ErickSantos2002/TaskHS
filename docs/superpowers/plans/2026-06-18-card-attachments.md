@@ -22,7 +22,7 @@
 ```bash
 cd /home/ericks/github/TaskHS
 TOKEN=$(curl -s -X POST localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' \
+  -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 echo "TOKEN length: ${#TOKEN}"   # expect a long non-zero number
 # Pick a real list_id and card_id from board 20:

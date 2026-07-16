@@ -26,7 +26,7 @@
 Várias tasks usam um token JWT. Para obtê-lo:
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 echo "$TOKEN" | cut -c1-20
 ```
 (O campo exato do token é `access_token`; confirmar na resposta do login se necessário.)
@@ -278,7 +278,7 @@ app.include_router(automations.router, prefix="/api")
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 # Descobrir um board do admin e uma lista dele:
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -40
 ```
@@ -399,7 +399,7 @@ por:
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 ```
 Preparar: um board (BID) com duas listas — origem (LID_SRC) e destino-gatilho (LID_DST). Criar a regra na LID_DST:
 ```bash
@@ -486,7 +486,7 @@ Em `delete_board`, adicionar a remoção das automações do board logo antes de
 ```bash
 docker compose up -d --build
 until curl -s http://localhost:8000/api/health | grep -q ok; do sleep 1; done
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{"email":"healthsafetyti@gmail.com","password":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"$TASKHS_ADMIN_EMAIL\",\"password\":\"$TASKHS_ADMIN_PW\"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 ```
 Teste de delete de lista: criar uma lista descartável (LID_TMP) num board (BID), criar uma automação apontando para ela, apagar a lista, e confirmar que a automação sumiu:
 ```bash
