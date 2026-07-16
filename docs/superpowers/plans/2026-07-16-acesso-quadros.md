@@ -59,7 +59,7 @@ O backend roda em Docker na porta 8000; o frontend (Vite) na 5173. Ambos já
 estão no ar. Depois de mudar código do backend:
 
 ```bash
-cd /home/ericks/github/TaskHS && docker compose restart backend && sleep 4 && curl -s localhost:8000/api/health
+cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 ```
 Esperado: `{"status":"ok"}`
 
@@ -333,7 +333,7 @@ from app.dependencies import get_current_user, require_board_access_by_board_id
 - [ ] **Step 6: Subir o backend e verificar que a tranca fechou**
 
 ```bash
-cd /home/ericks/github/TaskHS && docker compose restart backend && sleep 4 && curl -s localhost:8000/api/health
+cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 ```
 Esperado: `{"status":"ok"}` (se der erro de import, o log sai em
 `docker compose logs --tail=30 backend`).
@@ -365,7 +365,7 @@ Esperado: **200** nas seis linhas.
 
 A integração não pode ter sido afetada (usa `X-API-Key`, sem usuário):
 ```bash
-grep -n "INTEGRATION_API_KEY" backend/.env
+# A chave vai por substituicao, sem ser impressa: e um segredo de producao.
 curl -s -o /dev/null -w "integration -> HTTP %{http_code}\n" -X POST http://localhost:8000/api/integration/cards \
   -H "X-API-Key: $(grep INTEGRATION_API_KEY backend/.env | cut -d= -f2)" -H 'Content-Type: application/json' \
   -d '{"source":"teste-plano","external_id":"T1","board":"Serviço","list":"Aguardando Confirmação de Calibração","title":"card de teste do plano"}'
@@ -597,7 +597,7 @@ possa gerenciar membros (só um elevado destravaria).
 - [ ] **Step 6: Verificar**
 
 ```bash
-cd /home/ericks/github/TaskHS && docker compose restart backend && sleep 4 && curl -s localhost:8000/api/health
+cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 ```
 Esperado: `{"status":"ok"}`
 
@@ -781,7 +781,7 @@ from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 - [ ] **Step 4: Verificar**
 
 ```bash
-cd /home/ericks/github/TaskHS && docker compose restart backend && sleep 4 && curl -s localhost:8000/api/health
+cd /home/ericks/github/TaskHS && docker compose up -d --build backend && sleep 6 && curl -s localhost:8000/api/health
 ```
 Esperado: `{"status":"ok"}`
 
@@ -902,20 +902,8 @@ O tratamento de `401` fica **exatamente como está** nos dois — não mexer.
 
 - [ ] **Step 2: Tipos**
 
-Primeiro, um campo que falta: `frontend/src/types/index.ts:3-11` declara `User`
-**sem** `is_active`, embora o `UserOut` do backend mande o campo e a Task 5
-precise dele para não oferecer usuário inativo. Acrescentar na interface `User`,
-depois de `initials`:
-
-```ts
-  is_active: boolean;
-```
-
-Isso é seguro: o `AuthContext` tem a própria interface `User` local
-(`contexts/AuthContext.tsx:4-11`), separada desta, e nenhum lugar do código
-constrói um objeto `User` literal — verificado em 2026-07-16.
-
-Depois, acrescentar logo depois da interface `Board` (que termina na linha 20):
+Em `frontend/src/types/index.ts`, acrescentar logo depois da interface `Board`
+(que termina na linha 20):
 
 ```ts
 export interface BoardMemberOut {
@@ -1333,12 +1321,59 @@ Onde o Erick adiciona quem precisa. Sem isto a membresia só nasce criando quadr
 ou importando do Trello — e a tranca fica sem chave na prática.
 
 **Files:**
+- Modify: `frontend/src/pages/BoardPage.tsx:285-289` (seletor de membros do card — bug pré-existente)
 - Modify: `frontend/src/pages/BoardPage.tsx:2090-2165` (modal "Configurações do board")
+- Modify: `frontend/src/types/index.ts` (tipo `UserBasic`)
 
 **Interfaces:**
 - Consumes: `GET/POST/DELETE /api/boards/{id}/members` (Task 2); `ApiError`
-  (Task 4); `BoardMemberOut` (Task 4); `GET /api/auth/users` (já existe, devolve
-  `User[]` — usado hoje pelo seletor de membros do card, em `:287`).
+  (Task 4); `BoardMemberOut` (Task 4).
+- Consumes: **`GET /api/auth/users/basic`** — endpoint criado junto da Task 2.
+  Devolve `[{id, name, initials}]` de todos os usuários ativos, ordenados por
+  nome, para **qualquer pessoa autenticada**.
+
+  ⚠️ **Não use `GET /api/auth/users` aqui.** Ele exige administrador ou
+  coordenador (`get_elevated_user`, `auth.py:76`) e devolve dados de gestão
+  (papel, e-mail, `is_active`, data). Um membro comum leva 403.
+
+- [ ] **Step 0: Consertar o seletor de membros do card (bug pré-existente)**
+
+Antes da tela nova, um bug que já está em produção: `BoardPage.tsx:287` usa o
+`/auth/users` restrito para montar o seletor de membros **do card**, com
+`.catch(() => {})`. Para um membro comum isso dá 403 silencioso → `allUsers`
+fica `[]` → o seletor mostra **"Carregando…" para sempre** (`:583`). Ou seja,
+nenhum dos 20 membros comuns consegue atribuir alguém a um card. Verificado em
+2026-07-16.
+
+Em `frontend/src/types/index.ts`, acrescentar:
+```ts
+/** Pessoa vista pelos seletores (membros de card, membros de quadro).
+ *  Vem de GET /auth/users/basic, liberado a qualquer autenticado. */
+export interface UserBasic {
+  id: number;
+  name: string;
+  initials: string;
+}
+```
+
+Em `frontend/src/pages/BoardPage.tsx`, trocar o `useEffect` de `:285-289`:
+```tsx
+  useEffect(() => {
+    if (showMemberPicker && allUsers.length === 0) {
+      api.get<UserBasic[]>("/auth/users/basic").then(setAllUsers).catch(() => {});
+    }
+  }, [showMemberPicker]);
+```
+
+O state `allUsers` e o `availableUsers` (`:449`) passam a ser `UserBasic[]`.
+Ajuste as declarações. O `handleAddMember(u)` (`:343`) recebe o `u` e faz
+`POST /lists/{list_id}/cards/{card_id}/members/{u.id}`; ele monta a lista local
+de membros do card com o objeto — como `UserBasic` não tem `email`/`role`, e o
+`Card.members` é `User[]`, verifique o que a UI do card realmente lê desses
+objetos (`:565` em diante) e ajuste o tipo de `Card.members` para `UserBasic[]`
+**apenas se** nada ler campos além de `id`/`name`/`initials`. Se algo ler mais,
+mantenha `User[]` e converta no `handleAddMember`. Reporte qual caminho tomou e
+por quê.
 
 - [ ] **Step 1: State e carregamento**
 
@@ -1347,7 +1382,7 @@ board (perto de `:1564-1571`):
 
 ```tsx
   const [boardMembers, setBoardMembers] = useState<BoardMemberOut[]>([]);
-  const [todosUsuarios, setTodosUsuarios] = useState<User[]>([]);
+  const [todosUsuarios, setTodosUsuarios] = useState<UserBasic[]>([]);
   const [erroMembro, setErroMembro] = useState<string | null>(null);
   const [salvandoMembro, setSalvandoMembro] = useState(false);
 ```
@@ -1358,7 +1393,7 @@ Carregar só quando o modal abre — não faz sentido buscar isso no load do qua
   useEffect(() => {
     if (!showEditBoard || !boardId) return;
     api.get<BoardMemberOut[]>(`/boards/${boardId}/members`).then(setBoardMembers).catch(() => {});
-    api.get<User[]>("/auth/users").then(setTodosUsuarios).catch(() => {});
+    api.get<UserBasic[]>("/auth/users/basic").then(setTodosUsuarios).catch(() => {});
   }, [showEditBoard, boardId]);
 ```
 
@@ -1445,8 +1480,9 @@ acrescentar **depois** do botão "Salvar alterações" (`:2136-2142`) e **antes*
                   </div>
 
                   {(() => {
+                    // O /auth/users/basic ja devolve so usuarios ativos, ordenados por nome.
                     const disponiveis = todosUsuarios.filter(
-                      u => u.is_active && !boardMembers.some(m => m.id === u.id)
+                      u => !boardMembers.some(m => m.id === u.id)
                     );
                     if (disponiveis.length === 0) {
                       return <p className="text-[11px] text-slate-500 italic">Todo mundo já está neste quadro.</p>;
