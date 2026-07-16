@@ -2300,7 +2300,8 @@ export function BoardPage() {
                         <p className="text-xs text-slate-200">
                           <strong className="font-semibold">{confirmandoRemocao.name}</strong> está em{" "}
                           {confirmandoRemocao.assigned_cards} card{confirmandoRemocao.assigned_cards !== 1 ? "s" : ""} deste quadro.
-                          Remover vai tirá-la deles e apagar os lembretes pessoais dela aqui.
+                          Remover do quadro também tira essa pessoa desses cards e apaga os lembretes
+                          pessoais que ela criou aqui.
                         </p>
                         <div className="flex gap-2">
                           <button
