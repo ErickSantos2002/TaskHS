@@ -19,6 +19,31 @@ export interface Board {
   created_at: string;
 }
 
+/** Pessoa vista pelos seletores e pelos avatares da listagem.
+ *  Vem de GET /auth/users/basic e de BoardListItem.members. */
+export interface UserBasic {
+  id: number;
+  name: string;
+  initials: string;
+}
+
+/** Membro de GET /boards/{id}/members — tem e-mail e papel no quadro, porque
+ *  esse endpoint está atrás da tranca de membresia. NÃO é o que vem na
+ *  listagem: lá os membros são `UserBasic`, sem e-mail, porque a listagem é
+ *  visível a todo mundo. */
+export interface BoardMemberOut extends UserBasic {
+  email: string;
+  board_role: "owner" | "admin" | "member" | "viewer";
+}
+
+/** Item de GET /boards. Tipo separado de `Board` porque só a listagem tem
+ *  can_open — assim nenhuma tela pode ler o cadeado onde ele não existe. */
+export interface BoardListItem extends Board {
+  can_open: boolean;
+  owner_name: string;
+  members: UserBasic[];
+}
+
 export interface BoardList {
   id: number;
   board_id: number;

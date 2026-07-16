@@ -12,7 +12,7 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment, Reminder, Automation } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
@@ -1544,6 +1544,7 @@ export function BoardPage() {
   const [lists, setLists] = useState<BoardList[]>([]);
   const [cardsByList, setCardsByList] = useState<Record<number, Card[]>>({});
   const [loading, setLoading] = useState(true);
+  const [semAcesso, setSemAcesso] = useState(false);
   const [addingList, setAddingList] = useState(false);
   const [search, setSearch] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | null>(null);
@@ -1614,6 +1615,10 @@ export function BoardPage() {
         ls.map(l => api.get<Card[]>(`/lists/${l.id}/cards`).then(cards => [l.id, cards] as [number, Card[]]))
       );
       setCardsByList(Object.fromEntries(entries));
+    }).catch(e => {
+      // 403 = não é membro. Sem este catch a rejeição fica solta no console e a
+      // tela diz "não encontrado", que é mentira.
+      if (e instanceof ApiError && e.status === 403) setSemAcesso(true);
     }).finally(() => setLoading(false));
   }, [boardId]);
 
@@ -1909,6 +1914,20 @@ export function BoardPage() {
   }
 
   if (loading) return <div className="flex flex-col flex-1 items-center justify-center"><ISpinner /></div>;
+
+  if (semAcesso) return (
+    <div className="flex flex-col flex-1 items-center justify-center gap-3 px-6 text-center">
+      <div className="w-12 h-12 rounded-xl bg-background-elevated border border-border flex items-center justify-center text-slate-500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </div>
+      <p className="text-slate-300 font-semibold">Você não é membro deste quadro</p>
+      <p className="text-sm text-slate-500 max-w-sm">Peça para o dono do quadro te adicionar como membro.</p>
+      <button onClick={() => navigate("/boards")} className="text-sm text-primary hover:underline mt-1">Voltar para os quadros</button>
+    </div>
+  );
 
   if (!board) return (
     <div className="flex flex-col flex-1 items-center justify-center gap-2">

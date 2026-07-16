@@ -1,5 +1,16 @@
 export const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
+/** Erro de API que preserva o status HTTP — sem isto não dá para distinguir
+ *  "não é membro" (403) de qualquer outra falha. */
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function authHeaders(): HeadersInit {
   const token = localStorage.getItem("taskhs-token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -23,7 +34,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Erro inesperado");
+    throw new ApiError(res.status, err.detail ?? "Erro inesperado");
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -44,7 +55,7 @@ export const api = {
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail ?? "Erro no upload");
+      throw new ApiError(res.status, err.detail ?? "Erro no upload");
     }
     return res.json();
   },
