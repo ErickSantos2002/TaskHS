@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
-import type { Board } from "../types";
+import type { BoardListItem } from "../types";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -100,16 +100,18 @@ export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [boards, setBoards] = useState<Board[]>([]);
+  const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get<Stats>("/boards/stats"),
-      api.get<Board[]>("/boards"),
+      api.get<BoardListItem[]>("/boards"),
     ]).then(([s, b]) => {
       setStats(s);
-      setBoards(b.slice(0, 6));
+      // /boards devolve todos os quadros da empresa (vitrine com cadeado é a
+      // /boards). Aqui é o painel pessoal: só os que a pessoa pode abrir.
+      setBoards(b.filter(board => board.can_open).slice(0, 6));
     }).finally(() => setLoading(false));
   }, []);
 

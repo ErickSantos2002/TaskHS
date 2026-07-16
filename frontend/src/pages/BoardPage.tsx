@@ -1616,9 +1616,11 @@ export function BoardPage() {
       );
       setCardsByList(Object.fromEntries(entries));
     }).catch(e => {
-      // 403 = não é membro. Sem este catch a rejeição fica solta no console e a
-      // tela diz "não encontrado", que é mentira.
+      // 403 = não é membro, tem tela própria. Qualquer outra falha (500, rede)
+      // cai na tela genérica — mas precisa deixar rastro, senão vira "o quadro
+      // sumiu" sem diagnóstico.
       if (e instanceof ApiError && e.status === 403) setSemAcesso(true);
+      else console.error("Falha ao carregar o quadro", e);
     }).finally(() => setLoading(false));
   }, [boardId]);
 

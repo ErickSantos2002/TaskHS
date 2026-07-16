@@ -409,17 +409,15 @@ function BoardCard({ board, starred, onToggleStar, onClick }: {
           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white/80" style={{ backgroundColor: `${board.color}30` }}>
             {trancado ? <ILock /> : <IBoard />}
           </div>
-          {!trancado && (
-            <button
-              onClick={onToggleStar}
-              className={cn(
-                "p-1 rounded-md transition-all duration-150",
-                starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
-              )}
-            >
-              <IStar filled={starred} />
-            </button>
-          )}
+          <button
+            onClick={onToggleStar}
+            className={cn(
+              "p-1 rounded-md transition-all duration-150",
+              starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
+            )}
+          >
+            <IStar filled={starred} />
+          </button>
         </div>
         <p className={cn(
           "font-semibold leading-snug mb-1 transition-colors",
@@ -482,17 +480,15 @@ function BoardRow({ board, starred, onToggleStar, onClick }: {
       <p className="text-xs text-slate-600 shrink-0 hidden sm:block">
         {new Date(board.created_at).toLocaleDateString("pt-BR")}
       </p>
-      {!trancado && (
-        <button
-          onClick={onToggleStar}
-          className={cn(
-            "p-1.5 rounded-md transition-all duration-150 shrink-0",
-            starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
-          )}
-        >
-          <IStar filled={starred} />
-        </button>
-      )}
+      <button
+        onClick={onToggleStar}
+        className={cn(
+          "p-1.5 rounded-md transition-all duration-150 shrink-0",
+          starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
+        )}
+      >
+        <IStar filled={starred} />
+      </button>
       <span className={cn("shrink-0 transition-colors", trancado ? "text-slate-700" : "text-slate-600 group-hover:text-primary")}>
         {trancado ? <ILock /> : <IArrow />}
       </span>
