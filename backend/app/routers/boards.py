@@ -421,16 +421,24 @@ async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(
     cards_do_quadro = (
         select(Card.id).join(List, List.id == Card.list_id).where(List.board_id == board_id)
     )
-    await db.execute(
-        sql_delete(CardMember).where(
+    # Via ORM (nao bulk delete): o audit.py captura exclusoes lendo session.deleted
+    # no before_flush, e bulk delete nao popula isso. Sem este laco, remover alguem
+    # que ocupa 12 cards gera UMA linha de log e as 12 atribuicoes somem sem rastro.
+    atribuicoes = (await db.execute(
+        select(CardMember).where(
             CardMember.user_id == user_id, CardMember.card_id.in_(cards_do_quadro)
         )
-    )
-    await db.execute(
-        sql_delete(Reminder).where(
+    )).scalars().all()
+    for cm in atribuicoes:
+        await db.delete(cm)
+
+    lembretes = (await db.execute(
+        select(Reminder).where(
             Reminder.user_id == user_id, Reminder.card_id.in_(cards_do_quadro)
         )
-    )
+    )).scalars().all()
+    for r in lembretes:
+        await db.delete(r)
 
     await db.delete(membro)
     await db.commit()
