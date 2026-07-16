@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.automation import Automation
-from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
+from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
@@ -304,15 +304,58 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
     }
 
 
+@router.get("/{board_id}/members", response_model=list[BoardMemberOut])
+async def list_members(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
+    await _get_board_or_404(board_id, db)
+    q = await db.execute(
+        select(BoardMember, User)
+        .join(User, User.id == BoardMember.user_id)
+        .where(BoardMember.board_id == board_id)
+        .order_by(User.name)
+    )
+    return [
+        {"id": u.id, "name": u.name, "email": u.email, "initials": u.initials, "board_role": bm.role}
+        for bm, u in q.all()
+    ]
+
+
 @router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED)
 async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
-    member = BoardMember(board_id=board.id, user_id=body.user_id, role=body.role)
-    db.add(member)
+
+    alvo = (await db.execute(select(User).where(User.id == body.user_id, User.is_active == True))).scalar_one_or_none()
+    if alvo is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    ja = (await db.execute(
+        select(BoardMember.id).where(BoardMember.board_id == board_id, BoardMember.user_id == body.user_id)
+    )).scalar_one_or_none()
+    if ja is not None:
+        raise HTTPException(status_code=409, detail="Essa pessoa já é membro do quadro")
+
+    db.add(BoardMember(board_id=board.id, user_id=body.user_id, role=body.role))
     await db.commit()
     return {"ok": True}
+
+
+@router.delete("/{board_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    board = await _get_board_or_404(board_id, db)
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    if user_id == board.owner_id:
+        raise HTTPException(status_code=400, detail="O dono do quadro não pode ser removido")
+
+    membro = (await db.execute(
+        select(BoardMember).where(BoardMember.board_id == board_id, BoardMember.user_id == user_id)
+    )).scalar_one_or_none()
+    if membro is None:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+
+    await db.delete(membro)
+    await db.commit()
 
 
 _TRELLO_COLORS = {

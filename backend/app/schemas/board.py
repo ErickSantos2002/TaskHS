@@ -29,3 +29,16 @@ class BoardOut(BaseModel):
 class BoardMemberAdd(BaseModel):
     user_id: int
     role: BoardRole = BoardRole.member
+
+
+class BoardMemberOut(BaseModel):
+    """Uma pessoa dentro de um quadro.
+
+    `id` é o id do USUÁRIO (não o da linha de board_members): é o que a API de
+    remoção recebe e o que o frontend usa como chave.
+    """
+    id: int
+    name: str
+    email: str
+    initials: str
+    board_role: BoardRole
