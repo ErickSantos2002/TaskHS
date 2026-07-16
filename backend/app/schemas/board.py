@@ -44,6 +44,18 @@ class BoardMemberOut(BaseModel):
     board_role: BoardRole
 
 
+class BoardMemberBriefOut(BaseModel):
+    """Membro como aparece na LISTAGEM de quadros, que todo mundo enxerga.
+
+    Enxuto de propósito, espelhando o UserBasicOut de /auth/users/basic: nome e
+    iniciais bastam para o avatar do cadeado. O e-mail fica só no
+    GET /boards/{id}/members, que está atrás da tranca de membresia.
+    """
+    id: int
+    name: str
+    initials: str
+
+
 class BoardListOut(BoardOut):
     """Item da listagem de quadros.
 
@@ -52,4 +64,4 @@ class BoardListOut(BoardOut):
     """
     can_open: bool
     owner_name: str
-    members: list[BoardMemberOut]
+    members: list[BoardMemberBriefOut]

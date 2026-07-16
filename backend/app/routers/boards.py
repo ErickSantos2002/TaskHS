@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.automation import Automation
-from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
+from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardMemberBriefOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
@@ -48,9 +48,8 @@ def _board_list_item(board: Board, user: User) -> dict:
         "can_open": user.is_elevated or user.id in ids_membros,
         "owner_name": board.owner.name,
         "members": [
-            {"id": m.user.id, "name": m.user.name, "email": m.user.email,
-             "initials": m.user.initials, "board_role": m.role}
-            for m in board.members
+            {"id": m.user.id, "name": m.user.name, "initials": m.user.initials}
+            for m in sorted(board.members, key=lambda m: m.user.name)
         ],
     }
 
@@ -75,8 +74,7 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
         "can_open": True,
         "owner_name": current_user.name,
         "members": [{
-            "id": current_user.id, "name": current_user.name, "email": current_user.email,
-            "initials": current_user.initials, "board_role": BoardRole.owner,
+            "id": current_user.id, "name": current_user.name, "initials": current_user.initials,
         }],
     }
 
