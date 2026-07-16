@@ -670,7 +670,10 @@ pode abrir.
 **Interfaces:**
 - Consumes: `BoardMemberOut` (Task 2).
 - Produces:
-  - `BoardListOut` = `BoardOut` + `can_open: bool` + `owner_name: str` + `members: list[BoardMemberOut]`
+  - `BoardListOut` = `BoardOut` + `can_open: bool` + `owner_name: str` + `members: list[BoardMemberBriefOut]`
+  - `BoardMemberBriefOut` = `{id, name, initials}` — **sem e-mail**: a listagem é
+    visível a todo mundo, então espelha o `UserBasicOut` de `/auth/users/basic`.
+    O e-mail fica só no `GET /boards/{id}/members`, atrás da tranca.
   - `GET /api/boards` → `list[BoardListOut]` (todos os quadros)
   - `POST /api/boards` → `BoardListOut` (era `BoardOut`)
 
@@ -690,7 +693,7 @@ class BoardListOut(BoardOut):
     """
     can_open: bool
     owner_name: str
-    members: list[BoardMemberOut]
+    members: list[BoardMemberBriefOut]
 ```
 
 - [ ] **Step 2: Helper de serialização + listagem aberta**
@@ -906,11 +909,20 @@ Em `frontend/src/types/index.ts`, acrescentar logo depois da interface `Board`
 (que termina na linha 20):
 
 ```ts
-export interface BoardMemberOut {
-  id: number;        // id do usuário (não da linha de board_members)
+/** Pessoa vista pelos seletores e pelos avatares da listagem.
+ *  Vem de GET /auth/users/basic e de BoardListItem.members. */
+export interface UserBasic {
+  id: number;
   name: string;
-  email: string;
   initials: string;
+}
+
+/** Membro de GET /boards/{id}/members — tem e-mail e papel no quadro, porque
+ *  esse endpoint está atrás da tranca de membresia. NÃO é o que vem na
+ *  listagem: lá os membros são `UserBasic`, sem e-mail, porque a listagem é
+ *  visível a todo mundo. */
+export interface BoardMemberOut extends UserBasic {
+  email: string;
   board_role: "owner" | "admin" | "member" | "viewer";
 }
 
@@ -919,7 +931,7 @@ export interface BoardMemberOut {
 export interface BoardListItem extends Board {
   can_open: boolean;
   owner_name: string;
-  members: BoardMemberOut[];
+  members: UserBasic[];
 }
 ```
 
@@ -937,7 +949,7 @@ const ILock = () => (
 );
 
 /** Avatares dos membros: mostra até 4 e resume o resto. */
-function MemberAvatars({ members }: { members: BoardMemberOut[] }) {
+function MemberAvatars({ members }: { members: UserBasic[] }) {
   if (members.length === 0) return null;
   const visiveis = members.slice(0, 4);
   const resto = members.length - visiveis.length;
@@ -965,7 +977,7 @@ function MemberAvatars({ members }: { members: BoardMemberOut[] }) {
 Trocar o import de tipos da linha **5** de `frontend/src/pages/BoardsPage.tsx`
 (hoje é `import type { Board } from "../types";`) **inteiro**:
 ```tsx
-import type { BoardListItem, BoardMemberOut } from "../types";
+import type { BoardListItem, UserBasic } from "../types";
 ```
 
 ⚠️ **`Board` sai do import.** Os 8 usos de `Board` neste arquivo (linhas 279,
