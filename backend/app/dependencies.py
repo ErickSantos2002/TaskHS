@@ -54,9 +54,9 @@ async def require_board_access_by_board_id(
         select(BoardMember.id).where(
             BoardMember.board_id == board_id,
             BoardMember.user_id == current_user.id,
-        )
+        ).limit(1)
     )
-    if q.scalar_one_or_none() is None:
+    if q.scalars().first() is None:
         raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
     return current_user
 
@@ -78,7 +78,8 @@ async def require_board_access_by_list_id(
         select(BoardMember.id)
         .join(ListModel, ListModel.board_id == BoardMember.board_id)
         .where(ListModel.id == list_id, BoardMember.user_id == current_user.id)
+        .limit(1)
     )
-    if q.scalar_one_or_none() is None:
+    if q.scalars().first() is None:
         raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
     return current_user
