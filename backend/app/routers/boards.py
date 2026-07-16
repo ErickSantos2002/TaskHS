@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.automation import Automation
-from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardMemberBriefOut, BoardListOut
+from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
