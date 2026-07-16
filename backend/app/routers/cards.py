@@ -127,17 +127,56 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
     # O destino vem no CORPO: a tranca do router so validou o list_id da URL.
     # Sem isto, um membro do quadro A move um card para o quadro B — e dispara as
     # automacoes de la — sem poder nem ler o B.
+    quadro_destino = None
     if "list_id" in data and data["list_id"] != card.list_id:
         await assert_board_access_by_list_id(data["list_id"], current_user, db)
         destino = (await db.execute(
-            select(List.id).where(List.id == data["list_id"]).limit(1)
-        )).scalars().first()
+            select(List).where(List.id == data["list_id"]).limit(1)
+        )).scalar_one_or_none()
         if destino is None:
             raise HTTPException(status_code=404, detail="Lista de destino não encontrada")
+        quadro_destino = destino.board_id
+
+    quadro_origem = (await db.execute(
+        select(List.board_id).where(List.id == card.list_id)
+    )).scalar_one_or_none()
+
     old_list_id = card.list_id
     for k, v in data.items():
         setattr(card, k, v)
     new_list_id = card.list_id
+
+    # Card movido para OUTRO quadro: os CardMember viajam junto com ele, entao
+    # gente do quadro de origem cairia num quadro de que nao e membro. Nem a
+    # validacao do add_card_member nem a limpeza do remove_member pegam este
+    # caminho — ele so existe aqui.
+    if quadro_destino is not None and quadro_destino != quadro_origem:
+        membros_do_destino = (
+            select(BoardMember.user_id).where(BoardMember.board_id == quadro_destino)
+        )
+        # CardMember e Reminder sao tipos auditados: exclusao tem que passar pelo ORM
+        # (await db.delete(obj)), nunca bulk delete — bulk delete nao popula
+        # session.deleted e o audit.py (event listener de before_flush) nao registra a
+        # exclusao. Ja aconteceu antes (remove_member em boards.py) e sumiu do log em
+        # silencio, entao aqui o laco e proposital, mesmo custando uma query a mais.
+        membros_fora = (await db.execute(
+            select(CardMember).where(
+                CardMember.card_id == card.id,
+                CardMember.user_id.notin_(membros_do_destino),
+            )
+        )).scalars().all()
+        for cm in membros_fora:
+            await db.delete(cm)
+
+        lembretes_fora = (await db.execute(
+            select(Reminder).where(
+                Reminder.card_id == card.id,
+                Reminder.user_id.notin_(membros_do_destino),
+            )
+        )).scalars().all()
+        for r in lembretes_fora:
+            await db.delete(r)
+
     if old_list_id != new_list_id:
         await run_card_moved_automations(db, card, old_list_id, new_list_id)
     await db.commit()
@@ -188,8 +227,16 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
     for lbl in _to_list(original.labels):
         db.add(CardLabel(card_id=new_card.id, label_id=lbl.label_id))
 
+    # Copiar para OUTRO quadro nao pode levar junto quem nao e membro de la — o
+    # assert_board_access_by_list_id acima valida quem COPIA, nao quem e copiado.
+    membros_do_destino = set((await db.execute(
+        select(BoardMember.user_id)
+        .join(List, List.board_id == BoardMember.board_id)
+        .where(List.id == target_list_id)
+    )).scalars().all())
     for m in _to_list(original.members):
-        db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
+        if m.user_id in membros_do_destino:
+            db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
 
     for cl in _to_list(original.checklists):
         new_cl = Checklist(card_id=new_card.id, title=cl.title)
