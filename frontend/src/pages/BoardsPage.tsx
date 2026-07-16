@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { api, API_BASE } from "../lib/api";
-import type { Board } from "../types";
+import type { BoardListItem, UserBasic } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
 
@@ -57,6 +57,37 @@ const IUpload = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
   </svg>
 );
+const ILock = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+/** Avatares dos membros: mostra até 4 e resume o resto. */
+function MemberAvatars({ members }: { members: UserBasic[] }) {
+  if (members.length === 0) return null;
+  const visiveis = members.slice(0, 4);
+  const resto = members.length - visiveis.length;
+  return (
+    <div className="flex items-center -space-x-1.5">
+      {visiveis.map(m => (
+        <div
+          key={m.id}
+          title={m.name}
+          className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300"
+        >
+          {m.initials}
+        </div>
+      ))}
+      {resto > 0 && (
+        <div className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-400">
+          +{resto}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Board colors ───────────────────────────────────────────────
 
@@ -276,7 +307,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
 // ── Create Board Modal ─────────────────────────────────────────
 
-function CreateBoardModal({ onClose, onCreated }: { onClose: () => void; onCreated: (b: Board) => void }) {
+function CreateBoardModal({ onClose, onCreated }: { onClose: () => void; onCreated: (b: BoardListItem) => void }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(COLORS[0]);
@@ -289,7 +320,7 @@ function CreateBoardModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setLoading(true);
     setError("");
     try {
-      const board = await api.post<Board>("/boards", { title: title.trim(), description: description.trim() || null, color });
+      const board = await api.post<BoardListItem>("/boards", { title: title.trim(), description: description.trim() || null, color });
       onCreated(board);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao criar board");
@@ -353,46 +384,56 @@ function CreateBoardModal({ onClose, onCreated }: { onClose: () => void; onCreat
 // ── BoardCard (grid) ───────────────────────────────────────────
 
 function BoardCard({ board, starred, onToggleStar, onClick }: {
-  board: Board;
+  board: BoardListItem;
   starred: boolean;
   onToggleStar: (e: React.MouseEvent) => void;
   onClick: () => void;
 }) {
+  const trancado = !board.can_open;
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={e => e.key === "Enter" && onClick()}
-      className="group cursor-pointer text-left rounded-xl bg-background-surface border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200 overflow-hidden"
+      className={cn(
+        "group text-left rounded-xl bg-background-surface border border-border transition-all duration-200 overflow-hidden",
+        trancado
+          ? "cursor-not-allowed opacity-60 hover:opacity-80 hover:border-border"
+          : "cursor-pointer hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5",
+      )}
     >
       <div className="h-2" style={{ backgroundColor: board.color }} />
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white/80" style={{ backgroundColor: `${board.color}30` }}>
-            <IBoard />
+            {trancado ? <ILock /> : <IBoard />}
           </div>
           <button
             onClick={onToggleStar}
             className={cn(
               "p-1 rounded-md transition-all duration-150",
-              starred
-                ? "text-warning opacity-100"
-                : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
+              starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
             )}
           >
             <IStar filled={starred} />
           </button>
         </div>
-        <p className="font-semibold text-slate-100 group-hover:text-primary transition-colors leading-snug mb-1">
+        <p className={cn(
+          "font-semibold leading-snug mb-1 transition-colors",
+          trancado ? "text-slate-400" : "text-slate-100 group-hover:text-primary",
+        )}>
           {board.title}
         </p>
         {board.description && (
           <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{board.description}</p>
         )}
-        <p className="text-[11px] text-slate-600 mt-3">
-          {new Date(board.created_at).toLocaleDateString("pt-BR")}
-        </p>
+        <div className="flex items-center justify-between gap-2 mt-3">
+          <MemberAvatars members={board.members} />
+          <p className="text-[11px] text-slate-600 shrink-0">
+            {new Date(board.created_at).toLocaleDateString("pt-BR")}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -401,29 +442,41 @@ function BoardCard({ board, starred, onToggleStar, onClick }: {
 // ── BoardRow (list) ────────────────────────────────────────────
 
 function BoardRow({ board, starred, onToggleStar, onClick }: {
-  board: Board;
+  board: BoardListItem;
   starred: boolean;
   onToggleStar: (e: React.MouseEvent) => void;
   onClick: () => void;
 }) {
+  const trancado = !board.can_open;
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={e => e.key === "Enter" && onClick()}
-      className="group cursor-pointer w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-background-surface border border-border hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 transition-all duration-200 text-left"
+      className={cn(
+        "group w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-background-surface border border-border transition-all duration-200 text-left",
+        trancado
+          ? "cursor-not-allowed opacity-60 hover:opacity-80"
+          : "cursor-pointer hover:border-primary/40 hover:shadow-md hover:shadow-primary/5",
+      )}
     >
       <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: board.color }} />
       <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-white/70" style={{ backgroundColor: `${board.color}30` }}>
-        <IBoard />
+        {trancado ? <ILock /> : <IBoard />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm text-slate-100 group-hover:text-primary transition-colors truncate">{board.title}</p>
+        <p className={cn(
+          "font-semibold text-sm truncate transition-colors",
+          trancado ? "text-slate-400" : "text-slate-100 group-hover:text-primary",
+        )}>
+          {board.title}
+        </p>
         {board.description && (
           <p className="text-xs text-slate-500 truncate mt-0.5">{board.description}</p>
         )}
       </div>
+      <div className="shrink-0 hidden md:block"><MemberAvatars members={board.members} /></div>
       <p className="text-xs text-slate-600 shrink-0 hidden sm:block">
         {new Date(board.created_at).toLocaleDateString("pt-BR")}
       </p>
@@ -431,15 +484,13 @@ function BoardRow({ board, starred, onToggleStar, onClick }: {
         onClick={onToggleStar}
         className={cn(
           "p-1.5 rounded-md transition-all duration-150 shrink-0",
-          starred
-            ? "text-warning opacity-100"
-            : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
+          starred ? "text-warning opacity-100" : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-warning",
         )}
       >
         <IStar filled={starred} />
       </button>
-      <span className="text-slate-600 group-hover:text-primary transition-colors shrink-0">
-        <IArrow />
+      <span className={cn("shrink-0 transition-colors", trancado ? "text-slate-700" : "text-slate-600 group-hover:text-primary")}>
+        {trancado ? <ILock /> : <IArrow />}
       </span>
     </div>
   );
@@ -457,10 +508,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function BoardsPage() {
   const navigate = useNavigate();
-  const [boards, setBoards] = useState<Board[]>([]);
+  const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("date-desc");
@@ -470,12 +522,18 @@ export function BoardsPage() {
   const [favorites, setFavorites] = useState<number[]>(loadFavorites);
 
   useEffect(() => {
-    api.get<Board[]>("/boards")
+    api.get<BoardListItem[]>("/boards")
       .then(setBoards)
       .finally(() => setLoading(false));
   }, []);
 
-  function handleCreated(board: Board) {
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 5000);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
+  function handleCreated(board: BoardListItem) {
     setBoards(prev => [board, ...prev]);
     setShowModal(false);
     navigate(`/boards/${board.id}`);
@@ -514,7 +572,17 @@ export function BoardsPage() {
   const gridClass = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4";
   const listClass = "flex flex-col gap-2";
 
-  function renderBoard(board: Board) {
+  /** Quadro trancado não navega: avisa com quem falar. O 403 do backend é a
+   *  barreira de verdade — isto aqui é só a cortesia. */
+  function abrirBoard(board: BoardListItem) {
+    if (board.can_open) {
+      navigate(`/boards/${board.id}`);
+      return;
+    }
+    setAviso(`Você não é membro deste quadro. Fale com ${board.owner_name} para pedir acesso.`);
+  }
+
+  function renderBoard(board: BoardListItem) {
     const starred = favorites.includes(board.id);
     return view === "grid" ? (
       <BoardCard
@@ -522,7 +590,7 @@ export function BoardsPage() {
         board={board}
         starred={starred}
         onToggleStar={e => toggleStar(e, board.id)}
-        onClick={() => navigate(`/boards/${board.id}`)}
+        onClick={() => abrirBoard(board)}
       />
     ) : (
       <BoardRow
@@ -530,13 +598,20 @@ export function BoardsPage() {
         board={board}
         starred={starred}
         onToggleStar={e => toggleStar(e, board.id)}
-        onClick={() => navigate(`/boards/${board.id}`)}
+        onClick={() => abrirBoard(board)}
       />
     );
   }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {aviso && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-border bg-background-elevated px-4 py-3 shadow-2xl">
+          <span className="text-slate-400 shrink-0"><ILock /></span>
+          <p className="text-sm text-slate-200">{aviso}</p>
+          <button onClick={() => setAviso(null)} className="ml-2 text-xs text-slate-500 hover:text-slate-300 shrink-0">Fechar</button>
+        </div>
+      )}
       {/* ── Topbar ── */}
       <div className="shrink-0 px-4 md:px-6 pt-4 md:pt-6 pb-4">
         <div className="rounded-2xl border border-border/40 bg-background-surface px-5 py-4 space-y-4">

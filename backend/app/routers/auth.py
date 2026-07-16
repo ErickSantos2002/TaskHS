@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -75,6 +76,26 @@ async def me(current_user: User = Depends(get_current_user)):
 @router.get("/users", response_model=list[UserOut])
 async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(User).order_by(User.name))
+    return result.scalars().all()
+
+
+class UserBasicOut(BaseModel):
+    """Lista de pessoas para os seletores (membros de card, membros de quadro).
+
+    Enxuta de propósito: só o necessário para escolher alguém. O /auth/users
+    continua restrito a administrador/coordenador porque devolve dados de
+    gestão (papel, ativo, data de criação).
+    """
+    id: int
+    name: str
+    initials: str
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/users/basic", response_model=list[UserBasicOut])
+async def list_users_basic(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(User).where(User.is_active == True).order_by(User.name))
     return result.scalars().all()
 
 

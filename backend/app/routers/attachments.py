@@ -9,9 +9,10 @@ from app.core.config import settings
 from app.models.card import Card, CardAttachment
 from app.models.user import User
 from app.schemas.card import AttachmentOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_list_id
 
-router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"])
+router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"],
+                   dependencies=[Depends(require_board_access_by_list_id)])
 
 ALLOWED_TYPES: dict[str, str] = {
     "application/pdf": ".pdf",
@@ -89,6 +90,7 @@ async def download_attachment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(
         select(CardAttachment).where(CardAttachment.id == attachment_id, CardAttachment.card_id == card_id)
     )
@@ -111,6 +113,7 @@ async def delete_attachment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(
         select(CardAttachment).where(CardAttachment.id == attachment_id, CardAttachment.card_id == card_id)
     )

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, delete as sql_delete
+from sqlalchemy.exc import IntegrityError
 from datetime import date as _date
 from sqlalchemy.orm import selectinload
 from app.database import get_db, AsyncSessionLocal
@@ -12,10 +13,10 @@ from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.automation import Automation
-from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
+from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_board_id
 import json as _json
 from datetime import datetime as _dt
 from app.models.audit import AuditLog
@@ -32,7 +33,28 @@ async def _get_board_or_404(board_id: int, db: AsyncSession) -> Board:
     return board
 
 
-@router.post("", response_model=BoardOut, status_code=status.HTTP_201_CREATED)
+def _board_list_item(board: Board, user: User) -> dict:
+    """Monta o item da listagem. `can_open` sai daqui — do backend, mesma regra
+    da tranca em dependencies.py. Se o frontend recalculasse, cadeado e tranca
+    poderiam divergir e a tela mentiria."""
+    ids_membros = {m.user_id for m in board.members}
+    return {
+        "id": board.id,
+        "title": board.title,
+        "description": board.description,
+        "color": board.color,
+        "owner_id": board.owner_id,
+        "created_at": board.created_at,
+        "can_open": user.is_elevated or user.id in ids_membros,
+        "owner_name": board.owner.name,
+        "members": [
+            {"id": m.user.id, "name": m.user.name, "initials": m.user.initials}
+            for m in sorted(board.members, key=lambda m: m.user.name)
+        ],
+    }
+
+
+@router.post("", response_model=BoardListOut, status_code=status.HTTP_201_CREATED)
 async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = Board(**body.model_dump(), owner_id=current_user.id)
     db.add(board)
@@ -40,18 +62,36 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
     db.add(BoardMember(board_id=board.id, user_id=current_user.id, role=BoardRole.owner))
     await db.commit()
     await db.refresh(board)
-    return board
+    # Devolve BoardListOut para a listagem do frontend não precisar inventar os
+    # campos ao inserir o quadro recém-criado. Quem cria é dono e único membro.
+    return {
+        "id": board.id,
+        "title": board.title,
+        "description": board.description,
+        "color": board.color,
+        "owner_id": board.owner_id,
+        "created_at": board.created_at,
+        "can_open": True,
+        "owner_name": current_user.name,
+        "members": [{
+            "id": current_user.id, "name": current_user.name, "initials": current_user.initials,
+        }],
+    }
 
 
-@router.get("", response_model=list[BoardOut])
+@router.get("", response_model=list[BoardListOut])
 async def list_boards(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Todos os quadros da empresa. Quem não é membro recebe can_open=False e
+    não passa da tranca se tentar abrir — ver dependencies.py."""
     result = await db.execute(
         select(Board)
-        .join(BoardMember, BoardMember.board_id == Board.id)
-        .where(BoardMember.user_id == current_user.id)
+        .options(
+            selectinload(Board.members).selectinload(BoardMember.user),
+            selectinload(Board.owner),
+        )
         .order_by(Board.created_at.desc())
     )
-    return result.scalars().all()
+    return [_board_list_item(b, current_user) for b in result.scalars().all()]
 
 
 @router.get("/stats")
@@ -228,7 +268,7 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 
 
 @router.get("/{board_id}", response_model=BoardOut)
-async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     return await _get_board_or_404(board_id, db)
 
 
@@ -264,7 +304,7 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
 
 
 @router.get("/{board_id}/archived")
-async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     await _get_board_or_404(board_id, db)
 
     lists_result = await db.execute(
@@ -304,13 +344,65 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
     }
 
 
+@router.get("/{board_id}/members", response_model=list[BoardMemberOut])
+async def list_members(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
+    await _get_board_or_404(board_id, db)
+    q = await db.execute(
+        select(BoardMember, User)
+        .join(User, User.id == BoardMember.user_id)
+        .where(BoardMember.board_id == board_id)
+        .order_by(User.name)
+    )
+    return [
+        {"id": u.id, "name": u.name, "email": u.email, "initials": u.initials, "board_role": bm.role}
+        for bm, u in q.all()
+    ]
+
+
 @router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED)
 async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
-    member = BoardMember(board_id=board.id, user_id=body.user_id, role=body.role)
-    db.add(member)
-    await db.commit()
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+
+    if body.role == BoardRole.owner:
+        raise HTTPException(status_code=400, detail="O dono do quadro é definido na criação e não pode ser atribuído aqui")
+
+    alvo = (await db.execute(select(User).where(User.id == body.user_id, User.is_active == True))).scalar_one_or_none()
+    if alvo is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    ja = (await db.execute(
+        select(BoardMember.id).where(BoardMember.board_id == board_id, BoardMember.user_id == body.user_id)
+    )).scalar_one_or_none()
+    if ja is not None:
+        raise HTTPException(status_code=409, detail="Essa pessoa já é membro do quadro")
+
+    db.add(BoardMember(board_id=board.id, user_id=body.user_id, role=body.role))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Essa pessoa já é membro do quadro")
     return {"ok": True}
+
+
+@router.delete("/{board_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    board = await _get_board_or_404(board_id, db)
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    if user_id == board.owner_id:
+        raise HTTPException(status_code=400, detail="O dono do quadro não pode ser removido")
+
+    membro = (await db.execute(
+        select(BoardMember).where(BoardMember.board_id == board_id, BoardMember.user_id == user_id)
+    )).scalar_one_or_none()
+    if membro is None:
+        raise HTTPException(status_code=404, detail="Membro não encontrado")
+
+    await db.delete(membro)
+    await db.commit()
 
 
 _TRELLO_COLORS = {

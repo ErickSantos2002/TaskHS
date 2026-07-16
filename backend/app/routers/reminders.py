@@ -6,9 +6,10 @@ from app.models.card import Card
 from app.models.reminder import Reminder
 from app.models.user import User
 from app.schemas.reminder import ReminderCreate, ReminderOut
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_list_id
 
-router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/reminders", tags=["reminders"])
+router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/reminders", tags=["reminders"],
+                   dependencies=[Depends(require_board_access_by_list_id)])
 
 
 async def _get_card_or_404(card_id: int, list_id: int, db: AsyncSession) -> Card:

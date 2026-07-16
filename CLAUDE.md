@@ -39,7 +39,13 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
 - **URL da API no frontend:** vem de `import.meta.env.VITE_API_URL` (default `http://localhost:8000/api`), centralizada em `API_BASE` ([lib/api.ts](frontend/src/lib/api.ts)) e reusada no import SSE de [BoardsPage.tsx](frontend/src/pages/BoardsPage.tsx). Em produção, setar `VITE_API_URL` no build.
 - **CORS** vem da env `CORS_ORIGINS` (lista separada por vírgula; default localhost:5173/4173) em [main.py](backend/app/main.py)/[config.py](backend/app/core/config.py). **Em produção, incluir o domínio do frontend** ou o navegador bloqueia tudo.
 - **Token JWT dura 8h** (`ACCESS_TOKEN_EXPIRE_MINUTES=480`, default no config). O frontend faz **auto-logout → /login** em qualquer `401` (no `api.ts`) e checa o `exp` do token no load do `AuthContext`.
-- **Autorização é mínima:** quase todo endpoint exige apenas `get_current_user`, **sem checar membership do board**. Exceções: `update_board`/`delete_board` (dono/admin), rotas admin (`get_admin_user`, exige `is_admin`), delete de anexo (autor/admin), delete de lembrete (dono). Não assuma membership validado upstream.
+- **Autorização por membresia (desde v1.4.0):** a tranca é aplicada **no nível do router** — `dependencies=[Depends(...)]` no `APIRouter(...)` — em `lists`, `labels`, `automations` (via `require_board_access_by_board_id`) e `cards`, `attachments`, `reminders` (via `require_board_access_by_list_id`), ambas em [dependencies.py](backend/app/dependencies.py). **Endpoint novo nesses routers já nasce trancado; não replicar a checagem dentro dele.** A regra, definida num lugar só (`user_can_access_list`): elevado (administrador/coordenador) entra em qualquer quadro; senão exige linha em `board_members`; senão 403.
+  - Em [boards.py](backend/app/routers/boards.py) o gate vai **por endpoint**, porque o router `/boards` tem rotas sem `board_id` (`GET`/`POST /boards`, `/stats`, `/import`).
+  - **Cuidado com o destino no corpo:** o gate de router só valida o que está na **URL**. Endpoint que receba `list_id`/`target_list_id` no **corpo** precisa chamar `assert_board_access_by_list_id(destino, user, db)` à mão (ver `update_card`/`copy_card`) — senão dá para escrever em quadro alheio. E endpoint que aja sobre algo pendurado no card (anexo, checklist, item, etiqueta) precisa de `_get_card_or_404(card_id, list_id, db)` na primeira linha, para amarrar o card à lista que o gate validou.
+  - Nas checagens de destino, **acesso vem antes de existência** (403 antes de 404): invertido, um não-membro distinguiria "não existe" de "é de outro quadro" e enumeraria.
+  - Gestão de membros (`add_member`/`remove_member`) e `update_board`/`delete_board` exigem **dono ou elevado**. Rotas admin usam `get_admin_user`/`get_elevated_user`. Delete de anexo exige autor/admin; delete de lembrete, o dono.
+  - O router `integration` fica fora disso — usa `X-API-Key` e não tem usuário.
+- **`GET /api/auth/users` é elevado-only** (devolve papel, e-mail, `is_active` — dados de gestão). Para **seletor de pessoas**, use **`GET /api/auth/users/basic`** (`{id, name, initials}`, qualquer autenticado). Usar o `/auth/users` num seletor quebra a tela para os membros comuns — já aconteceu.
 
 ## Changelog / versionamento (OBRIGATÓRIO)
 
@@ -51,7 +57,7 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 
 **Routers (prefixos aninhados, todos sob `/api`):**
 - `auth` → `/api/auth` (register, login, me, CRUD de usuários admin)
-- `boards` → `/api/boards` (inclui `/import` SSE e `/stats`)
+- `boards` → `/api/boards` (inclui `/import` SSE, `/stats` e os membros do quadro: `GET`/`POST /{id}/members`, `DELETE /{id}/members/{user_id}`). `GET /api/boards` lista **todos** os quadros da empresa, cada um com `can_open`, `owner_name` e `members` (schema `BoardListOut`; os membros aí são enxutos — `BoardMemberBriefOut`, sem e-mail, porque a listagem é visível a todo mundo). `GET /api/boards/{id}` devolve o `BoardOut` puro. `/stats` conta **só** os quadros de que a pessoa é membro, de propósito: é o painel pessoal — não "consertar" para bater com a listagem.
 - `lists` → `/api/boards/{board_id}/lists`
 - `cards` → `/api/lists/{list_id}/cards` (comentários, membros, labels, checklists)
 - `labels` → `/api/boards/{board_id}/labels`

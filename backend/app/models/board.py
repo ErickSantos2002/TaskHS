@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SAEnum
+from sqlalchemy import String, ForeignKey, DateTime, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -42,6 +42,9 @@ class BoardLabel(Base):
 
 class BoardMember(Base):
     __tablename__ = "board_members"
+    __table_args__ = (
+        UniqueConstraint("board_id", "user_id", name="board_members_board_user_uniq"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     board_id: Mapped[int] = mapped_column(ForeignKey("boards.id"))

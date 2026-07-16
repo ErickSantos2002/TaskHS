@@ -12,8 +12,8 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
-import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, User, Checklist, ChecklistItem, Attachment, Reminder, Automation } from "../types";
+import { api, ApiError } from "../lib/api";
+import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -144,13 +144,13 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description ?? "");
   const [labels, setLabels] = useState<Label[]>(card.labels);
-  const [members, setMembers] = useState<User[]>(card.members);
+  const [members, setMembers] = useState<UserBasic[]>(card.members);
   const [comments, setComments] = useState<Comment[]>(card.comments);
   const [commentBody, setCommentBody] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -284,7 +284,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
 
   useEffect(() => {
     if (showMemberPicker && allUsers.length === 0) {
-      api.get<User[]>("/auth/users").then(setAllUsers).catch(() => {});
+      api.get<UserBasic[]>("/auth/users/basic").then(setAllUsers).catch(() => {});
     }
   }, [showMemberPicker]);
 
@@ -339,7 +339,7 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
     } catch {}
   }
 
-  async function handleAddMember(user: User) {
+  async function handleAddMember(user: UserBasic) {
     try {
       await api.post(`/lists/${card.list_id}/cards/${card.id}/members/${user.id}`, {});
       const updated = [...members, user];
@@ -588,7 +588,6 @@ function CardDetailModal({ card, listTitle, lists, boardLabels, currentUser, onC
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-slate-200 truncate">{u.name}</p>
-                            <p className="text-[10px] text-slate-500 truncate">{u.email}</p>
                           </div>
                         </button>
                       ))}
@@ -1544,6 +1543,7 @@ export function BoardPage() {
   const [lists, setLists] = useState<BoardList[]>([]);
   const [cardsByList, setCardsByList] = useState<Record<number, Card[]>>({});
   const [loading, setLoading] = useState(true);
+  const [semAcesso, setSemAcesso] = useState(false);
   const [addingList, setAddingList] = useState(false);
   const [search, setSearch] = useState("");
   const [filterPriority, setFilterPriority] = useState<Priority | null>(null);
@@ -1569,6 +1569,12 @@ export function BoardPage() {
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
   const [deletingBoard, setDeletingBoard] = useState(false);
+  const [boardMembers, setBoardMembers] = useState<BoardMemberOut[]>([]);
+  const [todosUsuarios, setTodosUsuarios] = useState<UserBasic[]>([]);
+  const [membrosLoading, setMembrosLoading] = useState(false);
+  const [membrosFalhou, setMembrosFalhou] = useState(false);
+  const [erroMembro, setErroMembro] = useState<string | null>(null);
+  const [mutandoMembro, setMutandoMembro] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -1614,8 +1620,35 @@ export function BoardPage() {
         ls.map(l => api.get<Card[]>(`/lists/${l.id}/cards`).then(cards => [l.id, cards] as [number, Card[]]))
       );
       setCardsByList(Object.fromEntries(entries));
+    }).catch(e => {
+      // 403 = não é membro, tem tela própria. Qualquer outra falha (500, rede)
+      // cai na tela genérica — mas precisa deixar rastro, senão vira "o quadro
+      // sumiu" sem diagnóstico.
+      if (e instanceof ApiError && e.status === 403) setSemAcesso(true);
+      else console.error("Falha ao carregar o quadro", e);
     }).finally(() => setLoading(false));
   }, [boardId]);
+
+  useEffect(() => {
+    if (!showEditBoard || !boardId) return;
+    setMembrosLoading(true);
+    setMembrosFalhou(false);
+    setErroMembro(null);
+    // Os dois juntos de propósito: com só um deles, a tela ofereceria adicionar
+    // quem já é membro — e o backend recusaria com 409.
+    Promise.all([
+      api.get<BoardMemberOut[]>(`/boards/${boardId}/members`),
+      api.get<UserBasic[]>("/auth/users/basic"),
+    ]).then(([ms, us]) => {
+      setBoardMembers(ms);
+      setTodosUsuarios(us);
+    }).catch(e => {
+      console.error("Falha ao carregar os membros do quadro", e);
+      setBoardMembers([]);
+      setTodosUsuarios([]);
+      setMembrosFalhou(true);
+    }).finally(() => setMembrosLoading(false));
+  }, [showEditBoard, boardId]);
 
   // Deep link: /boards/:id?card=<id> abre o card já aberto (usado pelos links da página de Logs).
   useEffect(() => {
@@ -1771,6 +1804,12 @@ export function BoardPage() {
     setEditBoardDescription(board.description ?? "");
     setEditBoardColor(board.color);
     setConfirmDeleteBoard(false);
+    // Não depender só do efeito de carregamento: zera erro e a lista de membros
+    // (que pode ser de OUTRO quadro, com e-mails) antes mesmo do refetch rodar.
+    setErroMembro(null);
+    setBoardMembers([]);
+    setTodosUsuarios([]);
+    setMembrosFalhou(false);
     setShowEditBoard(true);
   }
 
@@ -1797,6 +1836,41 @@ export function BoardPage() {
       navigate("/boards");
     } catch {} finally {
       setDeletingBoard(false);
+    }
+  }
+
+  async function handleAddBoardMember(userId: number) {
+    setMutandoMembro(true);
+    setErroMembro(null);
+    try {
+      await api.post(`/boards/${boardId}/members`, { user_id: userId, role: "member" });
+    } catch (e) {
+      setErroMembro(e instanceof ApiError ? e.message : "Não foi possível adicionar.");
+      setMutandoMembro(false);
+      return;
+    }
+    // A partir daqui a pessoa JÁ foi adicionada — se o refetch falhar, a mensagem
+    // não pode dizer que a adição falhou.
+    try {
+      setBoardMembers(await api.get<BoardMemberOut[]>(`/boards/${boardId}/members`));
+    } catch (e) {
+      console.error("Falha ao recarregar os membros", e);
+      setErroMembro("Membro adicionado, mas a lista não recarregou. Reabra as configurações.");
+    } finally {
+      setMutandoMembro(false);
+    }
+  }
+
+  async function handleRemoveBoardMember(userId: number) {
+    setMutandoMembro(true);
+    setErroMembro(null);
+    try {
+      await api.del(`/boards/${boardId}/members/${userId}`);
+      setBoardMembers(prev => prev.filter(m => m.id !== userId));
+    } catch (e) {
+      setErroMembro(e instanceof ApiError ? e.message : "Não foi possível remover.");
+    } finally {
+      setMutandoMembro(false);
     }
   }
 
@@ -1909,6 +1983,20 @@ export function BoardPage() {
   }
 
   if (loading) return <div className="flex flex-col flex-1 items-center justify-center"><ISpinner /></div>;
+
+  if (semAcesso) return (
+    <div className="flex flex-col flex-1 items-center justify-center gap-3 px-6 text-center">
+      <div className="w-12 h-12 rounded-xl bg-background-elevated border border-border flex items-center justify-center text-slate-500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </div>
+      <p className="text-slate-300 font-semibold">Você não é membro deste quadro</p>
+      <p className="text-sm text-slate-500 max-w-sm">Peça para o dono do quadro te adicionar como membro.</p>
+      <button onClick={() => navigate("/boards")} className="text-sm text-primary hover:underline mt-1">Voltar para os quadros</button>
+    </div>
+  );
 
   if (!board) return (
     <div className="flex flex-col flex-1 items-center justify-center gap-2">
@@ -2140,6 +2228,82 @@ export function BoardPage() {
               >
                 {savingBoard ? "Salvando…" : "Salvar alterações"}
               </button>
+
+              {/* ── Membros do quadro ── */}
+              <div className="pt-4 border-t border-border space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400">Membros do quadro</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Só os membros abrem este quadro. Administradores e coordenadores entram em todos.
+                  </p>
+                </div>
+
+                {membrosLoading ? (
+                  <p className="text-xs text-slate-500">Carregando…</p>
+                ) : membrosFalhou ? (
+                  <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+                    Não foi possível carregar os membros do quadro. Feche e reabra as configurações para tentar de novo.
+                  </p>
+                ) : (
+                  <>
+                    {erroMembro && (
+                      <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{erroMembro}</p>
+                    )}
+
+                    <div className="space-y-1.5">
+                      {boardMembers.map(m => {
+                        const ehDono = m.board_role === "owner";
+                        return (
+                          <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-background-elevated px-3 py-2">
+                            <div className="w-7 h-7 rounded-full bg-background-surface border border-border flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0">
+                              {m.initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-200 truncate">{m.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">{m.email}</p>
+                            </div>
+                            {ehDono ? (
+                              <span className="text-[10px] font-semibold text-slate-500 shrink-0">dono</span>
+                            ) : (
+                              <button
+                                onClick={() => handleRemoveBoardMember(m.id)}
+                                disabled={mutandoMembro}
+                                title={`Remover ${m.name}`}
+                                className="p-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+                              >
+                                <IX />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(() => {
+                      // O /auth/users/basic ja devolve so usuarios ativos, ordenados por nome.
+                      const disponiveis = todosUsuarios.filter(
+                        u => !boardMembers.some(m => m.id === u.id)
+                      );
+                      if (disponiveis.length === 0) {
+                        return <p className="text-[11px] text-slate-500 italic">Todo mundo já está neste quadro.</p>;
+                      }
+                      return (
+                        <select
+                          value=""
+                          disabled={mutandoMembro}
+                          onChange={e => { if (e.target.value) handleAddBoardMember(Number(e.target.value)); }}
+                          className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                        >
+                          <option value="">{mutandoMembro ? "Aguarde…" : "Adicionar membro…"}</option>
+                          {disponiveis.map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
             </div>
             <div className="border-t border-border p-5 shrink-0">
               <p className="text-xs font-semibold text-slate-400 mb-3">Zona de perigo</p>

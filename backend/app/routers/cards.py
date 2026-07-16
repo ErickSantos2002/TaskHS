@@ -14,7 +14,7 @@ from app.schemas.card import (
     CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut,
     ChecklistCreate, ChecklistOut, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemOut,
 )
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
 from app.automations import run_card_moved_automations
 
 
@@ -22,7 +22,8 @@ class CardCopyBody(BaseModel):
     title: str | None = None
     target_list_id: int | None = None
 
-router = APIRouter(prefix="/lists/{list_id}/cards", tags=["cards"])
+router = APIRouter(prefix="/lists/{list_id}/cards", tags=["cards"],
+                   dependencies=[Depends(require_board_access_by_list_id)])
 
 
 def _card_options():
@@ -122,6 +123,16 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
     if not card:
         raise HTTPException(status_code=404, detail="Card não encontrado")
     data = body.model_dump(exclude_none=True)
+    # O destino vem no CORPO: a tranca do router so validou o list_id da URL.
+    # Sem isto, um membro do quadro A move um card para o quadro B — e dispara as
+    # automacoes de la — sem poder nem ler o B.
+    if "list_id" in data and data["list_id"] != card.list_id:
+        await assert_board_access_by_list_id(data["list_id"], current_user, db)
+        destino = (await db.execute(
+            select(List.id).where(List.id == data["list_id"]).limit(1)
+        )).scalars().first()
+        if destino is None:
+            raise HTTPException(status_code=404, detail="Lista de destino não encontrada")
     old_list_id = card.list_id
     for k, v in data.items():
         setattr(card, k, v)
@@ -149,6 +160,14 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
         body = CardCopyBody()
     original = await _get_card_or_404(card_id, list_id, db)
     target_list_id = body.target_list_id or list_id
+    if target_list_id != list_id:
+        # Mesmo buraco do update_card: destino no corpo, gate so na URL.
+        await assert_board_access_by_list_id(target_list_id, current_user, db)
+        destino = (await db.execute(
+            select(List.id).where(List.id == target_list_id).limit(1)
+        )).scalars().first()
+        if destino is None:
+            raise HTTPException(status_code=404, detail="Lista de destino não encontrada")
     title = body.title or original.title
 
     last = await db.execute(select(Card.position).where(Card.list_id == target_list_id).order_by(Card.position.desc()).limit(1))
@@ -166,7 +185,7 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
     await db.flush()
 
     for lbl in _to_list(original.labels):
-        db.add(CardLabel(card_id=new_card.id, label=lbl.label, color=lbl.color))
+        db.add(CardLabel(card_id=new_card.id, label_id=lbl.label_id))
 
     for m in _to_list(original.members):
         db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
@@ -250,6 +269,7 @@ async def add_card_member(list_id: int, card_id: int, user_id: int, db: AsyncSes
 
 @router.delete("/{card_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_card_member(list_id: int, card_id: int, user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(select(CardMember).where(CardMember.card_id == card_id, CardMember.user_id == user_id))
     member = result.scalar_one_or_none()
     if member:
@@ -264,6 +284,16 @@ class CardLabelBody(BaseModel):
 @router.post("/{card_id}/labels", status_code=status.HTTP_201_CREATED)
 async def add_label(list_id: int, card_id: int, body: CardLabelBody, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     await _get_card_or_404(card_id, list_id, db)
+    # A etiqueta tem que ser do MESMO quadro do card; senao da para colar uma
+    # etiqueta de outro quadro no proprio card e ler nome/cor dela de volta.
+    etiqueta = (await db.execute(
+        select(BoardLabel.id)
+        .join(List, List.board_id == BoardLabel.board_id)
+        .where(BoardLabel.id == body.label_id, List.id == list_id)
+        .limit(1)
+    )).scalars().first()
+    if etiqueta is None:
+        raise HTTPException(status_code=404, detail="Etiqueta não encontrada neste quadro")
     existing = await db.execute(select(CardLabel).where(CardLabel.card_id == card_id, CardLabel.label_id == body.label_id))
     if existing.scalar_one_or_none():
         return {"ok": True}
@@ -274,6 +304,7 @@ async def add_label(list_id: int, card_id: int, body: CardLabelBody, db: AsyncSe
 
 @router.delete("/{card_id}/labels/{label_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_label(list_id: int, card_id: int, label_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(select(CardLabel).where(CardLabel.card_id == card_id, CardLabel.label_id == label_id))
     label = result.scalar_one_or_none()
     if label:
@@ -297,6 +328,7 @@ async def create_checklist(list_id: int, card_id: int, body: ChecklistCreate, db
 
 @router.delete("/{card_id}/checklists/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_checklist(list_id: int, card_id: int, checklist_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     result = await db.execute(select(Checklist).where(Checklist.id == checklist_id, Checklist.card_id == card_id))
     checklist = result.scalar_one_or_none()
     if checklist:
@@ -306,6 +338,7 @@ async def delete_checklist(list_id: int, card_id: int, checklist_id: int, db: As
 
 @router.post("/{card_id}/checklists/{checklist_id}/items", response_model=ChecklistItemOut, status_code=status.HTTP_201_CREATED)
 async def add_checklist_item(list_id: int, card_id: int, checklist_id: int, body: ChecklistItemCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
     exists = await db.execute(select(Checklist.id).where(Checklist.id == checklist_id, Checklist.card_id == card_id))
     if not exists.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Checklist não encontrado")
@@ -318,7 +351,16 @@ async def add_checklist_item(list_id: int, card_id: int, checklist_id: int, body
 
 @router.patch("/{card_id}/checklists/{checklist_id}/items/{item_id}", response_model=ChecklistItemOut)
 async def update_checklist_item(list_id: int, card_id: int, checklist_id: int, item_id: int, body: ChecklistItemUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(ChecklistItem).where(ChecklistItem.id == item_id, ChecklistItem.checklist_id == checklist_id))
+    await _get_card_or_404(card_id, list_id, db)
+    result = await db.execute(
+        select(ChecklistItem)
+        .join(Checklist, Checklist.id == ChecklistItem.checklist_id)
+        .where(
+            ChecklistItem.id == item_id,
+            ChecklistItem.checklist_id == checklist_id,
+            Checklist.card_id == card_id,
+        )
+    )
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
@@ -332,7 +374,16 @@ async def update_checklist_item(list_id: int, card_id: int, checklist_id: int, i
 
 @router.delete("/{card_id}/checklists/{checklist_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_checklist_item(list_id: int, card_id: int, checklist_id: int, item_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(ChecklistItem).where(ChecklistItem.id == item_id, ChecklistItem.checklist_id == checklist_id))
+    await _get_card_or_404(card_id, list_id, db)
+    result = await db.execute(
+        select(ChecklistItem)
+        .join(Checklist, Checklist.id == ChecklistItem.checklist_id)
+        .where(
+            ChecklistItem.id == item_id,
+            ChecklistItem.checklist_id == checklist_id,
+            Checklist.card_id == card_id,
+        )
+    )
     item = result.scalar_one_or_none()
     if item:
         await db.delete(item)
