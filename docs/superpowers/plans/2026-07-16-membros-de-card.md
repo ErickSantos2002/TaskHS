@@ -490,13 +490,23 @@ EOF
 
 ---
 
-### Task 3: Mover card entre quadros tira quem não é do destino
+### Task 3: Mover **e copiar** card entre quadros tira quem não é do destino
 
 O terceiro caminho que quebra a invariante — e o menos óbvio: os `CardMember` **viajam
-junto com o card**.
+junto com o card**. Vale para os **dois** endpoints que levam um card para outro quadro:
+`update_card` (mover) e `copy_card` (copiar).
+
+> **Por que o `copy_card` está aqui:** ele não estava na spec nem na versão original
+> deste plano — descoberto pelo review da Task 1, que perguntou "sobrou algum caminho
+> que crie `CardMember` sem passar pela validação?". `copy_card` (`cards.py:190-191`)
+> faz `db.add(CardMember(card_id=new_card.id, user_id=m.user_id))` para cada membro do
+> original, e aceita `target_list_id` no **corpo**. O
+> `assert_board_access_by_list_id` da linha `:165` valida o acesso de **quem copia**,
+> não a membresia de **quem é copiado**. É o mesmo furo do mover, pela porta do copiar.
 
 **Files:**
 - Modify: `backend/app/routers/cards.py:117-143` (`update_card`)
+- Modify: `backend/app/routers/cards.py:~190-191` (`copy_card`, o laço de membros)
 
 **Interfaces:**
 - Consumes: `assert_board_access_by_list_id(list_id, user, db)` (de
@@ -588,6 +598,34 @@ Notas:
   `sql_delete` já está (`cards.py:3`: `from sqlalchemy import select, delete as sql_delete`),
   `BoardMember` veio na Task 1.
 
+- [ ] **Step 1b: `copy_card` — o mesmo furo, pela porta do copiar**
+
+Em `backend/app/routers/cards.py`, no `copy_card`, o laço de hoje (~linha 190) é:
+
+```python
+    for m in _to_list(original.members):
+        db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
+```
+
+Copiar um card para outro quadro leva as pessoas do quadro de origem junto. Trocar por:
+
+```python
+    # Copiar para OUTRO quadro nao pode levar junto quem nao e membro de la — o
+    # assert_board_access_by_list_id acima valida quem COPIA, nao quem e copiado.
+    membros_do_destino = set((await db.execute(
+        select(BoardMember.user_id)
+        .join(List, List.board_id == BoardMember.board_id)
+        .where(List.id == target_list_id)
+    )).scalars().all())
+    for m in _to_list(original.members):
+        if m.user_id in membros_do_destino:
+            db.add(CardMember(card_id=new_card.id, user_id=m.user_id))
+```
+
+A query resolve `lista de destino → quadro → membros` de uma vez. Quando o destino é o
+**mesmo** quadro (o caso comum), todos os membros do card já são membros do quadro pela
+invariante da Task 1, então ninguém é filtrado — nenhuma mudança de comportamento.
+
 - [ ] **Step 2: Verificar**
 
 ```bash
@@ -622,7 +660,15 @@ echo "2) mover DENTRO do quadro A (caso comum — nao pode tirar ninguem):"
 curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X PATCH "http://localhost:8000/api/lists/$LA/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LA2}"
 curl -s "http://localhost:8000/api/lists/$LA2/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   ", [m["name"] for m in json.load(sys.stdin)["members"]])'
 
-echo "3) mover para o quadro B (a Adriana nao e membro de la — tem que sair):"
+echo "3) COPIAR para o quadro B (a Adriana nao e membro de la — nao pode ir junto):"
+curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/api/lists/$LA2/cards/$CA/copy" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"target_list_id\": $LB}"
+curl -s "http://localhost:8000/api/lists/$LB/cards" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   copia no B ->", [m["name"] for m in d[0]["members"]] if d else "nenhum card")'
+
+echo "3b) COPIAR dentro do proprio quadro A (nao pode filtrar ninguem):"
+curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X POST "http://localhost:8000/api/lists/$LA2/cards/$CA/copy" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d '{}'
+curl -s "http://localhost:8000/api/lists/$LA2/cards" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("   copias no A ->", [sorted(m["name"] for m in c["members"]) for c in d])'
+
+echo "4) mover para o quadro B (a Adriana nao e membro de la — tem que sair):"
 curl -s -o /dev/null -w "   HTTP %{http_code}\n" -X PATCH "http://localhost:8000/api/lists/$LA2/cards/$CA" -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' -d "{\"list_id\": $LB}"
 curl -s "http://localhost:8000/api/lists/$LB/cards/$CA" -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   ", [m["name"] for m in json.load(sys.stdin)["members"]])'
 
@@ -632,9 +678,13 @@ curl -s -o /dev/null -w "   apaga B: HTTP %{http_code}\n" -X DELETE "http://loca
 curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $ADMIN" | python3 -c 'import sys,json; print("   boards restantes:", [b["id"] for b in json.load(sys.stdin)])'
 ```
 
-Esperado: `['Adriana Paz', 'Erick H.']` · `200` e **os dois continuam** (mover dentro do
-mesmo quadro não tira ninguém) · `200` e sobra **só** `['Erick H.']` ·
-`boards restantes: [20]`.
+Esperado, em ordem:
+- `['Adriana Paz', 'Erick H.']` — o card comeca com os dois
+- `200` e **os dois continuam** — mover dentro do mesmo quadro nao tira ninguem
+- a copia no quadro B tem **so** `['Erick H.']` — a Adriana nao foi junto
+- as copias dentro do A tem **os dois** — copiar no mesmo quadro nao filtra ninguem
+- `200` e o card movido para o B sobra com **so** `['Erick H.']`
+- `boards restantes: [20]`
 
 - [ ] **Step 3: Commit**
 
