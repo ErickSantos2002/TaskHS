@@ -174,6 +174,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [remindAt, setRemindAt] = useState("");
   const [addingReminder, setAddingReminder] = useState(false);
 
+  const [mencaoQuery, setMencaoQuery] = useState<string | null>(null);
+  const comentarioRef = useRef<HTMLTextAreaElement>(null);
+
   useEffect(() => {
     api.get<Reminder[]>(`/lists/${card.list_id}/cards/${card.id}/reminders`).then(setReminders).catch(() => {});
   }, [card.id, card.list_id]);
@@ -285,12 +288,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   useEffect(() => {
-    if (showMemberPicker && allUsers.length === 0) {
+    if ((showMemberPicker || mencaoQuery !== null) && allUsers.length === 0) {
       // Membros do QUADRO, nao as 27 pessoas da empresa: so eles podem ser
-      // atribuidos (o backend recusa o resto com 403).
+      // atribuidos (o backend recusa o resto com 403) e so eles podem ser
+      // mencionados (o backend ignora os demais).
       api.get<BoardMemberOut[]>(`/boards/${boardId}/members`).then(setAllUsers).catch(() => {});
     }
-  }, [showMemberPicker, boardId]);
+  }, [showMemberPicker, mencaoQuery, boardId]);
 
   async function patchCard(fields: Record<string, unknown>) {
     try {
@@ -320,11 +324,44 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       const updated = [...comments, comment];
       setComments(updated);
       setCommentBody("");
+      setMencaoQuery(null);
       onCardUpdate({ id: card.id, comments: updated });
     } finally {
       setSubmittingComment(false);
     }
   }
+
+  // O @ vale enquanto nao houver espaco depois dele — "@adri" abre o seletor,
+  // "@adri " (com espaco) fecha. `[^\s@[\]]*` tambem impede casar dentro de um
+  // token ja inserido, @[Nome](14).
+  const MENCAO_DIGITANDO = /@([^\s@[\]]*)$/;
+
+  function onChangeComentario(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const texto = e.target.value;
+    setCommentBody(texto);
+    const caret = e.target.selectionStart ?? texto.length;
+    const m = MENCAO_DIGITANDO.exec(texto.slice(0, caret));
+    setMencaoQuery(m ? m[1] : null);
+  }
+
+  function inserirMencao(p: UserBasic) {
+    const el = comentarioRef.current;
+    const caret = el?.selectionStart ?? commentBody.length;
+    const antes = commentBody.slice(0, caret).replace(MENCAO_DIGITANDO, `@[${p.name}](${p.id}) `);
+    const depois = commentBody.slice(caret);
+    setCommentBody(antes + depois);
+    setMencaoQuery(null);
+    // devolve o foco e poe o cursor logo depois do token inserido
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(antes.length, antes.length);
+    });
+  }
+
+  const mencaoCandidatos =
+    mencaoQuery === null
+      ? []
+      : allUsers.filter(u => u.name.toLowerCase().includes(mencaoQuery.toLowerCase())).slice(0, 6);
 
   async function handleToggleLabel(bl: BoardLabel) {
     const has = labels.some(l => l.id === bl.id);
@@ -942,15 +979,41 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             </div>
 
             {/* Comment input */}
-            <div className="shrink-0 mb-4">
+            <div className="shrink-0 mb-4 relative">
               <textarea
+                ref={comentarioRef}
                 value={commentBody}
-                onChange={e => setCommentBody(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
-                placeholder="Escrever um comentário…"
+                onChange={onChangeComentario}
+                onKeyDown={e => {
+                  // Enquanto o seletor de mencao esta aberto, Esc fecha e Enter
+                  // escolhe o primeiro — sem isso o Enter enviaria o comentario
+                  // no meio da escolha.
+                  if (mencaoQuery !== null && mencaoCandidatos.length > 0) {
+                    if (e.key === "Escape") { e.preventDefault(); setMencaoQuery(null); return; }
+                    if (e.key === "Enter") { e.preventDefault(); inserirMencao(mencaoCandidatos[0]); return; }
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); }
+                }}
+                placeholder="Escrever um comentário…  (@ para marcar alguém)"
                 rows={3}
                 className="w-full text-sm text-slate-200 bg-background-elevated border border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-500 leading-relaxed"
               />
+              {mencaoQuery !== null && mencaoCandidatos.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-1 z-20 w-56 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
+                  {mencaoCandidatos.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => inserirMencao(u)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-background-elevated transition-colors text-left"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
+                        {u.initials}
+                      </div>
+                      <span className="text-xs text-slate-200 truncate">{u.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {commentBody.trim() && (
                 <button
                   onClick={handleAddComment}
