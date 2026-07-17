@@ -4,8 +4,6 @@ from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.dependencies import require_integration_key
-from app.core.config import settings
-from app.models.board import Board
 from app.models.list import List
 from app.models.card import Card, Priority
 from app.models.notification import Notification
@@ -17,28 +15,15 @@ from app.audit_context import set_actor_identity
 router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[Depends(require_integration_key)])
 
 
-async def _ensure_board(db: AsyncSession, name: str) -> Board:
-    board = (await db.execute(
-        select(Board).where(Board.title == name).order_by(Board.id).limit(1)
-    )).scalar_one_or_none()
-    if board is None:
-        board = Board(title=name, owner_id=settings.INTEGRATION_OWNER_ID)
-        db.add(board)
-        await db.flush()
-    return board
+async def _get_list_or_404(db: AsyncSession, list_id: int) -> List:
+    """A lista tem que existir. A integracao NUNCA cria quadro nem lista.
 
-
-async def _ensure_list(db: AsyncSession, board_id: int, name: str) -> List:
-    lst = (await db.execute(
-        select(List).where(List.board_id == board_id, List.title == name).order_by(List.id).limit(1)
-    )).scalar_one_or_none()
+    Era o "cria sozinho" que gerava fantasma: um titulo que nao batia fazia um quadro
+    novo nascer em silencio, e as OS caiam nele. Agora o erro e alto e imediato.
+    """
+    lst = (await db.execute(select(List).where(List.id == list_id))).scalar_one_or_none()
     if lst is None:
-        last = (await db.execute(
-            select(List.position).where(List.board_id == board_id).order_by(List.position.desc()).limit(1)
-        )).scalar_one_or_none()
-        lst = List(board_id=board_id, title=name, position=(last or 0) + 1)
-        db.add(lst)
-        await db.flush()
+        raise HTTPException(status_code=404, detail="Lista não encontrada")
     return lst
 
 
@@ -69,8 +54,7 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
 async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db)):
     set_actor_identity("integracao", None, body.source, None)
     sent = body.model_dump(exclude_unset=True)
-    board = await _ensure_board(db, body.board)
-    lst = await _ensure_list(db, board.id, body.list)
+    lst = await _get_list_or_404(db, body.list_id)
     card = (await db.execute(
         select(Card).where(Card.external_source == body.source, Card.external_id == body.external_id)
     )).scalar_one_or_none()
