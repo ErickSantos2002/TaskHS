@@ -20,7 +20,10 @@ import re
 # O teto (em vez de `+`) e o que impede a varredura quadratica: sem ele, cada "@["
 # sem fechamento varria o texto ate o fim, e um corpo de 160 KB travava o event
 # loop por ~40s — o backend e processo unico.
-MENCAO_RE = re.compile(r"@\[([^\]\n]{1,120})\]\((\d+)\)")
+# [0-9]+ e nao \d+: o \d do Python casa digito Unicode (ex.: arabe-indico ١٤), o do
+# JS nao — as duas regex tem que ser equivalentes, senao o backend notifica alguem
+# que o frontend nao mostra como mencao.
+MENCAO_RE = re.compile(r"@\[([^\]\n]{1,120})\]\(([0-9]+)\)")
 
 # Um id de usuario e um integer do Postgres (32 bits com sinal). Sem este filtro,
 # @[x](2147483648) chega ao in_() e o asyncpg rejeita com 500 — e o comentario se

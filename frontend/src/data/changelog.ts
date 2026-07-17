@@ -18,6 +18,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: "2026-07-17",
     changes: [
       { kind: "novidade", text: "Marque pessoas nos comentários: digite @ e escolha alguém do quadro. A pessoa recebe uma notificação de que foi mencionada, e o nome aparece destacado no comentário." },
+      { kind: "melhoria", text: "Comentários agora aceitam até 20 mil caracteres — cabe uma thread de e-mail colada. Se algo impedir o envio, a tela passa a dizer o motivo em vez de não fazer nada." },
     ],
   },
   {

@@ -115,6 +115,8 @@ class CardOut(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    # Sem limite, um corpo gigante de "@[" repetido fazia a regex de mencoes varrer
-    # o texto inteiro a cada ocorrencia e travar o event loop (processo unico).
-    body: str = Field(min_length=1, max_length=5000)
+    # 20 mil caracteres cobre ate uma thread de e-mail colada num card (fluxo real
+    # aqui), e a coluna e Text (ilimitada). O limite NAO e o que protege a regex de
+    # mencoes — quem faz isso e o teto {1,120} do nome em app/mentions.py, medido:
+    # 160 KB em 4ms com o teto, 1.3s sem. Este limite e so sanidade de payload.
+    body: str = Field(min_length=1, max_length=20000)

@@ -130,7 +130,9 @@ const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6
 
 // @[Nome da Pessoa](14) — tem que casar com o MENCAO_RE do backend (app/mentions.py).
 // O {1,120} e o limite do User.name; o teto (em vez de +) evita a varredura quadratica.
-const MENCAO_RENDER = /@\[([^\]\n]{1,120})\]\((\d+)\)/g;
+// [0-9]+ e nao \d+: o \d do JS e ASCII, mas o do Python casa digito Unicode
+// (ex.: arabe-indico ١٤) — as duas regex tem que ser equivalentes.
+const MENCAO_RENDER = /@\[([^\]\n]{1,120})\]\(([0-9]+)\)/g;
 
 /** O corpo do comentário com as menções destacadas.
  *  Mostra o nome guardado no token — o da época em que foi escrito. É o registro
@@ -178,6 +180,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
   const [erroMembroCard, setErroMembroCard] = useState<string | null>(null);
+  const [erroComentario, setErroComentario] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -344,6 +347,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     const body = commentBody.trim();
     if (!body || submittingComment) return;
     setSubmittingComment(true);
+    setErroComentario(null);
     try {
       const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body });
       const updated = [...comments, comment];
@@ -351,6 +355,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       setCommentBody("");
       setMencaoQuery(null);
       onCardUpdate({ id: card.id, comments: updated });
+    } catch (e) {
+      // Sem isto o envio falha em silencio: o botao volta ao normal, o texto fica na
+      // caixa, e a pessoa nao sabe por que.
+      setErroComentario(e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.");
     } finally {
       setSubmittingComment(false);
     }
@@ -1044,8 +1052,12 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 }}
                 placeholder="Escrever um comentário…  (@ para marcar alguém)"
                 rows={3}
+                maxLength={20000}
                 className="w-full text-sm text-slate-200 bg-background-elevated border border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-500 leading-relaxed"
               />
+              {erroComentario && (
+                <p className="mt-1.5 text-xs text-red-400 bg-red-500/10 rounded-lg px-2.5 py-1.5">{erroComentario}</p>
+              )}
               {mencaoQuery !== null && mencaoCandidatos.length > 0 && (
                 <div className="absolute bottom-full left-0 mb-1 z-20 w-56 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
                   {mencaoCandidatos.map(u => (
