@@ -155,6 +155,35 @@ function CorpoComentario({ texto }: { texto: string }) {
   return <>{partes}</>;
 }
 
+// URLs no texto das obs (que vem da integracao) viram um link curto "Abrir link"
+// em vez do endereco cru — que pode ser enorme e ainda carregar um token na query.
+const OBS_URL_RE = /(https?:\/\/[^\s]+)/g;
+
+/** O texto de uma observacao com as URLs trocadas por um link "Abrir link" (nova aba). */
+function ObsTexto({ texto }: { texto: string }) {
+  const partes: React.ReactNode[] = [];
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+  const re = new RegExp(OBS_URL_RE);   // instancia propria: lastIndex e mutavel
+  while ((m = re.exec(texto)) !== null) {
+    if (m.index > ultimo) partes.push(texto.slice(ultimo, m.index));
+    partes.push(
+      <a
+        key={m.index}
+        href={m[1]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary hover:underline font-medium break-words"
+      >
+        Abrir link
+      </a>
+    );
+    ultimo = m.index + m[0].length;
+  }
+  if (ultimo < texto.length) partes.push(texto.slice(ultimo));
+  return <>{partes}</>;
+}
+
 // ── CardDetailModal ────────────────────────────────────────────
 
 function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
@@ -1154,8 +1183,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <h3 className="text-sm font-semibold text-slate-200">{obsLabels[obsOpen]}</h3>
               <button onClick={() => setObsOpen(null)} className="p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
             </div>
-            <div className="p-4 overflow-y-auto text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
-              {obsValues[obsOpen]}
+            <div className="p-4 overflow-y-auto text-sm text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
+              <ObsTexto texto={obsValues[obsOpen] ?? ""} />
             </div>
           </div>
         </div>
