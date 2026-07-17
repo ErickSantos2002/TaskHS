@@ -86,6 +86,12 @@ class CardOut(BaseModel):
     list_id: int
     title: str
     description: str | None
+    obs1: str | None = None
+    obs2: str | None = None
+    obs3: str | None = None
+    obs4: str | None = None
+    obs5: str | None = None
+    obs6: str | None = None
     priority: Priority
     position: float
     due_date: date | None

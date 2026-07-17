@@ -1,18 +1,39 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.models.board import BoardRole
+
+
+def _norm_obs_labels(v: list[str] | None) -> list[str] | None:
+    """Até 6 nomes; cada um trimado e limitado a 60 chars. Vazio = obs oculta."""
+    if v is None:
+        return v
+    if len(v) > 6:
+        raise ValueError("no máximo 6 observações")
+    return [(s or "").strip()[:60] for s in v]
 
 
 class BoardCreate(BaseModel):
     title: str
     description: str | None = None
     color: str = "#0ea5e9"
+    integration_enabled: bool = False
+    obs_labels: list[str] = []
+
+    @field_validator("obs_labels")
+    @classmethod
+    def _v_obs(cls, v): return _norm_obs_labels(v)
 
 
 class BoardUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     color: str | None = None
+    integration_enabled: bool | None = None
+    obs_labels: list[str] | None = None
+
+    @field_validator("obs_labels")
+    @classmethod
+    def _v_obs(cls, v): return _norm_obs_labels(v)
 
 
 class BoardOut(BaseModel):
@@ -22,6 +43,8 @@ class BoardOut(BaseModel):
     color: str
     owner_id: int
     created_at: datetime
+    integration_enabled: bool
+    obs_labels: list[str]
 
     model_config = {"from_attributes": True}
 

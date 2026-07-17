@@ -55,6 +55,8 @@ def _card_to_dict(card: Card) -> dict:
         "list_id": card.list_id,
         "title": card.title,
         "description": card.description,
+        "obs1": card.obs1, "obs2": card.obs2, "obs3": card.obs3,
+        "obs4": card.obs4, "obs5": card.obs5, "obs6": card.obs6,
         "priority": card.priority,
         "position": card.position,
         "due_date": card.due_date,

@@ -45,6 +45,8 @@ def _board_list_item(board: Board, user: User) -> dict:
         "color": board.color,
         "owner_id": board.owner_id,
         "created_at": board.created_at,
+        "integration_enabled": board.integration_enabled,
+        "obs_labels": board.obs_labels,
         "can_open": user.is_elevated or user.id in ids_membros,
         "owner_name": board.owner.name,
         "members": [
@@ -71,6 +73,8 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
         "color": board.color,
         "owner_id": board.owner_id,
         "created_at": board.created_at,
+        "integration_enabled": board.integration_enabled,
+        "obs_labels": board.obs_labels,
         "can_open": True,
         "owner_name": current_user.name,
         "members": [{

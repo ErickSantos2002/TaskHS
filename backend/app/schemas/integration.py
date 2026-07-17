@@ -18,6 +18,12 @@ class IntegrationCardIn(BaseModel):
     due_date: date | None = None
     priority: Priority | None = None
     archived: bool | None = None
+    obs1: str | None = None
+    obs2: str | None = None
+    obs3: str | None = None
+    obs4: str | None = None
+    obs5: str | None = None
+    obs6: str | None = None
 
 
 class IntegrationCardRef(BaseModel):

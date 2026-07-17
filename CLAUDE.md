@@ -45,6 +45,7 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
   - Nas checagens de destino, **acesso vem antes de existência** (403 antes de 404): invertido, um não-membro distinguiria "não existe" de "é de outro quadro" e enumeraria.
   - Gestão de membros (`add_member`/`remove_member`) e `update_board`/`delete_board` exigem **dono ou elevado**. Rotas admin usam `get_admin_user`/`get_elevated_user`. Delete de anexo exige autor/admin; delete de lembrete, o dono.
   - O router `integration` fica fora disso — usa `X-API-Key` e não tem usuário.
+  - A integração grava os dados de etapa em `Card.obs1..obs6` (não mais na descrição); a exibição desses campos como chips acima da descrição é ligada por quadro via `Board.integration_enabled` + `Board.obs_labels` (nomes das obs), configurados no drawer do quadro (dono/admin).
 - **`GET /api/auth/users` é elevado-only** (devolve papel, e-mail, `is_active` — dados de gestão). Para **seletor de pessoas**, use **`GET /api/auth/users/basic`** (`{id, name, initials}`, qualquer autenticado). Usar o `/auth/users` num seletor quebra a tela para os membros comuns — já aconteceu.
 
 ## Segredos: NUNCA em arquivo versionado (OBRIGATÓRIO)

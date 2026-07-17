@@ -17,6 +17,8 @@ export interface Board {
   color: string;
   owner_id: number;
   created_at: string;
+  integration_enabled: boolean;
+  obs_labels: string[];
 }
 
 /** Pessoa vista pelos seletores e pelos avatares da listagem.
@@ -112,6 +114,12 @@ export interface Card {
   archived: boolean;
   created_at: string;
   updated_at: string;
+  obs1: string | null;
+  obs2: string | null;
+  obs3: string | null;
+  obs4: string | null;
+  obs5: string | null;
+  obs6: string | null;
   labels: Label[];
   members: UserBasic[];
   comments: Comment[];

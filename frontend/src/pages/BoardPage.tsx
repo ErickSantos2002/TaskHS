@@ -157,13 +157,15 @@ function CorpoComentario({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
   card: Card;
   boardId: number;
   listTitle: string;
   lists: BoardList[];
   boardLabels: BoardLabel[];
   currentUser: { id: number; is_admin: boolean; role: "administrador" | "coordenador" | "membro" } | null;
+  integrationEnabled: boolean;
+  obsLabels: string[];
   onClose: () => void;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
@@ -196,6 +198,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [uploading, setUploading] = useState(false);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [obsOpen, setObsOpen] = useState<number | null>(null);
+  const obsValues = [card.obs1, card.obs2, card.obs3, card.obs4, card.obs5, card.obs6];
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -634,6 +638,34 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               </div>
             </div>
+
+            {/* Observações de integração */}
+            {integrationEnabled && obsLabels.some(n => n.trim()) && (
+              <div className="flex flex-wrap gap-2">
+                {obsLabels.map((name, i) => {
+                  if (!name.trim()) return null;
+                  const value = obsValues[i];
+                  const hasContent = !!(value && value.trim());
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={!hasContent}
+                      onClick={() => setObsOpen(i)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                        hasContent
+                          ? "bg-background-elevated border-border text-slate-200 hover:border-primary/60"
+                          : "bg-background-elevated/40 border-border/50 text-slate-500 cursor-default"
+                      )}
+                      title={hasContent ? undefined : "Sem informação ainda"}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Description */}
             <div>
@@ -1112,6 +1144,20 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       {lightbox && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-8" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+      {obsOpen !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setObsOpen(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-background-surface border border-border rounded-xl shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <h3 className="text-sm font-semibold text-slate-200">{obsLabels[obsOpen]}</h3>
+              <button onClick={() => setObsOpen(null)} className="p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
+            </div>
+            <div className="p-4 overflow-y-auto text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {obsValues[obsOpen]}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1701,6 +1747,8 @@ export function BoardPage() {
   const [editBoardTitle, setEditBoardTitle] = useState("");
   const [editBoardDescription, setEditBoardDescription] = useState("");
   const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
+  const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
+  const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
   const [deletingBoard, setDeletingBoard] = useState(false);
@@ -1940,6 +1988,8 @@ export function BoardPage() {
     setEditBoardTitle(board.title);
     setEditBoardDescription(board.description ?? "");
     setEditBoardColor(board.color);
+    setEditIntegrationEnabled(board.integration_enabled);
+    setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setConfirmDeleteBoard(false);
     // Não depender só do efeito de carregamento: zera erro e a lista de membros
     // (que pode ser de OUTRO quadro, com e-mails) antes mesmo do refetch rodar.
@@ -1959,6 +2009,8 @@ export function BoardPage() {
         title: editBoardTitle.trim(),
         description: editBoardDescription.trim() || null,
         color: editBoardColor,
+        integration_enabled: editIntegrationEnabled,
+        obs_labels: editObsLabels.map(s => s.trim()),
       });
       setBoard(updated);
       setShowEditBoard(false);
@@ -2306,6 +2358,8 @@ export function BoardPage() {
           lists={lists}
           boardLabels={boardLabels}
           currentUser={currentUser}
+          integrationEnabled={board?.integration_enabled ?? false}
+          obsLabels={board?.obs_labels ?? []}
           onClose={fecharCard}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
@@ -2359,6 +2413,32 @@ export function BoardPage() {
                     />
                   ))}
                 </div>
+              </div>
+              <div className="space-y-2 pt-1 border-t border-border">
+                <label className="flex items-start gap-2 cursor-pointer select-none pt-3">
+                  <input
+                    type="checkbox"
+                    checked={editIntegrationEnabled}
+                    onChange={e => setEditIntegrationEnabled(e.target.checked)}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <span className="text-xs font-semibold text-slate-400">Este quadro recebe informações de integração?</span>
+                </label>
+                {editIntegrationEnabled && (
+                  <div className="space-y-2 pl-1">
+                    <p className="text-[11px] text-slate-500">Nomeie cada observação que a integração preenche. Deixe em branco para escondê-la.</p>
+                    {editObsLabels.map((name, i) => (
+                      <input
+                        key={i}
+                        value={name}
+                        maxLength={60}
+                        onChange={e => setEditObsLabels(prev => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                        placeholder={`Nome da observação ${i + 1}…`}
+                        className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder-slate-500"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 onClick={handleSaveBoard}

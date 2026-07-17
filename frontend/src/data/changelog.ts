@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.7.0",
+    date: "2026-07-17",
+    changes: [
+      { kind: "novidade", text: "Observações de integração: quadros que recebem dados de outro sistema (ex.: GestorHS) agora mostram esses dados em botões acima da descrição — um por etapa (Recebido, Laboratório, etc.) — que abrem uma janelinha com o texto. A descrição volta a ser 100% sua. Ligue e nomeie as etapas nas Configurações do quadro." },
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-07-17",
     changes: [
