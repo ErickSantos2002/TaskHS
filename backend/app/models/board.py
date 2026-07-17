@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import String, ForeignKey, DateTime, Enum as SAEnum, UniqueConstraint, Boolean, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -21,6 +22,8 @@ class Board(Base):
     color: Mapped[str] = mapped_column(String(7), default="#0ea5e9")
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    integration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    obs_labels: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
 
     owner: Mapped["User"] = relationship("User", back_populates="boards", foreign_keys=[owner_id])
     members: Mapped[list["BoardMember"]] = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")
