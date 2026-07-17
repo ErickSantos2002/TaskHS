@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.5.0",
+    date: "2026-07-17",
+    changes: [
+      { kind: "novidade", text: "Marque pessoas nos comentários: digite @ e escolha alguém do quadro. A pessoa recebe uma notificação de que foi mencionada, e o nome aparece destacado no comentário." },
+    ],
+  },
+  {
     version: "1.4.1",
     date: "2026-07-16",
     changes: [
