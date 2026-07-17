@@ -261,7 +261,7 @@ renomear a lista na tela. Aconteceu de verdade. Com id, o erro é imediato e alt
 - Mover um card pela integração **não dispara** as automações do TaskHS (regras do tipo
   "quando card movido para lista X"). Integração e automações são caminhos separados.
 - Não mexe em membros, etiquetas, comentários, checklists ou anexos do card (esta
-  versão cobre título, descrição, data, prioridade e lista).
+  versão cobre título, data, prioridade, lista e as observações `obs1…obs6`).
 - **A descrição não é mais usada pela integração.** Ela passou a ser campo livre do
   usuário; os dados de cada etapa vão nas obs (`obs1…obs6`). Nomeie as obs e ligue o
   toggle "Este quadro recebe informações de integração?" nas Configurações do quadro.
