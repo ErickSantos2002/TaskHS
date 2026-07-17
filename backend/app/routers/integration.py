@@ -5,7 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.dependencies import require_integration_key
 from app.models.list import List
-from app.models.card import Card, Priority
+from app.models.board import BoardMember, BoardLabel
+from app.models.card import Card, CardMember, CardLabel, Priority
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
@@ -42,7 +43,10 @@ async def _last_position(db: AsyncSession, list_id: int) -> float:
 
 
 async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "List", db: AsyncSession) -> None:
-    """Apply upsert fields to an existing card (shared by normal update and IntegrityError recovery)."""
+    """Aplica os campos do upsert num card que ja existe.
+
+    Compartilhada pelo update normal e pela recuperacao do IntegrityError.
+    """
     card.title = body.title
     if "description" in sent:
         card.description = body.description
@@ -52,9 +56,53 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
         card.priority = body.priority
     if "archived" in sent and body.archived is not None:
         card.archived = body.archived
+
     if card.list_id != lst.id:
+        quadro_origem = (await db.execute(
+            select(List.board_id).where(List.id == card.list_id)
+        )).scalar_one_or_none()
         card.list_id = lst.id
         card.position = await _last_position(db, lst.id)
+
+        # Card movido para OUTRO quadro: os CardMember/Reminder/CardLabel viajam junto
+        # com ele. Trocar nome por id nao consertou isto — e o mesmo furo que o
+        # update_card (routers/cards.py) fecha, pela porta da integracao.
+        if quadro_origem is not None and quadro_origem != lst.board_id:
+            membros_do_destino = (
+                select(BoardMember.user_id).where(BoardMember.board_id == lst.board_id)
+            )
+            # Via ORM, nunca bulk delete: CardMember/Reminder/CardLabel sao auditados, e
+            # o audit.py le session.deleted no before_flush — bulk delete nao popula
+            # isso e a exclusao sumiria do log em silencio. Ja aconteceu duas vezes aqui.
+            membros_fora = (await db.execute(
+                select(CardMember).where(
+                    CardMember.card_id == card.id,
+                    CardMember.user_id.notin_(membros_do_destino),
+                )
+            )).scalars().all()
+            for cm in membros_fora:
+                await db.delete(cm)
+
+            lembretes_fora = (await db.execute(
+                select(Reminder).where(
+                    Reminder.card_id == card.id,
+                    Reminder.user_id.notin_(membros_do_destino),
+                )
+            )).scalars().all()
+            for r in lembretes_fora:
+                await db.delete(r)
+
+            etiquetas_do_destino = (
+                select(BoardLabel.id).where(BoardLabel.board_id == lst.board_id)
+            )
+            etiquetas_fora = (await db.execute(
+                select(CardLabel).where(
+                    CardLabel.card_id == card.id,
+                    CardLabel.label_id.notin_(etiquetas_do_destino),
+                )
+            )).scalars().all()
+            for cl in etiquetas_fora:
+                await db.delete(cl)
 
 
 @router.post("/cards")
