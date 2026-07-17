@@ -3,3 +3,7 @@
 .claude/settings.json
 /.claude
 /.playwright-mcp
+
+# Exports do Trello: contem e-mail de cliente. O repo e publico — nunca versionar.
+*trello*.json
+ALxXy9Kt*.json
