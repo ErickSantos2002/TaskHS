@@ -14,7 +14,13 @@ import re
 # usuario nao e gigante nem multi-linha, e sem o limite um "@[" que nunca fecha
 # fazia o [^\]]+ variavel varrer o texto inteiro a cada tentativa de casar —
 # quadratico e capaz de travar o event loop (processo unico) com um corpo grande.
-MENCAO_RE = re.compile(r"@\[([^\]\n]{1,80})\]\((\d+)\)")
+# O teto de 120 e o mesmo do User.name (models/user.py: String(120)), nao um numero
+# inventado: com um teto MENOR, um nome longo geraria um token que o backend
+# ignoraria em silencio — a mencao apareceria na tela e ninguem seria notificado.
+# O teto (em vez de `+`) e o que impede a varredura quadratica: sem ele, cada "@["
+# sem fechamento varria o texto ate o fim, e um corpo de 160 KB travava o event
+# loop por ~40s — o backend e processo unico.
+MENCAO_RE = re.compile(r"@\[([^\]\n]{1,120})\]\((\d+)\)")
 
 # Um id de usuario e um integer do Postgres (32 bits com sinal). Sem este filtro,
 # @[x](2147483648) chega ao in_() e o asyncpg rejeita com 500 — e o comentario se
