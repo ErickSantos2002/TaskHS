@@ -127,6 +127,7 @@ se a lista mudou, **move** o card. Tudo numa única transação.
 | `due_date` | string (`YYYY-MM-DD`) \| null | — | Data de entrega. |
 | `priority` | string \| null | — | Um de: `critical`, `high`, `medium`, `low`. Default `medium` na criação. |
 | `archived` | bool \| null | — | `true` arquiva o card (some do quadro), `false` desarquiva. `null` ou omitido = não altera. |
+| `obs1` … `obs6` | string \| null | — | Texto de uma etapa/observação. Exibido no card **só se** o quadro tiver a integração ligada e a obs correspondente nomeada. Mesma regra de update parcial do `description` (omitir preserva; `null` limpa). |
 
 **Exemplo:**
 ```bash
@@ -151,6 +152,8 @@ curl -X POST "$BASE/integration/cards" \
   "list_id": 44,
   "title": "OS #1234 · Cliente X · Bafômetro SN-987",
   "description": "Calibração — chegada em 22/06.",
+  "obs1": "chegou 17/07", "obs2": "em análise", "obs3": null,
+  "obs4": null, "obs5": null, "obs6": null,
   "priority": "high",
   "position": 65536.0,
   "due_date": "2026-07-10",
@@ -220,6 +223,7 @@ No upsert de um card que **já existe**:
 - `title` é sempre aplicado (é obrigatório).
 - `priority`: só muda se enviado e não-nulo. Enviar `null` em `priority` **não** limpa
   (não existe card "sem prioridade"; o default é `medium`).
+- `obs1`…`obs6` seguem a mesma regra: omitir preserva o valor atual, `null` limpa.
 
 > Recomendação para o sistema externo: como você é o dono da verdade, **envie sempre o
 > estado completo** (todos os campos que você controla). Aí não precisa se preocupar
@@ -257,6 +261,9 @@ renomear a lista na tela. Aconteceu de verdade. Com id, o erro é imediato e alt
   "quando card movido para lista X"). Integração e automações são caminhos separados.
 - Não mexe em membros, etiquetas, comentários, checklists ou anexos do card (esta
   versão cobre título, descrição, data, prioridade e lista).
+- **A descrição não é mais usada pela integração.** Ela passou a ser campo livre do
+  usuário; os dados de cada etapa vão nas obs (`obs1…obs6`). Nomeie as obs e ligue o
+  toggle "Este quadro recebe informações de integração?" nas Configurações do quadro.
 
 ---
 
@@ -309,7 +316,12 @@ def espelhar_os_no_taskhs(os):
         "external_id": str(os.id),
         "list_id": FASE_PARA_LIST_ID.get(os.fase, 101),
         "title": f"OS #{os.id} · {os.cliente_nome} · {os.equipamento_descricao or ''}".strip(" ·"),
-        "description": os.obs or None,
+        "obs1": os.obs_recebido or None,
+        "obs2": os.obs_laboratorio or None,
+        "obs3": os.obs_pos_vendas or None,
+        "obs4": os.obs_financeiro or None,
+        "obs5": os.obs_preparando_retorno or None,
+        "obs6": os.obs_finalizado or None,
         "due_date": os.prox_calibragem.date().isoformat() if os.prox_calibragem else None,
         "priority": "high" if os.garantia is False else "medium",
         "archived": os.fase == 9,   # 9 = Cancelada → arquiva o card
