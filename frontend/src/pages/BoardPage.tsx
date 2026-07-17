@@ -157,13 +157,15 @@ function CorpoComentario({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
   card: Card;
   boardId: number;
   listTitle: string;
   lists: BoardList[];
   boardLabels: BoardLabel[];
   currentUser: { id: number; is_admin: boolean; role: "administrador" | "coordenador" | "membro" } | null;
+  integrationEnabled: boolean;
+  obsLabels: string[];
   onClose: () => void;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
@@ -196,6 +198,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [uploading, setUploading] = useState(false);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [obsOpen, setObsOpen] = useState<number | null>(null);
+  const obsValues = [card.obs1, card.obs2, card.obs3, card.obs4, card.obs5, card.obs6];
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -634,6 +638,34 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               </div>
             </div>
+
+            {/* Observações de integração */}
+            {integrationEnabled && obsLabels.some(n => n.trim()) && (
+              <div className="flex flex-wrap gap-2">
+                {obsLabels.map((name, i) => {
+                  if (!name.trim()) return null;
+                  const value = obsValues[i];
+                  const hasContent = !!(value && value.trim());
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={!hasContent}
+                      onClick={() => setObsOpen(i)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                        hasContent
+                          ? "bg-background-elevated border-border text-slate-200 hover:border-primary/60"
+                          : "bg-background-elevated/40 border-border/50 text-slate-500 cursor-default"
+                      )}
+                      title={hasContent ? undefined : "Sem informação ainda"}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Description */}
             <div>
@@ -1112,6 +1144,20 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       {lightbox && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-8" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+      {obsOpen !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={() => setObsOpen(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-background-surface border border-border rounded-xl shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <h3 className="text-sm font-semibold text-slate-200">{obsLabels[obsOpen]}</h3>
+              <button onClick={() => setObsOpen(null)} className="p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
+            </div>
+            <div className="p-4 overflow-y-auto text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {obsValues[obsOpen]}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2312,6 +2358,8 @@ export function BoardPage() {
           lists={lists}
           boardLabels={boardLabels}
           currentUser={currentUser}
+          integrationEnabled={board?.integration_enabled ?? false}
+          obsLabels={board?.obs_labels ?? []}
           onClose={fecharCard}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
