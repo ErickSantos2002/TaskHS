@@ -8,6 +8,8 @@ from app.models.user import User
 from app.schemas.list import ListCreate, ListUpdate, ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
 from app.models.automation import Automation
+from app.models.reminder import Reminder, ReminderSent
+from app.models.notification import Notification
 
 router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"],
                    dependencies=[Depends(require_board_access_by_board_id)])
@@ -50,6 +52,14 @@ async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSe
 async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     lst = await _get_list_or_404(list_id, board_id, db)
     await db.execute(sql_delete(Automation).where(Automation.trigger_list_id == list_id))
+    # Reminder/ReminderSent/Notification apontam para card_id mas nao tem cascade no ORM
+    # nem no banco (as FKs para cards sao NO ACTION), entao apagar a lista com um card
+    # que tenha lembrete estourava FK -> 500. Mesmo padrao do delete_board.
+    card_ids = (await db.execute(select(Card.id).where(Card.list_id == list_id))).scalars().all()
+    if card_ids:
+        await db.execute(sql_delete(Reminder).where(Reminder.card_id.in_(card_ids)))
+        await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id.in_(card_ids)))
+        await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
     await db.delete(lst)
     await db.commit()
 
