@@ -123,7 +123,7 @@ se a lista mudou, **move** o card. Tudo numa única transação.
 | `external_id` | string | ✅ | Id da entidade no sistema externo. Aceita qualquer string. |
 | `list_id` | int | ✅ | Id da lista onde o card deve ficar; o quadro é deduzido dela. A lista **tem que existir** e não estar arquivada — senão `404`. |
 | `title` | string | ✅ | Título do card. |
-| `description` | string \| null | — | Descrição (texto livre). |
+| `description` | string \| null | — | Descrição (texto livre). A integração não escreve mais aqui — campo livre do usuário (ver §4.5). |
 | `due_date` | string (`YYYY-MM-DD`) \| null | — | Data de entrega. |
 | `priority` | string \| null | — | Um de: `critical`, `high`, `medium`, `low`. Default `medium` na criação. |
 | `archived` | bool \| null | — | `true` arquiva o card (some do quadro), `false` desarquiva. `null` ou omitido = não altera. |
@@ -139,7 +139,8 @@ curl -X POST "$BASE/integration/cards" \
     "external_id": "1234",
     "list_id": 44,
     "title": "OS #1234 · Cliente X · Bafômetro SN-987",
-    "description": "Calibração — chegada em 22/06.",
+    "obs1": "chegou 17/07",
+    "obs2": "em análise",
     "due_date": "2026-07-10",
     "priority": "high"
   }'
@@ -151,7 +152,7 @@ curl -X POST "$BASE/integration/cards" \
   "id": 248,
   "list_id": 44,
   "title": "OS #1234 · Cliente X · Bafômetro SN-987",
-  "description": "Calibração — chegada em 22/06.",
+  "description": null,
   "obs1": "chegou 17/07", "obs2": "em análise", "obs3": null,
   "obs4": null, "obs5": null, "obs6": null,
   "priority": "high",
