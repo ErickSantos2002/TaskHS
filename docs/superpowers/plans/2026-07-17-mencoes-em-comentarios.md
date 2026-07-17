@@ -297,8 +297,11 @@ curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $A" | python3
 3. `201`, sem 500
 4. `notificacoes para o proprio autor: 0`
 5. o membro do card recebe `card_comment`
-6. o resumo: o membro com `card_mention` (1) e `card_comment` (1, o do passo 5); o
-   não-membro e o autor **ausentes**
+6. o resumo: o membro com `card_mention` **1** e `card_comment` **4**; o não-membro e o
+   autor **ausentes**.
+   (Os 4: os passos 2, 3, 4 e 5 são todos comentários, e em nenhum deles o membro é
+   mencionado — então ele recebe o `card_comment` de cada um. Só o passo 1 o menciona, e
+   lá ele recebe a de menção **em vez** da de comentário.)
 7. as mensagens mostram `@Fulano`, **nunca** `@[Fulano](14)`
 - `boards restantes: [20]`
 
