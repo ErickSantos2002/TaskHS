@@ -57,6 +57,11 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
     if "archived" in sent and body.archived is not None:
         card.archived = body.archived
 
+    for n in range(1, 7):
+        key = f"obs{n}"
+        if key in sent:
+            setattr(card, key, getattr(body, key))
+
     if card.list_id != lst.id:
         quadro_origem = (await db.execute(
             select(List.board_id).where(List.id == card.list_id)
@@ -124,6 +129,8 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
             external_source=body.source,
             external_id=body.external_id,
             archived=body.archived or False,
+            obs1=body.obs1, obs2=body.obs2, obs3=body.obs3,
+            obs4=body.obs4, obs5=body.obs5, obs6=body.obs6,
         )
         db.add(card)
         try:
