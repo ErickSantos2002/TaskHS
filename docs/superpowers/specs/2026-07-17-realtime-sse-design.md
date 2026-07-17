@@ -68,10 +68,13 @@ O hub é **singleton de módulo**; a `consumer()` sobe ao lado do `reminder_loop
 - Novo listener `@event.listens_for(Session, "after_commit")`: drena `session.info.pop("_sse_pending", [])` e chama `hub.enqueue_change(...)` para cada. Respeita `audit_silent` (o import de Trello marca `audit_silent=True` — não spamma evento por card importado; ao final emitimos **um** evento estrutural "recarregue o quadro").
 - `after_rollback`/`after_soft_rollback` ([audit.py:320-327](../../../backend/app/audit.py#L320-L327)): também descartar `_sse_pending`.
 
-### 3. Endpoint do stream — `GET /api/boards/{board_id}/stream`
-- **Auth por token na query** (`?token=…`): `EventSource` nativo **não** manda header `Authorization`. Novo dependency `get_current_user_from_query` que lê `token` da query e decodifica igual ao `decode_token` ([dependencies.py:12-20](../../../backend/app/dependencies.py#L12-L20)). Em seguida, **mesma tranca de membresia** do board (elevado ou membro; reusa a regra de `require_board_access_by_board_id`). Sem token/sem acesso → 401/403.
+### 3. Auth em duas etapas: ticket de vida curta + stream
+`EventSource` nativo **não** manda header `Authorization`. Em vez de pôr o JWT de 8h na URL (fica durável em log), usamos um **ticket efêmero**:
+
+- **`POST /api/boards/{board_id}/stream-ticket`** — rota **autenticada por Bearer normal** (`get_current_user` no header) + **tranca de membresia** do board (elevado ou membro; reusa `require_board_access_by_board_id`). Devolve `{ "ticket": "<jwt-curto>" }`: um JWT assinado com o `SECRET_KEY`, **exp ~60s**, claims `{sub: user_id, board_id, scope: "stream"}`. Stateless — sem armazenamento.
+- **`GET /api/boards/{board_id}/stream?ticket=…`** — valida o ticket: assinatura, `exp`, `scope=="stream"`, `board_id` bate com a URL, e **reconfirma a membresia** (a associação pode ter mudado nos 60s; checagem barata). Ticket inválido/vencido → 401. O ticket na URL é **inútil após ~60s** (mitiga o risco de log).
 - `StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})` — mesmo padrão do import ([boards.py:267-271](../../../backend/app/routers/boards.py#L267-L271)).
-- `gen()`: `q = hub.subscribe(board_id)`; loop `await q.get()` → `yield f"data: {json}\n\n"`; **keepalive** `yield ": ping\n\n"` a cada ~20s (via `asyncio.wait_for` com timeout) pra proxies não fecharem; `finally: hub.unsubscribe(board_id, q)` no disconnect (client fecha).
+- `gen()`: `q = hub.subscribe(board_id)`; loop `await q.get()` → `yield f"data: {json}\n\n"`; **keepalive** `yield ": ping\n\n"` a cada ~20s (via `asyncio.wait_for` com timeout) pra proxies não fecharem; `finally: hub.unsubscribe(board_id, q)` no disconnect. A conexão é longa: o ticket só é preciso no **handshake**; enquanto o stream vive, não há re-auth.
 
 ### 4. Snapshot para baseline/reconexão — `GET /api/boards/{board_id}/snapshot` (novo, recomendado)
 Hoje o load inicial é **N+1** (1 request por lista para os cards, [BoardPage.tsx:1834-1841](../../../frontend/src/pages/BoardPage.tsx#L1834-L1841)). Um endpoint agregado que devolve `{board, lists, labels, cards_by_list}` num payload só torna o **(re)connect** barato e atômico (baseline consistente). Reusa `_card_to_dict`. Também simplifica o load inicial. *(Se preferir não criar endpoint novo, o front pode reusar o N+1 no reconnect — mas o agregado é melhor.)*
@@ -82,12 +85,13 @@ Hoje o load inicial é **N+1** (1 request por lista para os cards, [BoardPage.ts
 ## Frontend
 
 ### 1. Hook `useBoardStream(boardId, handlers)` — novo (`frontend/src/hooks/`)
-- Abre `new EventSource(\`${API_BASE}/boards/${boardId}/stream?token=${encodeURIComponent(localStorage.getItem("taskhs-token"))}\`)`.
+Com ticket, **não dá pra confiar na reconexão automática do `EventSource`**: ela reabriria a **mesma URL com o ticket já vencido** (~60s) → 401. Por isso o hook faz **reconexão manual com ticket novo**:
+- `connect()`: `api.post<{ticket:string}>(\`/boards/${boardId}/stream-ticket\`)` (Bearer no header, via `api`) → abre `new EventSource(\`${API_BASE}/boards/${boardId}/stream?ticket=${encodeURIComponent(ticket)}\`)`.
+- `onopen`: dispara **refetch do baseline** (snapshot) — cobre o que passou enquanto desconectado; e zera o backoff.
 - `onmessage`: `JSON.parse` → despacha por `evt.type`/`evt.action` para os handlers de reconciliação.
-- `onopen`: (inclui reconexão automática do EventSource) → dispara **refetch do baseline** (snapshot) para não perder o que passou enquanto desconectado.
-- `onerror`: EventSource reconecta sozinho; logar e deixar.
-- cleanup no unmount / troca de `boardId`: `es.close()`.
-- Em `401` (token vencido): o EventSource não expõe status; se `onerror` repetir, o front cai no fluxo normal de sessão. (Detalhe menor; token dura 8h.)
+- `onerror`: `es.close()`, espera um **backoff** (ex.: 1s → 2s → 5s → 10s, teto) e chama `connect()` de novo (pega ticket fresco). Assim tanto queda de rede quanto reinício do backend recuperam sozinhos.
+- cleanup no unmount / troca de `boardId`: `es.close()` + cancelar o timer de reconexão.
+- Se o `POST stream-ticket` devolver 401 (sessão vencida), cai no fluxo normal de logout do `api` ([api.ts:20-24](../../../frontend/src/lib/api.ts#L20-L24)).
 
 ### 2. Reconciliação — reusa o estado normalizado existente
 Estado: `lists: BoardList[]`, `cardsByList: Record<listId, Card[]>`, `boardLabels`, `board`, `selectedCard` ([BoardPage.tsx:1752-1764](../../../frontend/src/pages/BoardPage.tsx#L1752-L1764)). Já há handlers reutilizáveis: `handleCardUpdate` ([:1903](../../../frontend/src/pages/BoardPage.tsx#L1903)), `handleCardDelete` ([:1918](../../../frontend/src/pages/BoardPage.tsx#L1918)), `handleCardCopy`, `handleListUpdate`, `handleListDelete`. O dispatcher do stream mapeia:
@@ -111,8 +115,8 @@ O move é otimista e *fire-and-forget*, e o evento carrega o **estado autoritati
 
 ## Segurança
 
-- Token JWT na **query string** aparece em logs de acesso do servidor/proxy. Sobre HTTPS não trafega em claro, mas fica em log. Mitigação futura (fora de escopo): **ticket de stream** de vida curta (endpoint autenticado por header devolve um token efêmero só para abrir o stream). Para v1, aceitar o JWT na query (dura 8h) — **decisão a confirmar no review**.
-- A tranca de membresia do board vale para o stream: quem não é membro (e não é elevado) recebe **403** e não abre o stream — mesma regra do resto. Nenhum dado de quadro alheio vaza pelo canal.
+- **Ticket de vida curta** (decidido no review): o que vai na URL do stream é um JWT **efêmero (~60s)**, com escopo `stream` e preso a `board_id`+`user_id` — **inútil após expirar**, então mesmo capturado num log de proxy não serve pra nada. O JWT de sessão (8h) **nunca** vai na URL: fica no header do `POST /stream-ticket`.
+- A **tranca de membresia** do board vale nas duas rotas: emitir o ticket exige ser membro/elevado, e a abertura do stream **reconfirma** a membresia (pode ter mudado nos 60s). Não-membro → 403/401. Nenhum dado de quadro alheio vaza pelo canal.
 - Repo é **público**: nada de segredo em arquivo versionado (nada muda aqui, mas vale a regra de sempre).
 
 ## Fora de escopo (YAGNI)
@@ -122,12 +126,13 @@ O move é otimista e *fire-and-forget*, e o evento carrega o **estado autoritati
 - Ticket de stream de vida curta (JWT na query basta p/ v1).
 - Presença ("fulano está vendo este card"), cursores ao vivo, edição colaborativa char-a-char (tipo Google Docs) — não é o pedido.
 - `Last-Event-ID`/replay de eventos perdidos — reconexão refaz o baseline (snapshot), o que já cobre.
+- Supressão de echo por client-id (idempotência cobre v1).
 
-## Decisões a confirmar no review
+## Decisões (confirmadas no review)
 
-1. **Auth do stream = JWT na query** (`?token=`) vs. ticket de vida curta. Recomendo JWT na query para v1 (simples; token já dura 8h), ticket como hardening futuro.
-2. **Criar o endpoint agregado `/snapshot`** (recomendo — baseline atômico e resolve o N+1 do load) vs. reusar o N+1 atual no reconnect.
-3. **Emissão via hooks do `audit.py`** (recomendo — 1 ponto, cobre tudo) vs. `publish()` explícito nos ~29 endpoints. (O caveat de bulk-delete é tratado com evento estrutural nos 2 endpoints que fazem bulk.)
+1. **Auth do stream = ticket de vida curta** (não o JWT na query). `POST /stream-ticket` (Bearer no header) → JWT efêmero ~60s escopo `stream`; o stream abre com `?ticket=`. Reconexão no front pega ticket novo (não confia no auto-reconnect do EventSource).
+2. **Criar o endpoint agregado `/snapshot`** — baseline atômico p/ (re)conectar e resolve o N+1 do load inicial.
+3. **Emissão via hooks do `audit.py`** (`after_commit`) — 1 ponto cobre os ~29 endpoints + integração. Bulk-delete (excluir lista/quadro) não passa pelo hook → evento estrutural `reload` nesses endpoints.
 
 ## Verificação (manual — não há suíte)
 
