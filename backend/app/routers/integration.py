@@ -16,12 +16,19 @@ router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[De
 
 
 async def _get_list_or_404(db: AsyncSession, list_id: int) -> List:
-    """A lista tem que existir. A integracao NUNCA cria quadro nem lista.
+    """A lista tem que existir E estar ativa. A integracao NUNCA cria quadro nem lista.
 
     Era o "cria sozinho" que gerava fantasma: um titulo que nao batia fazia um quadro
     novo nascer em silencio, e as OS caiam nele. Agora o erro e alto e imediato.
+
+    Lista arquivada conta como inexistente, de proposito: card numa lista arquivada nao
+    aparece na listagem do quadro, nem nas stats, nem no modal de arquivados (que so
+    mostra CARDS arquivados). Aceitar o id devolveria 200 e a OS sumiria — o mesmo
+    silencio que esta funcao existe para acabar.
     """
-    lst = (await db.execute(select(List).where(List.id == list_id))).scalar_one_or_none()
+    lst = (await db.execute(
+        select(List).where(List.id == list_id, List.archived == False)
+    )).scalar_one_or_none()
     if lst is None:
         raise HTTPException(status_code=404, detail="Lista não encontrada")
     return lst
@@ -74,8 +81,12 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
         try:
             await db.commit()
         except IntegrityError:
-            # A concurrent request already inserted this (source, external_id) — recover gracefully.
+            # Corrida: outra requisicao inseriu este (source, external_id) primeiro.
             await db.rollback()
+            # O rollback expira TODOS os objetos persistentes — inclusive o lst. Sem
+            # recarregar, o lst.id la dentro do _apply_updates dispara um lazy load
+            # fora do contexto greenlet e vira MissingGreenlet -> 500.
+            lst = await _get_list_or_404(db, body.list_id)
             card = (await db.execute(
                 select(Card).where(Card.external_source == body.source, Card.external_id == body.external_id)
             )).scalar_one()
