@@ -17,7 +17,11 @@ renderiza o token como chip.
 ## Global Constraints
 
 - **Formato do token, exato:** `@[Nome da Pessoa](14)` — nome entre colchetes, id do
-  **usuário** entre parênteses. Regex canônica: `@\[([^\]]+)\]\((\d+)\)`.
+  **usuário** entre parênteses. Regex canônica, **a do backend** (`app/mentions.py`):
+  `@\[([^\]\n]{1,120})\]\((\d+)\)`. O teto de 120 é o do `User.name`
+  (`models/user.py`: `String(120)`) — o mesmo limite dos dois lados, de propósito: com
+  um teto menor, um nome longo geraria um token que o backend ignoraria em silêncio.
+  O teto (em vez de `+`) é o que impede a varredura quadrática que travava o event loop.
 - **A validação no backend é obrigatória e é o coração da feature.** O corpo vem do
   cliente: sem validar os ids contra `board_members` do quadro do card, qualquer pessoa
   forja `@[Quem Quiser](99)` e o sistema entrega ao usuário 99 uma notificação com o
@@ -297,8 +301,11 @@ curl -s http://localhost:8000/api/boards -H "Authorization: Bearer $A" | python3
 3. `201`, sem 500
 4. `notificacoes para o proprio autor: 0`
 5. o membro do card recebe `card_comment`
-6. o resumo: o membro com `card_mention` (1) e `card_comment` (1, o do passo 5); o
-   não-membro e o autor **ausentes**
+6. o resumo: o membro com `card_mention` **1** e `card_comment` **4**; o não-membro e o
+   autor **ausentes**.
+   (Os 4: os passos 2, 3, 4 e 5 são todos comentários, e em nenhum deles o membro é
+   mencionado — então ele recebe o `card_comment` de cada um. Só o passo 1 o menciona, e
+   lá ele recebe a de menção **em vez** da de comentário.)
 7. as mensagens mostram `@Fulano`, **nunca** `@[Fulano](14)`
 - `boards restantes: [20]`
 
@@ -563,7 +570,8 @@ dos outros componentes auxiliares do arquivo):
 
 ```tsx
 // @[Nome da Pessoa](14) — tem que casar com o MENCAO_RE do backend (app/mentions.py).
-const MENCAO_RENDER = /@\[([^\]]+)\]\((\d+)\)/g;
+// O {1,120} e o limite do User.name; o teto (em vez de +) evita a varredura quadratica.
+const MENCAO_RENDER = /@\[([^\]\n]{1,120})\]\((\d+)\)/g;
 
 /** O corpo do comentário com as menções destacadas.
  *  Mostra o nome guardado no token — o da época em que foi escrito. É o registro

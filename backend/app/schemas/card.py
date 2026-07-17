@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Any
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from app.models.card import Priority
 from app.schemas.user import UserOut
 
@@ -115,4 +115,8 @@ class CardOut(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    body: str
+    # 20 mil caracteres cobre ate uma thread de e-mail colada num card (fluxo real
+    # aqui), e a coluna e Text (ilimitada). O limite NAO e o que protege a regex de
+    # mencoes — quem faz isso e o teto {1,120} do nome em app/mentions.py, medido:
+    # 160 KB em 4ms com o teto, 1.3s sem. Este limite e so sanidade de payload.
+    body: str = Field(min_length=1, max_length=20000)

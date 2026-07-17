@@ -17,6 +17,7 @@ from app.schemas.card import (
 )
 from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
 from app.automations import run_card_moved_automations
+from app.mentions import ids_mencionados, texto_para_notificacao
 
 
 class CardCopyBody(BaseModel):
@@ -306,6 +307,38 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     lst = await db.execute(select(List).where(List.id == list_id))
     lst_obj = lst.scalar_one_or_none()
     board_id = lst_obj.board_id if lst_obj else None
+
+    # O trecho do sino e texto puro: sem isto ele mostraria "@[Adriana Paz](14)".
+    limpo = texto_para_notificacao(body.body)
+    trecho = f"{limpo[:80]}{'…' if len(limpo) > 80 else ''}"
+
+    # O corpo vem do CLIENTE. Sem validar contra board_members, alguem forja
+    # @[Quem Quiser](99) e o sistema entrega ao usuario 99 uma notificacao com o
+    # texto que o autor escolher, de um quadro que ele nao abre. Id que nao passa
+    # e ignorado: o texto do comentario fica como foi escrito, so nao notifica.
+    alegados = ids_mencionados(body.body)
+    mencionados: set[int] = set()
+    if alegados:
+        mencionados = set((await db.execute(
+            select(BoardMember.user_id)
+            .join(User, User.id == BoardMember.user_id)
+            .where(
+                BoardMember.board_id == board_id,
+                BoardMember.user_id.in_(alegados),
+                User.is_active == True,
+            )
+        )).scalars().all())
+    mencionados.discard(current_user.id)   # mencionar a si mesmo nao notifica
+
+    for uid in sorted(mencionados):
+        db.add(Notification(
+            user_id=uid,
+            type="card_mention",
+            message=f"{current_user.name} mencionou você em \"{card.title}\": {trecho}",
+            card_id=card_id,
+            board_id=board_id,
+        ))
+
     # So notifica quem e membro do quadro: a notificacao leva o titulo do card e um
     # trecho do comentario. Mesma rede do loop de lembretes — se a invariante furar
     # por um caminho imprevisto, aqui o custo e zero em vez de vazamento.
@@ -315,11 +348,13 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
         .where(CardMember.card_id == card_id, BoardMember.board_id == board_id)
     )
     for m in members_result.scalars().all():
-        if m.user_id != current_user.id:
+        # Quem foi mencionado ja recebeu a notificacao de mencao, que e a mais
+        # especifica — nao mandar as duas.
+        if m.user_id != current_user.id and m.user_id not in mencionados:
             db.add(Notification(
                 user_id=m.user_id,
                 type="card_comment",
-                message=f"{current_user.name} comentou em \"{card.title}\": {body.body[:80]}{'…' if len(body.body) > 80 else ''}",
+                message=f"{current_user.name} comentou em \"{card.title}\": {trecho}",
                 card_id=card_id,
                 board_id=board_id,
             ))

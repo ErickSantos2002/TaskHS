@@ -128,6 +128,33 @@ const IGear = () => (
 
 const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6","#ec4899","#64748b"];
 
+// @[Nome da Pessoa](14) — tem que casar com o MENCAO_RE do backend (app/mentions.py).
+// O {1,120} e o limite do User.name; o teto (em vez de +) evita a varredura quadratica.
+// [0-9]+ e nao \d+: o \d do JS e ASCII, mas o do Python casa digito Unicode
+// (ex.: arabe-indico ١٤) — as duas regex tem que ser equivalentes.
+const MENCAO_RENDER = /@\[([^\]\n]{1,120})\]\(([0-9]+)\)/g;
+
+/** O corpo do comentário com as menções destacadas.
+ *  Mostra o nome guardado no token — o da época em que foi escrito. É o registro
+ *  do que a pessoa disse, não uma versão reescrita depois. */
+function CorpoComentario({ texto }: { texto: string }) {
+  const partes: React.ReactNode[] = [];
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+  const re = new RegExp(MENCAO_RENDER);   // instancia propria: lastIndex e mutavel
+  while ((m = re.exec(texto)) !== null) {
+    if (m.index > ultimo) partes.push(texto.slice(ultimo, m.index));
+    partes.push(
+      <span key={`${m.index}-${m[2]}`} className="text-primary font-semibold bg-primary/10 rounded px-1">
+        @{m[1]}
+      </span>
+    );
+    ultimo = m.index + m[0].length;
+  }
+  if (ultimo < texto.length) partes.push(texto.slice(ultimo));
+  return <>{partes}</>;
+}
+
 // ── CardDetailModal ────────────────────────────────────────────
 
 function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
@@ -153,6 +180,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
   const [erroMembroCard, setErroMembroCard] = useState<string | null>(null);
+  const [erroComentario, setErroComentario] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -173,6 +201,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [remindAt, setRemindAt] = useState("");
   const [addingReminder, setAddingReminder] = useState(false);
+
+  const [mencaoQuery, setMencaoQuery] = useState<string | null>(null);
+  const comentarioRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.get<Reminder[]>(`/lists/${card.list_id}/cards/${card.id}/reminders`).then(setReminders).catch(() => {});
@@ -285,12 +316,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   useEffect(() => {
-    if (showMemberPicker && allUsers.length === 0) {
+    if ((showMemberPicker || mencaoQuery !== null) && allUsers.length === 0) {
       // Membros do QUADRO, nao as 27 pessoas da empresa: so eles podem ser
-      // atribuidos (o backend recusa o resto com 403).
+      // atribuidos (o backend recusa o resto com 403) e so eles podem ser
+      // mencionados (o backend ignora os demais).
       api.get<BoardMemberOut[]>(`/boards/${boardId}/members`).then(setAllUsers).catch(() => {});
     }
-  }, [showMemberPicker, boardId]);
+  }, [showMemberPicker, mencaoQuery, boardId]);
 
   async function patchCard(fields: Record<string, unknown>) {
     try {
@@ -315,16 +347,75 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     const body = commentBody.trim();
     if (!body || submittingComment) return;
     setSubmittingComment(true);
+    setErroComentario(null);
     try {
       const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body });
       const updated = [...comments, comment];
       setComments(updated);
       setCommentBody("");
+      setMencaoQuery(null);
       onCardUpdate({ id: card.id, comments: updated });
+    } catch (e) {
+      // Sem isto o envio falha em silencio: o botao volta ao normal, o texto fica na
+      // caixa, e a pessoa nao sabe por que.
+      setErroComentario(e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.");
     } finally {
       setSubmittingComment(false);
     }
   }
+
+  // O @ vale enquanto nao houver espaco depois dele — "@adri" abre o seletor,
+  // "@adri " (com espaco) fecha. `[^\s@[\]]*` tambem impede casar dentro de um
+  // token ja inserido, @[Nome](14).
+  // O @ so abre o seletor no inicio do texto ou depois de um espaco: sem isso, o "@"
+  // de um e-mail (fulano@empresa.com) abriria a lista, e um Enter para enviar viraria
+  // uma mencao acidental no meio do endereco.
+  const MENCAO_DIGITANDO = /(?:^|\s)@([^\s@[\]]*)$/;
+
+  // O token e delimitado por ] — um nome com "]" ou quebra de linha geraria um token
+  // que o backend nao reconhece, e a mencao sumiria em silencio (aparece na tela e
+  // ninguem e notificado). Ver a regex em backend/app/mentions.py.
+  function nomeParaToken(nome: string): string {
+    return nome.replace(/[\]\n]/g, " ").slice(0, 120);
+  }
+
+  function recalcMencao(el: HTMLTextAreaElement) {
+    const caret = el.selectionStart ?? el.value.length;
+    const m = MENCAO_DIGITANDO.exec(el.value.slice(0, caret));
+    setMencaoQuery(m ? m[1] : null);
+  }
+
+  function onChangeComentario(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setCommentBody(e.target.value);
+    recalcMencao(e.target);
+  }
+
+  function inserirMencao(p: UserBasic) {
+    const el = comentarioRef.current;
+    const caret = el?.selectionStart ?? commentBody.length;
+    const trecho = commentBody.slice(0, caret);
+    if (!MENCAO_DIGITANDO.test(trecho)) { setMencaoQuery(null); return; }   // o caret saiu de perto do @
+    const antes = trecho.replace(MENCAO_DIGITANDO, (m) => {
+      const prefixo = m.startsWith("@") ? "" : m[0];   // o espaco (ou nada, se for inicio)
+      return `${prefixo}@[${nomeParaToken(p.name)}](${p.id}) `;
+    });
+    const depois = commentBody.slice(caret);
+    setCommentBody(antes + depois);
+    setMencaoQuery(null);
+    // devolve o foco e poe o cursor logo depois do token inserido
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(antes.length, antes.length);
+    });
+  }
+
+  const mencaoCandidatos =
+    mencaoQuery === null
+      ? []
+      : allUsers
+          .filter(u => u.id !== currentUser?.id)   // mencionar a si mesmo nao notifica ninguem
+          .filter(u => u.name.toLowerCase().includes(mencaoQuery.toLowerCase()))
+          .slice(0, 6);
 
   async function handleToggleLabel(bl: BoardLabel) {
     const has = labels.some(l => l.id === bl.id);
@@ -942,15 +1033,47 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             </div>
 
             {/* Comment input */}
-            <div className="shrink-0 mb-4">
+            <div className="shrink-0 mb-4 relative">
               <textarea
+                ref={comentarioRef}
                 value={commentBody}
-                onChange={e => setCommentBody(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
-                placeholder="Escrever um comentário…"
+                onChange={onChangeComentario}
+                onSelect={e => recalcMencao(e.currentTarget)}
+                onKeyDown={e => {
+                  // Enquanto o seletor de mencao esta aberto, Esc fecha e Enter
+                  // escolhe o primeiro — sem isso o Enter enviaria o comentario
+                  // no meio da escolha.
+                  if (mencaoQuery !== null && mencaoCandidatos.length > 0) {
+                    if (e.key === "Escape") { e.preventDefault(); setMencaoQuery(null); return; }
+                    // Shift+Enter e quebra de linha, sempre — nao rouba pro seletor.
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); inserirMencao(mencaoCandidatos[0]); return; }
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); }
+                }}
+                placeholder="Escrever um comentário…  (@ para marcar alguém)"
                 rows={3}
+                maxLength={20000}
                 className="w-full text-sm text-slate-200 bg-background-elevated border border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-500 leading-relaxed"
               />
+              {erroComentario && (
+                <p className="mt-1.5 text-xs text-red-400 bg-red-500/10 rounded-lg px-2.5 py-1.5">{erroComentario}</p>
+              )}
+              {mencaoQuery !== null && mencaoCandidatos.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-1 z-20 w-56 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
+                  {mencaoCandidatos.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => inserirMencao(u)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-background-elevated transition-colors text-left"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
+                        {u.initials}
+                      </div>
+                      <span className="text-xs text-slate-200 truncate">{u.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {commentBody.trim() && (
                 <button
                   onClick={handleAddComment}
@@ -977,7 +1100,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       <span className="text-xs font-semibold text-slate-200">{c.author.name}</span>
                       <span className="text-[10px] text-slate-500 truncate">{new Date(c.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                     </div>
-                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2">{c.body}</p>
+                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
                   </div>
                 </div>
               ))}
