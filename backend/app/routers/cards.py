@@ -320,9 +320,12 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     mencionados: set[int] = set()
     if alegados:
         mencionados = set((await db.execute(
-            select(BoardMember.user_id).where(
+            select(BoardMember.user_id)
+            .join(User, User.id == BoardMember.user_id)
+            .where(
                 BoardMember.board_id == board_id,
                 BoardMember.user_id.in_(alegados),
+                User.is_active == True,
             )
         )).scalars().all())
     mencionados.discard(current_user.id)   # mencionar a si mesmo nao notifica

@@ -10,7 +10,16 @@ import re
 # em que foi escrito: e o registro do que a pessoa disse, nao uma versao reescrita
 # depois. O id vai junto porque os nomes deste sistema tem espaco — "@Adriana Paz
 # Silva" seria ambiguo, e dois "Adriana" seriam indistinguiveis.
-MENCAO_RE = re.compile(r"@\[([^\]]+)\]\((\d+)\)")
+# O nome e limitado a 80 chars sem quebra de linha ({1,80}, sem \n): nome de
+# usuario nao e gigante nem multi-linha, e sem o limite um "@[" que nunca fecha
+# fazia o [^\]]+ variavel varrer o texto inteiro a cada tentativa de casar —
+# quadratico e capaz de travar o event loop (processo unico) com um corpo grande.
+MENCAO_RE = re.compile(r"@\[([^\]\n]{1,80})\]\((\d+)\)")
+
+# Um id de usuario e um integer do Postgres (32 bits com sinal). Sem este filtro,
+# @[x](2147483648) chega ao in_() e o asyncpg rejeita com 500 — e o comentario se
+# perde, quando a regra e ignorar a mencao invalida em silencio e salvar o texto.
+MAX_ID = 2**31 - 1
 
 
 def ids_mencionados(texto: str) -> set[int]:
@@ -20,8 +29,17 @@ def ids_mencionados(texto: str) -> set[int]:
     validar cada id contra board_members antes de notificar — senão dá para forjar
     @[Quem Quiser](99) e entregar ao usuário 99 uma notificação com o texto que o
     autor escolher, de um quadro que ele não abre.
+
+    Ids fora da faixa de um integer do Postgres (ex.: maior que 2147483647) são
+    descartados aqui mesmo — nunca chegam a um in_() contra a coluna, que
+    rejeitaria com erro do driver.
     """
-    return {int(m.group(2)) for m in MENCAO_RE.finditer(texto)}
+    ids = set()
+    for m in MENCAO_RE.finditer(texto):
+        i = int(m.group(2))
+        if 0 < i <= MAX_ID:
+            ids.add(i)
+    return ids
 
 
 def texto_para_notificacao(texto: str) -> str:

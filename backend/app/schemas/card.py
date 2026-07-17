@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Any
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from app.models.card import Priority
 from app.schemas.user import UserOut
 
@@ -115,4 +115,6 @@ class CardOut(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    body: str
+    # Sem limite, um corpo gigante de "@[" repetido fazia a regex de mencoes varrer
+    # o texto inteiro a cada ocorrencia e travar o event loop (processo unico).
+    body: str = Field(min_length=1, max_length=5000)
