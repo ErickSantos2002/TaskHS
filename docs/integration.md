@@ -6,6 +6,26 @@ atualizar, mover e remover cards no TaskHS automaticamente. É ao mesmo tempo o
 
 ---
 
+## Mudou na v2 (2026-07-17)
+
+O payload usava os **nomes** do quadro e da lista. Agora usa **`list_id`**.
+
+Por quê: com nome, um título que não batesse fazia a API **criar um quadro novo em
+silêncio**, e os cards passavam a cair nele — bastava alguém renomear a lista na tela.
+Aconteceu de verdade. Com id, um id errado devolve **404** na primeira tentativa.
+
+O que muda no seu lado:
+
+| v1 | v2 |
+|---|---|
+| `{"board": "Serviço", "list": "Recebido", ...}` | `{"list_id": 42, ...}` |
+| quadro/lista criados sozinhos se não existissem | **têm que existir** → senão `404` |
+
+Os cards já criados não são afetados: eles são achados por `(source, external_id)`, que
+não mudou.
+
+---
+
 ## 1. Visão geral
 
 O TaskHS expõe uma API de integração **genérica**: qualquer sistema externo pode
@@ -18,21 +38,40 @@ TaskHS.
   completo** num único endpoint de *upsert* idempotente. O TaskHS decide sozinho se
   cria, atualiza ou move o card.
 - **Regra de negócio fica no externo:** o TaskHS não conhece "fases", "status" etc.
-  O externo decide em qual **quadro** e **lista** (por nome) o card deve estar; o
-  TaskHS obedece e cria o que faltar.
+  O externo decide em qual **lista** (pelo `list_id`) o card deve estar; o quadro vem
+  junto, porque toda lista já pertence a um quadro. O TaskHS **não cria nada** — a
+  lista tem que existir.
 
 ### Conceitos
 
 | Conceito | O que é |
 |---|---|
-| **Quadro (board)** | Um quadro do TaskHS. Identificado **pelo nome** no payload. |
-| **Lista (list)** | Uma coluna dentro do quadro. Identificada **pelo nome**, dentro do quadro. |
+| **Quadro (board)** | Um quadro do TaskHS. Não aparece no payload — é deduzido da lista (toda lista pertence a um quadro). |
+| **Lista (list)** | Uma coluna dentro de um quadro. Identificada **pelo `list_id`** no payload; tem que existir e não estar arquivada. |
 | **Card** | O cartão espelhado. Vinculado à entidade externa por `(source, external_id)`. |
 | **`source`** | Identifica o sistema de origem (ex.: `"gestorhs"`). Namespaceia o `external_id`. |
 | **`external_id`** | O id da entidade no sistema externo (string). |
 
 A **identidade** do card é o par `(source, external_id)`. É isso que torna o upsert
 idempotente: reenviar o mesmo par atualiza o mesmo card, nunca duplica.
+
+---
+
+## Como descobrir o `list_id`
+
+Abra o quadro no TaskHS e use a API, com o seu **token de usuário** (login normal — não
+é a API key de integração):
+
+```bash
+curl -s "$BASE/boards" \
+  -H "Authorization: Bearer $SEU_TOKEN"          # acha o id do quadro
+
+curl -s "$BASE/boards/<BOARD_ID>/lists" \
+  -H "Authorization: Bearer $SEU_TOKEN"          # id e título de cada lista
+```
+
+Anote os ids no seu lado. Eles não mudam quando alguém renomeia a lista na tela — é
+justamente por isso que a v2 usa id.
 
 ---
 
@@ -82,8 +121,7 @@ se a lista mudou, **move** o card. Tudo numa única transação.
 |---|---|:---:|---|
 | `source` | string | ✅ | Sistema de origem, ex.: `"gestorhs"`. |
 | `external_id` | string | ✅ | Id da entidade no sistema externo. Aceita qualquer string. |
-| `board` | string | ✅ | Nome do quadro. **Criado se não existir.** |
-| `list` | string | ✅ | Nome da lista dentro do quadro. **Criada se não existir.** |
+| `list_id` | int | ✅ | Id da lista onde o card deve ficar; o quadro é deduzido dela. A lista **tem que existir** e não estar arquivada — senão `404`. |
 | `title` | string | ✅ | Título do card. |
 | `description` | string \| null | — | Descrição (texto livre). |
 | `due_date` | string (`YYYY-MM-DD`) \| null | — | Data de entrega. |
@@ -98,8 +136,7 @@ curl -X POST "$BASE/integration/cards" \
   -d '{
     "source": "gestorhs",
     "external_id": "1234",
-    "board": "Ordens de Serviço — GestorHS",
-    "list": "Laboratório",
+    "list_id": 44,
     "title": "OS #1234 · Cliente X · Bafômetro SN-987",
     "description": "Calibração — chegada em 22/06.",
     "due_date": "2026-07-10",
@@ -134,7 +171,7 @@ Guarde o `id` se quiser, mas **você não precisa dele** para futuras chamadas �
 Para quando a entidade externa é **excluída** de vez. **Cancelar não usa este
 endpoint** — mande um upsert com `"archived": true` para **arquivar** o card (some
 do quadro, fica em "Arquivados"); reative com `"archived": false`. Mudança de
-fase/status continua sendo só outra `list` no upsert.
+fase/status continua sendo só outro `list_id` no upsert.
 
 **Headers:** `Content-Type: application/json`, `X-API-Key: <chave>`.
 
@@ -160,7 +197,7 @@ Ao remover, o TaskHS limpa também as notificações e lembretes ligados ao card
 | `200` | Upsert OK. | Seguir. |
 | `204` | Delete OK. | Seguir. |
 | `401` | API key ausente/errada (ou `INTEGRATION_API_KEY` não setada no TaskHS). | Conferir a env e o header. |
-| `404` | Delete de um `(source, external_id)` inexistente. | Tratar como "já não existe" (idempotente). |
+| `404` | Delete de um `(source, external_id)` inexistente **ou** upsert com `list_id` que não existe (ou está arquivada). | No delete, tratar como "já não existe" (idempotente). No upsert, é erro de configuração do seu lado — confira o `list_id`. |
 | `422` | Payload inválido (campo obrigatório faltando, `priority`/`due_date` em formato errado). | Corrigir o payload. |
 | `5xx` | Erro transitório no TaskHS. | **Repetir depois** — o upsert é idempotente, reenviar é seguro. |
 
@@ -190,31 +227,36 @@ No upsert de um card que **já existe**:
 
 ### 4.3 Mover de lista
 
-No upsert, se a `list` resolvida for diferente da lista atual do card, ele é **movido**
-para a nova lista (vai para o fim dela). É assim que você reflete uma mudança de
-fase/status: basta mandar o novo nome de lista.
+No upsert, se o `list_id` for diferente da lista atual do card, ele é **movido** para
+a nova lista (vai para o fim dela). É assim que você reflete uma mudança de
+fase/status: basta mandar o novo `list_id`. Se a nova lista for de **outro quadro**, o
+card muda de quadro junto — e membros, etiquetas e lembretes que não existem no quadro
+de destino são removidos do card (a mesma limpeza que acontece quando isso é feito pela
+tela).
 
-### 4.4 Quadro e lista por **nome** (e o cuidado com colisão)
+### 4.4 A lista tem que existir — a integração não cria nada
 
-`board` e `list` são resolvidos **pelo nome**:
-- Não existe → o TaskHS **cria** (o quadro nasce sob um usuário de serviço configurado
-  no TaskHS via `INTEGRATION_OWNER_ID`).
-- Já existe → o TaskHS **reusa** o existente (se houver mais de um com o mesmo nome,
-  usa o de menor id).
+`list_id` é resolvido direto pelo id, sem heurística de nome e sem criação automática:
+- Não existe (id errado, ou nunca criado) → `404 Lista não encontrada`.
+- Existe mas está **arquivada** → também `404`. Do ponto de vista da integração,
+  arquivada é como não existir: some das listagens do quadro, das stats e não é card
+  arquivado (o único tipo que aparece no modal de "Arquivados").
+- Existe e ativa → o TaskHS usa essa lista, ponto — sem ambiguidade de nome, sem chance
+  de reusar ou colidir com um quadro criado à mão.
 
-⚠️ **Atenção:** se já existir um quadro/lista com aquele nome — inclusive um criado à
-mão por uma pessoa — a integração vai **reusar** esse, não criar um novo. Escolha nomes
-de quadro pouco prováveis de colidir com quadros humanos (ex.: prefixe/sufixe com o
-sistema: `"Ordens de Serviço — GestorHS"`). A integração só **escreve/cria**; ela nunca
-lê dados de outros quadros.
+Isso é proposital: no v1 (por nome), um título que não batesse fazia o TaskHS **criar
+um quadro novo em silêncio**, e os cards passavam a cair nele — bastava alguém
+renomear a lista na tela. Aconteceu de verdade. Com id, o erro é imediato e alto
+(`404`), não um quadro fantasma.
 
 ### 4.5 O que a integração **não** faz
 
+- Não cria quadro nem lista — eles têm que existir previamente no TaskHS (seção 4.4).
 - Não move/atualiza nada de volta no sistema externo (sem sincronização reversa).
 - Mover um card pela integração **não dispara** as automações do TaskHS (regras do tipo
   "quando card movido para lista X"). Integração e automações são caminhos separados.
-- Não mexe em membros, etiquetas, comentários, checklists ou anexos do card (o v1 cobre
-  título, descrição, data, prioridade, lista e quadro).
+- Não mexe em membros, etiquetas, comentários, checklists ou anexos do card (esta
+  versão cobre título, descrição, data, prioridade e lista).
 
 ---
 
@@ -226,7 +268,7 @@ A integração é **best-effort** no lado do sistema externo:
 2. Se a chamada falhar (rede, `5xx`, TaskHS fora do ar), **logue e siga** — não trave
    o fluxo do seu sistema por causa do espelhamento.
 3. Como o upsert é idempotente e você manda o estado completo, **a próxima atualização
-   reconcilia** o que tiver falhado. Não é preciso fila nem retry sofisticado no v1.
+   reconcilia** o que tiver falhado. Não é preciso fila nem retry sofisticado por enquanto.
 4. Chamadas para a mesma entidade devem ser **sequenciais** (não dispare várias em
    paralelo para o mesmo `external_id` ao mesmo tempo). O TaskHS tolera corrida (não
    duplica), mas sequencial é mais simples e previsível.
@@ -235,16 +277,18 @@ A integração é **best-effort** no lado do sistema externo:
 
 ## 6. Exemplo ponta-a-ponta (GestorHS)
 
-A regra "fase da OS → nome da lista" vive **no GestorHS**. Exemplo de mapa:
+A regra "fase da OS → lista" vive **no GestorHS**. Exemplo de mapa (os `list_id` abaixo
+são ilustrativos — descubra os reais do seu quadro como na seção "Como descobrir o
+`list_id`"):
 
-| Fase da OS (GestorHS) | `list` enviada ao TaskHS |
+| Fase da OS (GestorHS) | `list_id` enviado ao TaskHS |
 |---|---|
-| Recebido | `Recebido` |
-| Laboratório | `Laboratório` |
-| Pós-Vendas | `Pós-Vendas` |
-| Preparando Retorno | `Preparando Retorno` |
-| Finalizada | `Finalizada` |
-| Cancelada | `Cancelada` |
+| Recebido | `101` |
+| Laboratório | `102` |
+| Pós-Vendas | `103` |
+| Preparando Retorno | `104` |
+| Finalizada | `105` |
+| Cancelada | `106` |
 
 Pseudo-código no GestorHS (chamar ao abrir a OS e em cada avanço/atualização):
 
@@ -254,17 +298,16 @@ import httpx  # ou requests
 TASKHS_BASE = "https://<taskhs>/api"
 TASKHS_KEY  = settings.TASKHS_INTEGRATION_KEY   # env no GestorHS
 
-FASE_PARA_LISTA = {
-    4: "Recebido", 5: "Laboratório", 6: "Pós-Vendas",
-    7: "Preparando Retorno", 8: "Finalizada", 9: "Cancelada",
+FASE_PARA_LIST_ID = {
+    4: 101, 5: 102, 6: 103,
+    7: 104, 8: 105, 9: 106,
 }
 
 def espelhar_os_no_taskhs(os):
     payload = {
         "source": "gestorhs",
         "external_id": str(os.id),
-        "board": "Ordens de Serviço — GestorHS",
-        "list": FASE_PARA_LISTA.get(os.fase, "Recebido"),
+        "list_id": FASE_PARA_LIST_ID.get(os.fase, 101),
         "title": f"OS #{os.id} · {os.cliente_nome} · {os.equipamento_descricao or ''}".strip(" ·"),
         "description": os.obs or None,
         "due_date": os.prox_calibragem.date().isoformat() if os.prox_calibragem else None,
@@ -293,17 +336,18 @@ Onde plugar no GestorHS: na criação da OS e na transição de fase
 ## 7. Checklist para integrar um sistema novo
 
 1. **No TaskHS:** gerar a chave (`openssl rand -hex 32`) e setar `INTEGRATION_API_KEY`
-   nas envs do backend (Easypanel). Opcional: `INTEGRATION_OWNER_ID` (default `1`, o
-   admin) para definir o dono dos quadros criados.
+   nas envs do backend (Easypanel).
 2. **No sistema externo:** guardar a base URL do TaskHS e a chave em config/env.
-3. Escolher um `source` único (ex.: nome do sistema) e um nome de **quadro** que não
-   colida com quadros humanos.
-4. Definir o mapa do seu "status/fase" → nome de **lista**.
-5. Montar o payload e chamar `POST /integration/cards` ao **criar** e a cada
+3. **No TaskHS:** criar (ou escolher) o quadro e as listas de destino — a integração
+   não cria nada — e descobrir os `list_id` de cada uma (seção "Como descobrir o
+   `list_id`").
+4. Escolher um `source` único (ex.: nome do sistema).
+5. Definir o mapa do seu "status/fase" → `list_id`.
+6. Montar o payload e chamar `POST /integration/cards` ao **criar** e a cada
    **atualização** da entidade; chamar `DELETE` ao **excluir**.
-6. Tratar falhas como best-effort (logar e seguir); confiar na reconciliação do
+7. Tratar falhas como best-effort (logar e seguir); confiar na reconciliação do
    próximo upsert.
-7. Testar com `curl` (seção 3) antes de ligar no fluxo real.
+8. Testar com `curl` (seção 3) antes de ligar no fluxo real.
 
 ---
 
@@ -316,5 +360,5 @@ Onde plugar no GestorHS: na criação da OS e na transição de fase
 | Upsert | `POST /integration/cards` → `200` |
 | Remover | `DELETE /integration/cards` → `204` / `404` |
 | Identidade do card | `(source, external_id)` |
-| Quadro/lista | por **nome**, criados se faltarem |
+| Lista (e quadro) | por **`list_id`**; a lista tem que existir e não estar arquivada (senão `404`) |
 | Idempotente | sim — reenviar o estado completo é seguro |

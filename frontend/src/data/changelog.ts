@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.6.0",
+    date: "2026-07-17",
+    changes: [
+      { kind: "melhoria", text: "A integração com outros sistemas (GestorHS) agora identifica a lista pelo id, não pelo nome. Antes, renomear uma lista fazia os cards passarem a cair num quadro novo criado em silêncio; agora o sistema avisa na hora que o id não existe." },
+      { kind: "correcao", text: "Excluir uma lista cujo cartão tivesse lembrete dava erro. Agora funciona." },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-07-17",
     changes: [

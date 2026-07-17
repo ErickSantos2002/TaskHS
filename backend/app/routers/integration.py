@@ -4,10 +4,9 @@ from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.dependencies import require_integration_key
-from app.core.config import settings
-from app.models.board import Board
 from app.models.list import List
-from app.models.card import Card, Priority
+from app.models.board import BoardMember, BoardLabel
+from app.models.card import Card, CardMember, CardLabel, Priority
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
@@ -17,28 +16,22 @@ from app.audit_context import set_actor_identity
 router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[Depends(require_integration_key)])
 
 
-async def _ensure_board(db: AsyncSession, name: str) -> Board:
-    board = (await db.execute(
-        select(Board).where(Board.title == name).order_by(Board.id).limit(1)
-    )).scalar_one_or_none()
-    if board is None:
-        board = Board(title=name, owner_id=settings.INTEGRATION_OWNER_ID)
-        db.add(board)
-        await db.flush()
-    return board
+async def _get_list_or_404(db: AsyncSession, list_id: int) -> List:
+    """A lista tem que existir E estar ativa. A integracao NUNCA cria quadro nem lista.
 
+    Era o "cria sozinho" que gerava fantasma: um titulo que nao batia fazia um quadro
+    novo nascer em silencio, e as OS caiam nele. Agora o erro e alto e imediato.
 
-async def _ensure_list(db: AsyncSession, board_id: int, name: str) -> List:
+    Lista arquivada conta como inexistente, de proposito: card numa lista arquivada nao
+    aparece na listagem do quadro, nem nas stats, nem no modal de arquivados (que so
+    mostra CARDS arquivados). Aceitar o id devolveria 200 e a OS sumiria — o mesmo
+    silencio que esta funcao existe para acabar.
+    """
     lst = (await db.execute(
-        select(List).where(List.board_id == board_id, List.title == name).order_by(List.id).limit(1)
+        select(List).where(List.id == list_id, List.archived == False)
     )).scalar_one_or_none()
     if lst is None:
-        last = (await db.execute(
-            select(List.position).where(List.board_id == board_id).order_by(List.position.desc()).limit(1)
-        )).scalar_one_or_none()
-        lst = List(board_id=board_id, title=name, position=(last or 0) + 1)
-        db.add(lst)
-        await db.flush()
+        raise HTTPException(status_code=404, detail="Lista não encontrada")
     return lst
 
 
@@ -50,7 +43,10 @@ async def _last_position(db: AsyncSession, list_id: int) -> float:
 
 
 async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "List", db: AsyncSession) -> None:
-    """Apply upsert fields to an existing card (shared by normal update and IntegrityError recovery)."""
+    """Aplica os campos do upsert num card que ja existe.
+
+    Compartilhada pelo update normal e pela recuperacao do IntegrityError.
+    """
     card.title = body.title
     if "description" in sent:
         card.description = body.description
@@ -60,17 +56,60 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
         card.priority = body.priority
     if "archived" in sent and body.archived is not None:
         card.archived = body.archived
+
     if card.list_id != lst.id:
+        quadro_origem = (await db.execute(
+            select(List.board_id).where(List.id == card.list_id)
+        )).scalar_one_or_none()
         card.list_id = lst.id
         card.position = await _last_position(db, lst.id)
+
+        # Card movido para OUTRO quadro: os CardMember/Reminder/CardLabel viajam junto
+        # com ele. Trocar nome por id nao consertou isto — e o mesmo furo que o
+        # update_card (routers/cards.py) fecha, pela porta da integracao.
+        if quadro_origem is not None and quadro_origem != lst.board_id:
+            membros_do_destino = (
+                select(BoardMember.user_id).where(BoardMember.board_id == lst.board_id)
+            )
+            # Via ORM, nunca bulk delete: CardMember/Reminder/CardLabel sao auditados, e
+            # o audit.py le session.deleted no before_flush — bulk delete nao popula
+            # isso e a exclusao sumiria do log em silencio. Ja aconteceu duas vezes aqui.
+            membros_fora = (await db.execute(
+                select(CardMember).where(
+                    CardMember.card_id == card.id,
+                    CardMember.user_id.notin_(membros_do_destino),
+                )
+            )).scalars().all()
+            for cm in membros_fora:
+                await db.delete(cm)
+
+            lembretes_fora = (await db.execute(
+                select(Reminder).where(
+                    Reminder.card_id == card.id,
+                    Reminder.user_id.notin_(membros_do_destino),
+                )
+            )).scalars().all()
+            for r in lembretes_fora:
+                await db.delete(r)
+
+            etiquetas_do_destino = (
+                select(BoardLabel.id).where(BoardLabel.board_id == lst.board_id)
+            )
+            etiquetas_fora = (await db.execute(
+                select(CardLabel).where(
+                    CardLabel.card_id == card.id,
+                    CardLabel.label_id.notin_(etiquetas_do_destino),
+                )
+            )).scalars().all()
+            for cl in etiquetas_fora:
+                await db.delete(cl)
 
 
 @router.post("/cards")
 async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db)):
     set_actor_identity("integracao", None, body.source, None)
     sent = body.model_dump(exclude_unset=True)
-    board = await _ensure_board(db, body.board)
-    lst = await _ensure_list(db, board.id, body.list)
+    lst = await _get_list_or_404(db, body.list_id)
     card = (await db.execute(
         select(Card).where(Card.external_source == body.source, Card.external_id == body.external_id)
     )).scalar_one_or_none()
@@ -90,8 +129,12 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
         try:
             await db.commit()
         except IntegrityError:
-            # A concurrent request already inserted this (source, external_id) — recover gracefully.
+            # Corrida: outra requisicao inseriu este (source, external_id) primeiro.
             await db.rollback()
+            # O rollback expira TODOS os objetos persistentes — inclusive o lst. Sem
+            # recarregar, o lst.id la dentro do _apply_updates dispara um lazy load
+            # fora do contexto greenlet e vira MissingGreenlet -> 500.
+            lst = await _get_list_or_404(db, body.list_id)
             card = (await db.execute(
                 select(Card).where(Card.external_source == body.source, Card.external_id == body.external_id)
             )).scalar_one()
