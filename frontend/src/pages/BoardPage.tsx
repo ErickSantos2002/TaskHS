@@ -1701,6 +1701,8 @@ export function BoardPage() {
   const [editBoardTitle, setEditBoardTitle] = useState("");
   const [editBoardDescription, setEditBoardDescription] = useState("");
   const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
+  const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
+  const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
   const [deletingBoard, setDeletingBoard] = useState(false);
@@ -1940,6 +1942,8 @@ export function BoardPage() {
     setEditBoardTitle(board.title);
     setEditBoardDescription(board.description ?? "");
     setEditBoardColor(board.color);
+    setEditIntegrationEnabled(board.integration_enabled);
+    setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setConfirmDeleteBoard(false);
     // Não depender só do efeito de carregamento: zera erro e a lista de membros
     // (que pode ser de OUTRO quadro, com e-mails) antes mesmo do refetch rodar.
@@ -1959,6 +1963,8 @@ export function BoardPage() {
         title: editBoardTitle.trim(),
         description: editBoardDescription.trim() || null,
         color: editBoardColor,
+        integration_enabled: editIntegrationEnabled,
+        obs_labels: editObsLabels.map(s => s.trim()),
       });
       setBoard(updated);
       setShowEditBoard(false);
@@ -2359,6 +2365,32 @@ export function BoardPage() {
                     />
                   ))}
                 </div>
+              </div>
+              <div className="space-y-2 pt-1 border-t border-border">
+                <label className="flex items-start gap-2 cursor-pointer select-none pt-3">
+                  <input
+                    type="checkbox"
+                    checked={editIntegrationEnabled}
+                    onChange={e => setEditIntegrationEnabled(e.target.checked)}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <span className="text-xs font-semibold text-slate-400">Este quadro recebe informações de integração?</span>
+                </label>
+                {editIntegrationEnabled && (
+                  <div className="space-y-2 pl-1">
+                    <p className="text-[11px] text-slate-500">Nomeie cada observação que a integração preenche. Deixe em branco para escondê-la.</p>
+                    {editObsLabels.map((name, i) => (
+                      <input
+                        key={i}
+                        value={name}
+                        maxLength={60}
+                        onChange={e => setEditObsLabels(prev => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                        placeholder={`Nome da observação ${i + 1}…`}
+                        className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder-slate-500"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 onClick={handleSaveBoard}
