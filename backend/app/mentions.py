@@ -10,7 +10,7 @@ import re
 # em que foi escrito: e o registro do que a pessoa disse, nao uma versao reescrita
 # depois. O id vai junto porque os nomes deste sistema tem espaco — "@Adriana Paz
 # Silva" seria ambiguo, e dois "Adriana" seriam indistinguiveis.
-# O nome e limitado a 80 chars sem quebra de linha ({1,80}, sem \n): nome de
+# O nome e limitado a 120 chars sem quebra de linha ({1,120}, sem \n): nome de
 # usuario nao e gigante nem multi-linha, e sem o limite um "@[" que nunca fecha
 # fazia o [^\]]+ variavel varrer o texto inteiro a cada tentativa de casar —
 # quadratico e capaz de travar o event loop (processo unico) com um corpo grande.

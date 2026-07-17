@@ -363,7 +363,7 @@ async def list_members(board_id: int, db: AsyncSession = Depends(get_db), curren
         select(BoardMember, User, func.coalesce(atribuidos.c.n, 0))
         .join(User, User.id == BoardMember.user_id)
         .outerjoin(atribuidos, atribuidos.c.user_id == BoardMember.user_id)
-        .where(BoardMember.board_id == board_id)
+        .where(BoardMember.board_id == board_id, User.is_active == True)
         .order_by(User.name)
     )
     return [

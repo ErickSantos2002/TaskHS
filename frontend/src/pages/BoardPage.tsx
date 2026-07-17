@@ -334,20 +334,38 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   // O @ vale enquanto nao houver espaco depois dele — "@adri" abre o seletor,
   // "@adri " (com espaco) fecha. `[^\s@[\]]*` tambem impede casar dentro de um
   // token ja inserido, @[Nome](14).
-  const MENCAO_DIGITANDO = /@([^\s@[\]]*)$/;
+  // O @ so abre o seletor no inicio do texto ou depois de um espaco: sem isso, o "@"
+  // de um e-mail (fulano@empresa.com) abriria a lista, e um Enter para enviar viraria
+  // uma mencao acidental no meio do endereco.
+  const MENCAO_DIGITANDO = /(?:^|\s)@([^\s@[\]]*)$/;
+
+  // O token e delimitado por ] — um nome com "]" ou quebra de linha geraria um token
+  // que o backend nao reconhece, e a mencao sumiria em silencio (aparece na tela e
+  // ninguem e notificado). Ver a regex em backend/app/mentions.py.
+  function nomeParaToken(nome: string): string {
+    return nome.replace(/[\]\n]/g, " ").slice(0, 120);
+  }
+
+  function recalcMencao(el: HTMLTextAreaElement) {
+    const caret = el.selectionStart ?? el.value.length;
+    const m = MENCAO_DIGITANDO.exec(el.value.slice(0, caret));
+    setMencaoQuery(m ? m[1] : null);
+  }
 
   function onChangeComentario(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const texto = e.target.value;
-    setCommentBody(texto);
-    const caret = e.target.selectionStart ?? texto.length;
-    const m = MENCAO_DIGITANDO.exec(texto.slice(0, caret));
-    setMencaoQuery(m ? m[1] : null);
+    setCommentBody(e.target.value);
+    recalcMencao(e.target);
   }
 
   function inserirMencao(p: UserBasic) {
     const el = comentarioRef.current;
     const caret = el?.selectionStart ?? commentBody.length;
-    const antes = commentBody.slice(0, caret).replace(MENCAO_DIGITANDO, `@[${p.name}](${p.id}) `);
+    const trecho = commentBody.slice(0, caret);
+    if (!MENCAO_DIGITANDO.test(trecho)) { setMencaoQuery(null); return; }   // o caret saiu de perto do @
+    const antes = trecho.replace(MENCAO_DIGITANDO, (m) => {
+      const prefixo = m.startsWith("@") ? "" : m[0];   // o espaco (ou nada, se for inicio)
+      return `${prefixo}@[${nomeParaToken(p.name)}](${p.id}) `;
+    });
     const depois = commentBody.slice(caret);
     setCommentBody(antes + depois);
     setMencaoQuery(null);
@@ -361,7 +379,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const mencaoCandidatos =
     mencaoQuery === null
       ? []
-      : allUsers.filter(u => u.name.toLowerCase().includes(mencaoQuery.toLowerCase())).slice(0, 6);
+      : allUsers
+          .filter(u => u.id !== currentUser?.id)   // mencionar a si mesmo nao notifica ninguem
+          .filter(u => u.name.toLowerCase().includes(mencaoQuery.toLowerCase()))
+          .slice(0, 6);
 
   async function handleToggleLabel(bl: BoardLabel) {
     const has = labels.some(l => l.id === bl.id);
@@ -984,13 +1005,15 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 ref={comentarioRef}
                 value={commentBody}
                 onChange={onChangeComentario}
+                onSelect={e => recalcMencao(e.currentTarget)}
                 onKeyDown={e => {
                   // Enquanto o seletor de mencao esta aberto, Esc fecha e Enter
                   // escolhe o primeiro — sem isso o Enter enviaria o comentario
                   // no meio da escolha.
                   if (mencaoQuery !== null && mencaoCandidatos.length > 0) {
                     if (e.key === "Escape") { e.preventDefault(); setMencaoQuery(null); return; }
-                    if (e.key === "Enter") { e.preventDefault(); inserirMencao(mencaoCandidatos[0]); return; }
+                    // Shift+Enter e quebra de linha, sempre — nao rouba pro seletor.
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); inserirMencao(mencaoCandidatos[0]); return; }
                   }
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); }
                 }}
