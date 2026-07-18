@@ -21,6 +21,7 @@ from app.models.card import (
 from app.models.list import List
 from app.models.reminder import Reminder
 from app.models.user import User
+from app import realtime
 
 # Tipos auditados. Notification, ReminderSent e AuditLog ficam de fora (ruído / recursão).
 #
@@ -53,6 +54,40 @@ ENTITY_TYPES: dict[type, str] = {
     Automation: "automacao",
     User: "usuario",
 }
+
+# Entidades cuja mudanca reflete na tela do quadro (face + card aberto).
+# Exclui Reminder (pessoal), BoardMember/Automation/User (fora do escopo v1).
+_SSE_CARD_CHILD = {CardLabel, CardMember, CardComment, Checklist, ChecklistItem, CardAttachment}
+
+
+def _sse_target(session, obj, raw_action):
+    """(board_id, kind, serialize_id, action) para o SSE, ou None (nao emite)."""
+    t = type(obj)
+    if t is Card:
+        lst = session.get(List, obj.list_id)
+        if lst is None:
+            return None
+        return (lst.board_id, "card", obj.id, "delete" if raw_action == "delete" else "upsert")
+    if t is List:
+        return (obj.board_id, "list", obj.id, "delete" if raw_action == "delete" else "upsert")
+    if t is Board:
+        return (obj.id, "board", obj.id, "upsert")  # delete de board = reload estrutural
+    if t is BoardLabel:
+        return (obj.board_id, "board_labels", obj.board_id, "upsert")
+    if t in _SSE_CARD_CHILD:
+        if t is ChecklistItem:
+            cl = session.get(Checklist, obj.checklist_id)
+            card_id = cl.card_id if cl else None
+        else:
+            card_id = obj.card_id
+        if card_id is None:
+            return None
+        _, board_id = _card_ctx(session, card_id)
+        if board_id is None:
+            return None
+        return (board_id, "card", card_id, "upsert")  # filho mudou -> re-serializa o card
+    return None
+
 
 SENSITIVE = {"password_hash"}
 IGNORED_FIELDS = {"created_at", "updated_at"}
@@ -282,11 +317,26 @@ def _audit_before_flush(session, flush_context, instances):
             continue
         pending.append((obj, "excluir", _snapshot(obj)))
 
+    sse_raw = session.info.setdefault("_sse_raw", [])
+    for obj in session.new:
+        sse_raw.append((obj, "upsert"))
+    for obj in session.dirty:
+        if session.is_modified(obj, include_collections=False):
+            sse_raw.append((obj, "upsert"))
+        if type(obj) is Card:
+            hist = inspect(obj).attrs.list_id.history
+            if hist.deleted and hist.added and hist.deleted[0] != hist.added[0]:
+                session.info.setdefault("_sse_moves", []).append((obj.id, hist.deleted[0]))
+    for obj in session.deleted:
+        sse_raw.append((obj, "delete"))
+
 
 @event.listens_for(Session, "after_flush")
 def _audit_after_flush(session, flush_context):
     if session.info.get("audit_silent"):
         session.info.pop("_audit_pending", None)
+        session.info.pop("_sse_raw", None)
+        session.info.pop("_sse_moves", None)
         return
     pending = session.info.pop("_audit_pending", None)
     if not pending:
@@ -316,12 +366,52 @@ def _audit_after_flush(session, flush_context):
         if rows:
             session.execute(insert(AuditLog), rows)
 
+    sse_raw = session.info.pop("_sse_raw", None)
+    if sse_raw:
+        pend = session.info.setdefault("_sse_pending", [])
+        with session.no_autoflush:
+            for obj, raw_action in sse_raw:
+                tgt = _sse_target(session, obj, raw_action)
+                if tgt is not None:
+                    pend.append(tgt)
+            for card_id, old_list_id in session.info.pop("_sse_moves", []):
+                old_list = session.get(List, old_list_id)
+                card = session.get(Card, card_id)
+                if old_list is None or card is None:
+                    continue
+                new_list = session.get(List, card.list_id)
+                if new_list is not None and new_list.board_id != old_list.board_id:
+                    pend.append((old_list.board_id, "card", card_id, "delete"))
+
+
+@event.listens_for(Session, "after_commit")
+def _sse_after_commit(session):
+    pend = session.info.pop("_sse_pending", None)
+    if not pend:
+        return
+    # Dedup por (board_id, kind, id): varios filhos do mesmo card viram 1 upsert;
+    # delete vence upsert (card apagado + filhos em cascata no mesmo commit).
+    best: dict[tuple, str] = {}
+    for board_id, kind, eid, action in pend:
+        key = (board_id, kind, eid)
+        if best.get(key) == "delete":
+            continue
+        best[key] = action
+    for (board_id, kind, eid), action in best.items():
+        realtime.enqueue_change(board_id, kind, eid, action)
+
 
 @event.listens_for(Session, "after_rollback")
 def _audit_after_rollback(session):
     session.info.pop("_audit_pending", None)
+    session.info.pop("_sse_raw", None)
+    session.info.pop("_sse_moves", None)
+    session.info.pop("_sse_pending", None)
 
 
 @event.listens_for(Session, "after_soft_rollback")
 def _audit_after_soft_rollback(session, previous_transaction):
     session.info.pop("_audit_pending", None)
+    session.info.pop("_sse_raw", None)
+    session.info.pop("_sse_moves", None)
+    session.info.pop("_sse_pending", None)

@@ -22,6 +22,26 @@ def create_access_token(subject: str) -> str:
 def decode_token(token: str) -> str | None:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("scope") == "stream":
+            return None
         return payload.get("sub")
     except JWTError:
         return None
+
+
+def create_stream_ticket(subject: str, board_id: int) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(seconds=60)
+    return jwt.encode(
+        {"sub": subject, "board_id": board_id, "scope": "stream", "exp": expire},
+        settings.SECRET_KEY, algorithm=settings.ALGORITHM,
+    )
+
+
+def decode_stream_ticket(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except Exception:
+        return None
+    if payload.get("scope") != "stream":
+        return None
+    return payload

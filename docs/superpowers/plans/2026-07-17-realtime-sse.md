@@ -86,12 +86,17 @@ async def _serialize(board_id: int, kind: str, entity_id: int, action: str) -> d
         if kind == "card":
             # import tardio: evita ciclo (routers.cards importa muita coisa)
             from app.routers.cards import _card_options, _card_to_dict
+            from app.schemas.card import CardOut
             res = await db.execute(select(Card).where(Card.id == entity_id).options(*_card_options()))
             card = res.scalar_one_or_none()
             if card is None:
                 return None
+            # CardOut.model_validate NO DICT achatado (nao no card cru): _card_to_dict
+            # achata members->User; CardOut(members: list[UserOut]) descarta o
+            # password_hash. Passar _card_to_dict direto no jsonable_encoder VAZARIA o
+            # hash dos membros pra todos os assinantes do stream.
             return {"type": "card", "action": "upsert", "board_id": board_id,
-                    "card": jsonable_encoder(_card_to_dict(card))}
+                    "card": jsonable_encoder(CardOut.model_validate(_card_to_dict(card)).model_dump())}
         if kind == "list":
             from app.schemas.list import ListOut
             lst = await db.get(List, entity_id)
@@ -114,6 +119,10 @@ async def _serialize(board_id: int, kind: str, entity_id: int, action: str) -> d
     return None
 
 
+import logging
+_log = logging.getLogger(__name__)
+
+
 async def consumer() -> None:
     """Task de fundo (sobe no lifespan). Serializa fora do caminho da request."""
     while True:
@@ -123,9 +132,11 @@ async def consumer() -> None:
             if event is not None:
                 _fanout(board_id, event)
         except Exception:
-            # Nunca derrubar o consumer por um evento ruim.
-            pass
+            # Nunca derrubar o consumer por um evento ruim — mas registrar, senao
+            # uma falha de serializacao some sem deixar rastro.
+            _log.exception("falha ao serializar/entregar evento SSE (%s/%s/%s)", board_id, kind, entity_id)
 ```
+(O `import logging` pode ir no topo do módulo junto dos demais imports.)
 
 - [ ] **Step 2: Subir a `consumer()` no lifespan** — `backend/app/main.py`
 
@@ -444,7 +455,12 @@ async def board_snapshot(board_id: int,
             select(Card).where(Card.list_id == l.id, Card.archived == False)
             .order_by(Card.position).options(*_card_options())
         )
-        cards_by_list[l.id] = [_card_to_dict(c) for c in res.scalars().all()]
+            # CardOut.model_validate NO DICT achatado do _card_to_dict — NÃO no card cru:
+        # _card_to_dict achata members->User; CardOut(members: list[UserOut]) descarta
+        # password_hash. Passar _card_to_dict direto (sem CardOut) VAZARIA o hash, porque
+        # este endpoint não tem response_model=CardOut pra filtrar. (Mesma armadilha da
+        # serialização de card no realtime.py.)
+        cards_by_list[l.id] = [CardOut.model_validate(_card_to_dict(c)).model_dump() for c in res.scalars().all()]
     return {
         "board": BoardOut.model_validate(board).model_dump(),
         "lists": [ListOut.model_validate(l).model_dump() for l in lists],
@@ -452,7 +468,7 @@ async def board_snapshot(board_id: int,
         "cards_by_list": cards_by_list,
     }
 ```
-(Sem `response_model`: o FastAPI aplica `jsonable_encoder` no dict retornado, então datetimes/enums viram JSON. Confirmar que o filtro de arquivados bate com o `GET /lists/{id}/cards` atual — ver [cards.py](../../../backend/app/routers/cards.py) `get_cards`.)
+(Sem `response_model` na assinatura: o FastAPI aplica `jsonable_encoder` no dict retornado, então datetimes/enums viram JSON. Import: `from app.schemas.card import CardOut` no topo. Confirmar que o filtro de arquivados bate com o `GET /lists/{id}/cards` atual — ver [cards.py](../../../backend/app/routers/cards.py) `get_cards`.)
 
 - [ ] **Step 2: Verificar (read-only, seguro)**
 

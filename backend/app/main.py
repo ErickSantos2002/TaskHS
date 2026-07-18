@@ -24,11 +24,14 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    from app import realtime
     task = asyncio.create_task(reminder_loop())
+    rt_task = asyncio.create_task(realtime.consumer())
     try:
         yield
     finally:
         task.cancel()
+        rt_task.cancel()
 
 
 app = FastAPI(title="TaskHS API", version="0.1.0", lifespan=lifespan)

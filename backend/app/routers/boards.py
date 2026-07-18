@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +17,14 @@ from app.models.automation import Automation
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
-from app.dependencies import get_current_user, require_board_access_by_board_id
+from app.routers.cards import _card_options, _card_to_dict
+from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
+from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
 from datetime import datetime as _dt
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
+from app import realtime
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -258,6 +262,7 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
                     ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
                 ))
                 await db.commit()
+                realtime.publish_reload(board.id)
 
                 yield _sse("done", board_id=board.id, imported=ok, errors=errors)
 
@@ -274,6 +279,76 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 @router.get("/{board_id}", response_model=BoardOut)
 async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     return await _get_board_or_404(board_id, db)
+
+
+@router.get("/{board_id}/snapshot")
+async def board_snapshot(board_id: int,
+                         current_user: User = Depends(require_board_access_by_board_id),
+                         db: AsyncSession = Depends(get_db)):
+    board = await _get_board_or_404(board_id, db)
+    lists = (await db.execute(
+        select(List).where(List.board_id == board_id, List.archived == False).order_by(List.position)
+    )).scalars().all()
+    labels = (await db.execute(
+        select(BoardLabel).where(BoardLabel.board_id == board_id).order_by(BoardLabel.id)
+    )).scalars().all()
+    cards_by_list: dict[int, list] = {}
+    for l in lists:
+        res = await db.execute(
+            select(Card).where(Card.list_id == l.id, Card.archived == False)
+            .order_by(Card.position).options(*_card_options())
+        )
+        # CardOut.model_validate NO DICT achatado do _card_to_dict — NÃO no card cru:
+        # _card_to_dict achata members->User; CardOut(members: list[UserOut]) descarta
+        # password_hash. Passar _card_to_dict direto (sem CardOut) VAZARIA o hash, porque
+        # este endpoint não tem response_model=CardOut pra filtrar. (Mesma armadilha da
+        # serialização de card no realtime.py.)
+        cards_by_list[l.id] = [CardOut.model_validate(_card_to_dict(c)).model_dump() for c in res.scalars().all()]
+    return {
+        "board": BoardOut.model_validate(board).model_dump(),
+        "lists": [ListOut.model_validate(l).model_dump() for l in lists],
+        "labels": [{"id": x.id, "board_id": x.board_id, "name": x.name, "color": x.color} for x in labels],
+        "cards_by_list": cards_by_list,
+    }
+
+
+@router.post("/{board_id}/stream-ticket")
+async def stream_ticket(board_id: int, current_user: User = Depends(require_board_access_by_board_id)):
+    return {"ticket": create_stream_ticket(current_user.email, board_id)}
+
+
+@router.get("/{board_id}/stream")
+async def board_stream(board_id: int, ticket: str):
+    payload = decode_stream_ticket(ticket)
+    if not payload or payload.get("board_id") != board_id:
+        raise HTTPException(status_code=401, detail="Ticket inválido")
+    # handshake em sessão curta — o gen() abaixo fica horas aberto (StreamingResponse
+    # só termina no disconnect do cliente); se dependêssemos de get_db, cada stream
+    # aberto prenderia uma conexão do pool pela vida toda da conexão SSE.
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(
+            select(User).where(User.email == payload["sub"], User.is_active == True)
+        )).scalar_one_or_none()
+        if user is None or not await user_can_access_board(board_id, user, db):
+            raise HTTPException(status_code=403, detail="Sem acesso ao quadro")
+
+    async def gen():
+        q = realtime.subscribe(board_id)
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=20)
+                    yield f"data: {_json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+        finally:
+            realtime.unsubscribe(board_id, q)
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.patch("/{board_id}", response_model=BoardOut)
@@ -305,6 +380,7 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
     await db.execute(sql_delete(Automation).where(Automation.board_id == board_id))
     await db.delete(board)
     await db.commit()
+    realtime.publish_reload(board_id)
 
 
 @router.get("/{board_id}/archived")

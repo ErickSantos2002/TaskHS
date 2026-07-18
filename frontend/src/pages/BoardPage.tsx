@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -13,6 +13,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
+import { useBoardStream } from "../hooks/useBoardStream";
 import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
@@ -230,6 +231,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [obsOpen, setObsOpen] = useState<number | null>(null);
   const obsValues = [card.obs1, card.obs2, card.obs3, card.obs4, card.obs5, card.obs6];
   const fileRef = useRef<HTMLInputElement>(null);
+  const editingFieldRef = useRef<null | "title" | "description">(null);
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [remindAt, setRemindAt] = useState("");
@@ -265,6 +267,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   useEffect(() => {
+    editingFieldRef.current = null;
     setTitle(card.title);
     setDescription(card.description ?? "");
     setLabels(card.labels);
@@ -274,6 +277,18 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }, [card.id]);
 
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
+
+  useEffect(() => {
+    // Campos de conteudo do card aberto atualizados ao vivo. O campo que a
+    // pessoa esta editando naquele instante fica intocado ate ela sair (blur).
+    if (editingFieldRef.current !== "title") setTitle(card.title);
+    if (editingFieldRef.current !== "description") setDescription(card.description ?? "");
+    setLabels(card.labels);
+    setMembers(card.members);
+    setComments(card.comments);
+    setChecklists(card.checklists ?? []);
+    setAttachments(card.attachments ?? []);
+  }, [card]);
 
   // load image thumbnails as blob object URLs
   const thumbUrlsRef = useRef<string[]>([]);
@@ -371,6 +386,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   function handleDescriptionBlur() {
+    editingFieldRef.current = null;
     const trimmed = description.trim();
     if (trimmed === (card.description ?? "")) return;
     patchCard({ description: trimmed || null });
@@ -599,7 +615,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             <textarea
               value={title}
               onChange={e => setTitle(e.target.value)}
-              onBlur={handleTitleBlur}
+              onFocus={() => (editingFieldRef.current = "title")}
+              onBlur={() => { editingFieldRef.current = null; handleTitleBlur(); }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleTitleBlur(); } }}
               rows={2}
               className="w-full text-xl font-bold text-slate-100 bg-transparent resize-none focus:outline-none leading-snug"
@@ -707,6 +724,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
+                onFocus={() => (editingFieldRef.current = "description")}
                 onBlur={handleDescriptionBlur}
                 rows={4}
                 placeholder="Adicionar uma descrição mais detalhada…"
@@ -1819,28 +1837,87 @@ export function BoardPage() {
     if (el) { el.style.cursor = ""; el.style.userSelect = ""; }
   }
 
+  const resync = useCallback(async () => {
+    const snap = await api.get<{
+      board: Board; lists: BoardList[]; labels: BoardLabel[];
+      cards_by_list: Record<number, Card[]>;
+    }>(`/boards/${boardId}/snapshot`);
+    setBoard(snap.board);
+    setLists(snap.lists);
+    setBoardLabels(snap.labels);
+    setCardsByList(snap.cards_by_list);
+  }, [boardId]);
+
   useEffect(() => {
     if (!boardId) return;
-    Promise.all([
-      api.get<Board>(`/boards/${boardId}`),
-      api.get<BoardList[]>(`/boards/${boardId}/lists`),
-      api.get<BoardLabel[]>(`/boards/${boardId}/labels`),
-    ]).then(async ([b, ls, lbls]) => {
-      setBoard(b);
-      setLists(ls);
-      setBoardLabels(lbls);
-      const entries = await Promise.all(
-        ls.map(l => api.get<Card[]>(`/lists/${l.id}/cards`).then(cards => [l.id, cards] as [number, Card[]]))
-      );
-      setCardsByList(Object.fromEntries(entries));
-    }).catch(e => {
+    resync().catch(e => {
       // 403 = não é membro, tem tela própria. Qualquer outra falha (500, rede)
       // cai na tela genérica — mas precisa deixar rastro, senão vira "o quadro
       // sumiu" sem diagnóstico.
       if (e instanceof ApiError && e.status === 403) setSemAcesso(true);
       else console.error("Falha ao carregar o quadro", e);
     }).finally(() => setLoading(false));
-  }, [boardId]);
+  }, [boardId, resync]);
+
+  const applyStreamEvent = useCallback((evt: any) => {
+    if (evt.type === "card" && evt.action === "upsert") {
+      const card: Card = evt.card;
+      if (card.archived) {
+        // arquivado some da cara do quadro (o /snapshot já filtra archived==False;
+        // sem isto o card reaparecia ao vivo em todo mundo que estava com o board aberto).
+        // O modal aberto NÃO é fechado — card arquivado ainda é visualizável.
+        setCardsByList(prev => {
+          const next: Record<number, Card[]> = {};
+          for (const [lid, cards] of Object.entries(prev)) {
+            next[Number(lid)] = cards.filter(c => c.id !== card.id);
+          }
+          return next;
+        });
+        return;
+      }
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) {
+          next[Number(lid)] = cards.filter(c => c.id !== card.id);
+        }
+        const bucket = next[card.list_id] ?? [];
+        next[card.list_id] = [...bucket, card].sort((a, b) => a.position - b.position);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === card.id ? card : sc));
+    } else if (evt.type === "card" && evt.action === "delete") {
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) next[Number(lid)] = cards.filter(c => c.id !== evt.id);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === evt.id ? null : sc));
+    } else if (evt.type === "list" && evt.action === "upsert") {
+      const lst: BoardList = evt.list;
+      if (lst.archived) {
+        // mesma lógica do card: lista arquivada some da cara do quadro ao vivo.
+        setLists(prev => prev.filter(l => l.id !== lst.id));
+        setCardsByList(prev => { const { [lst.id]: _drop, ...rest } = prev; return rest; });
+        return;
+      }
+      setLists(prev => {
+        const rest = prev.filter(l => l.id !== lst.id);
+        return [...rest, lst].sort((a, b) => a.position - b.position);
+      });
+      setCardsByList(prev => (prev[lst.id] ? prev : { ...prev, [lst.id]: [] }));
+    } else if (evt.type === "list" && evt.action === "delete") {
+      setLists(prev => prev.filter(l => l.id !== evt.id));
+      setCardsByList(prev => { const { [evt.id]: _drop, ...rest } = prev; return rest; });
+    } else if (evt.type === "board_labels") {
+      setBoardLabels(evt.labels);
+    } else if (evt.type === "board" && evt.action === "upsert") {
+      setBoard(evt.board);
+    } else if (evt.type === "board" && evt.action === "reload") {
+      resync().catch(() => {});
+    }
+  }, [resync]);
+
+  useBoardStream(boardId, applyStreamEvent, () => { resync().catch(() => {}); });
 
   useEffect(() => {
     if (!showEditBoard || !boardId) return;
