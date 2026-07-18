@@ -22,6 +22,8 @@ def create_access_token(subject: str) -> str:
 def decode_token(token: str) -> str | None:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("scope") == "stream":
+            return None
         return payload.get("sub")
     except JWTError:
         return None
