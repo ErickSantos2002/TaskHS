@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -13,6 +13,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
+import { useBoardStream } from "../hooks/useBoardStream";
 import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
@@ -1819,28 +1820,68 @@ export function BoardPage() {
     if (el) { el.style.cursor = ""; el.style.userSelect = ""; }
   }
 
+  const resync = useCallback(async () => {
+    const snap = await api.get<{
+      board: Board; lists: BoardList[]; labels: BoardLabel[];
+      cards_by_list: Record<number, Card[]>;
+    }>(`/boards/${boardId}/snapshot`);
+    setBoard(snap.board);
+    setLists(snap.lists);
+    setBoardLabels(snap.labels);
+    setCardsByList(snap.cards_by_list);
+  }, [boardId]);
+
   useEffect(() => {
     if (!boardId) return;
-    Promise.all([
-      api.get<Board>(`/boards/${boardId}`),
-      api.get<BoardList[]>(`/boards/${boardId}/lists`),
-      api.get<BoardLabel[]>(`/boards/${boardId}/labels`),
-    ]).then(async ([b, ls, lbls]) => {
-      setBoard(b);
-      setLists(ls);
-      setBoardLabels(lbls);
-      const entries = await Promise.all(
-        ls.map(l => api.get<Card[]>(`/lists/${l.id}/cards`).then(cards => [l.id, cards] as [number, Card[]]))
-      );
-      setCardsByList(Object.fromEntries(entries));
-    }).catch(e => {
+    resync().catch(e => {
       // 403 = não é membro, tem tela própria. Qualquer outra falha (500, rede)
       // cai na tela genérica — mas precisa deixar rastro, senão vira "o quadro
       // sumiu" sem diagnóstico.
       if (e instanceof ApiError && e.status === 403) setSemAcesso(true);
       else console.error("Falha ao carregar o quadro", e);
     }).finally(() => setLoading(false));
-  }, [boardId]);
+  }, [boardId, resync]);
+
+  const applyStreamEvent = useCallback((evt: any) => {
+    if (evt.type === "card" && evt.action === "upsert") {
+      const card: Card = evt.card;
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) {
+          next[Number(lid)] = cards.filter(c => c.id !== card.id);
+        }
+        const bucket = next[card.list_id] ?? [];
+        next[card.list_id] = [...bucket, card].sort((a, b) => a.position - b.position);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === card.id ? card : sc));
+    } else if (evt.type === "card" && evt.action === "delete") {
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) next[Number(lid)] = cards.filter(c => c.id !== evt.id);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === evt.id ? null : sc));
+    } else if (evt.type === "list" && evt.action === "upsert") {
+      const lst: BoardList = evt.list;
+      setLists(prev => {
+        const rest = prev.filter(l => l.id !== lst.id);
+        return [...rest, lst].sort((a, b) => a.position - b.position);
+      });
+      setCardsByList(prev => (prev[lst.id] ? prev : { ...prev, [lst.id]: [] }));
+    } else if (evt.type === "list" && evt.action === "delete") {
+      setLists(prev => prev.filter(l => l.id !== evt.id));
+      setCardsByList(prev => { const { [evt.id]: _drop, ...rest } = prev; return rest; });
+    } else if (evt.type === "board_labels") {
+      setBoardLabels(evt.labels);
+    } else if (evt.type === "board" && evt.action === "upsert") {
+      setBoard(evt.board);
+    } else if (evt.type === "board" && evt.action === "reload") {
+      resync().catch(() => {});
+    }
+  }, [resync]);
+
+  useBoardStream(boardId, applyStreamEvent, () => { resync().catch(() => {}); });
 
   useEffect(() => {
     if (!showEditBoard || !boardId) return;
