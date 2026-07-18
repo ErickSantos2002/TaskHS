@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.8.1",
+    date: "2026-07-18",
+    changes: [
+      { kind: "melhoria", text: "Permissões ajustadas para a rotina da empresa: criar e importar quadro, adicionar/renomear/mudar cor/arquivar/excluir listas e gerenciar etiquetas passam a ser só de administradores e coordenadores — as listas são etapas do fluxo e não devem mudar à toa. Membros continuam trabalhando normalmente nos cartões (criar, mover, comentar, checklists, anexos e marcar etiquetas que já existem)." },
+    ],
+  },
+  {
     version: "1.8.0",
     date: "2026-07-17",
     changes: [

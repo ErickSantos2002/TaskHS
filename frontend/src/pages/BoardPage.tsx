@@ -1419,9 +1419,10 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
+  isElevated: boolean;
   onCardAdded: (c: Card) => void;
   onCardClick: (card: Card) => void;
   onListUpdate: (updated: BoardList) => void;
@@ -1509,7 +1510,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
                 onKeyDown={e => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") { setRenameValue(list.title); setIsRenaming(false); } }}
                 className="flex-1 text-sm font-semibold bg-background-elevated border border-primary/40 rounded px-2 py-0.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-primary/60"
               />
-            ) : (
+            ) : isElevated ? (
               <button
                 onClick={() => setIsRenaming(true)}
                 className="text-sm font-semibold truncate text-slate-100 hover:text-primary transition-colors text-left"
@@ -1518,12 +1519,18 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
               >
                 {list.title}
               </button>
+            ) : (
+              <span className="text-sm font-semibold truncate text-left" style={{ color: list.color }}>
+                {list.title}
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: `${list.color}20`, color: list.color }}>
               {cards.length}
             </span>
+            {/* Menu da lista (renomear/cor/arquivar/excluir): só elevado. */}
+            {isElevated && (
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setShowMenu(p => !p)}
@@ -1572,6 +1579,7 @@ function KanbanColumn({ list, cards, onCardAdded, onCardClick, onListUpdate, onL
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
         {list.description && <p className="text-[11px] text-slate-500 mt-1 pl-4.5">{list.description}</p>}
@@ -1765,6 +1773,10 @@ export function BoardPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user: currentUser } = useAuth();
+  // Elevado = administrador ou coordenador. Membro comum não mexe na ESTRUTURA do quadro
+  // (criar/renomear/cor/arquivar/excluir lista, gerenciar etiquetas) — só no conteúdo dos
+  // cards. A trava real é no backend (get_elevated_user); aqui é só esconder os botões.
+  const isElevated = currentUser?.role === "administrador" || currentUser?.role === "coordenador";
   const boardId = Number(id);
 
   const [board, setBoard] = useState<Board | null>(null);
@@ -2342,12 +2354,16 @@ export function BoardPage() {
                     className="pl-9 pr-3 py-2 text-sm w-44 rounded-lg border border-border bg-background-elevated text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
                   />
                 </div>
-                <button
-                  onClick={() => setShowLabelManager(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
-                >
-                  <ITag />Etiquetas
-                </button>
+                {/* Gerenciar etiquetas (criar/editar/excluir): só elevado. Atribuir uma
+                    etiqueta existente a um card segue livre (é no modal do card). */}
+                {isElevated && (
+                  <button
+                    onClick={() => setShowLabelManager(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                  >
+                    <ITag />Etiquetas
+                  </button>
+                )}
                 <button
                   onClick={() => { setShowArchived(true); setArchivedTab("cards"); fetchArchived(); }}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -2429,13 +2445,15 @@ export function BoardPage() {
                     key={list.id}
                     list={list}
                     cards={filteredCards(list.id)}
+                    isElevated={isElevated}
                     onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
                     onCardClick={setSelectedCard}
                     onListUpdate={handleListUpdate}
                     onListDelete={handleListDelete}
                   />
                 ))}
-                {addingList ? (
+                {/* Adicionar lista: só elevado (as listas são etapas do fluxo). */}
+                {isElevated && (addingList ? (
                   <AddListForm
                     boardId={boardId}
                     position={lists.length}
@@ -2449,7 +2467,7 @@ export function BoardPage() {
                   >
                     <IPlus />Adicionar lista
                   </button>
-                )}
+                ))}
               </div>
             </div>
           </div>

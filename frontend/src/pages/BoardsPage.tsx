@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { api, API_BASE } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 import type { BoardListItem, UserBasic } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -508,6 +509,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function BoardsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isElevated = user?.role === "administrador" || user?.role === "coordenador";
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -624,20 +627,23 @@ export function BoardsPage() {
                 {search && ` encontrado${sorted.length !== 1 ? "s" : ""}`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowImport(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
-              >
-                <IUpload />Importar
-              </button>
-              <button
-                onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
-              >
-                <IPlus />Novo Board
-              </button>
-            </div>
+            {/* Importar e Novo Board: só administrador/coordenador (membro não cria/importa quadro). */}
+            {isElevated && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowImport(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                >
+                  <IUpload />Importar
+                </button>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
+                >
+                  <IPlus />Novo Board
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Controls row */}

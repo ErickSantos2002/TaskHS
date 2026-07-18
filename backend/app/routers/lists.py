@@ -7,6 +7,7 @@ from app.models.card import Card
 from app.models.user import User
 from app.schemas.list import ListCreate, ListUpdate, ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
+from app.routers.auth import get_elevated_user
 from app.models.automation import Automation
 from app.models.reminder import Reminder, ReminderSent
 from app.models.notification import Notification
@@ -25,7 +26,7 @@ async def _get_list_or_404(list_id: int, board_id: int, db: AsyncSession) -> Lis
 
 
 @router.post("", response_model=ListOut, status_code=status.HTTP_201_CREATED)
-async def create_list(board_id: int, body: ListCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_list(board_id: int, body: ListCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     lst = List(**body.model_dump(), board_id=board_id)
     db.add(lst)
     await db.commit()
@@ -40,7 +41,7 @@ async def get_lists(board_id: int, db: AsyncSession = Depends(get_db), current_u
 
 
 @router.patch("/{list_id}", response_model=ListOut)
-async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     lst = await _get_list_or_404(list_id, board_id, db)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(lst, field, value)
@@ -50,7 +51,7 @@ async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSe
 
 
 @router.delete("/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     lst = await _get_list_or_404(list_id, board_id, db)
     await db.execute(sql_delete(Automation).where(Automation.trigger_list_id == list_id))
     # Reminder/ReminderSent/Notification apontam para card_id mas nao tem cascade no ORM
@@ -67,7 +68,7 @@ async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(ge
 
 
 @router.post("/{list_id}/archive", response_model=ListOut)
-async def archive_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def archive_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     lst = await _get_list_or_404(list_id, board_id, db)
     lst.archived = True
     await db.commit()
@@ -76,7 +77,7 @@ async def archive_list(board_id: int, list_id: int, db: AsyncSession = Depends(g
 
 
 @router.post("/{list_id}/restore", response_model=ListOut)
-async def restore_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def restore_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(List).where(List.id == list_id, List.board_id == board_id))
     lst = result.scalar_one_or_none()
     if not lst:

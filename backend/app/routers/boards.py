@@ -19,6 +19,7 @@ from app.schemas.card import CardOut
 from app.schemas.list import ListOut
 from app.routers.cards import _card_options, _card_to_dict
 from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
+from app.routers.auth import get_elevated_user
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
 from datetime import datetime as _dt
@@ -61,7 +62,7 @@ def _board_list_item(board: Board, user: User) -> dict:
 
 
 @router.post("", response_model=BoardListOut, status_code=status.HTTP_201_CREATED)
-async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     board = Board(**body.model_dump(), owner_id=current_user.id)
     db.add(board)
     await db.flush()
@@ -133,7 +134,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
 
 
 @router.post("/import")
-async def import_from_trello(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+async def import_from_trello(file: UploadFile = File(...), current_user: User = Depends(get_elevated_user)):
     content = await file.read()
 
     async def generate():

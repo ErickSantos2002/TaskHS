@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.board import BoardLabel
 from app.models.user import User
 from app.dependencies import get_current_user, require_board_access_by_board_id
+from app.routers.auth import get_elevated_user
 
 router = APIRouter(prefix="/boards/{board_id}/labels", tags=["labels"],
                    dependencies=[Depends(require_board_access_by_board_id)])
@@ -36,7 +37,7 @@ async def get_labels(board_id: int, db: AsyncSession = Depends(get_db), current_
 
 
 @router.post("", response_model=BoardLabelOut, status_code=status.HTTP_201_CREATED)
-async def create_label(board_id: int, body: BoardLabelCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_label(board_id: int, body: BoardLabelCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     label = BoardLabel(board_id=board_id, name=body.name, color=body.color)
     db.add(label)
     await db.commit()
@@ -45,7 +46,7 @@ async def create_label(board_id: int, body: BoardLabelCreate, db: AsyncSession =
 
 
 @router.patch("/{label_id}", response_model=BoardLabelOut)
-async def update_label(board_id: int, label_id: int, body: BoardLabelUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def update_label(board_id: int, label_id: int, body: BoardLabelUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(BoardLabel).where(BoardLabel.id == label_id, BoardLabel.board_id == board_id))
     label = result.scalar_one_or_none()
     if not label:
@@ -58,7 +59,7 @@ async def update_label(board_id: int, label_id: int, body: BoardLabelUpdate, db:
 
 
 @router.delete("/{label_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_label(board_id: int, label_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_label(board_id: int, label_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(BoardLabel).where(BoardLabel.id == label_id, BoardLabel.board_id == board_id))
     label = result.scalar_one_or_none()
     if label:
