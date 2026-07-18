@@ -21,6 +21,7 @@ import json as _json
 from datetime import datetime as _dt
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
+from app import realtime
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -258,6 +259,7 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
                     ip=(actor.ip[:45] if actor.ip else None), path=(actor.path[:255] if actor.path else None),
                 ))
                 await db.commit()
+                realtime.publish_reload(board.id)
 
                 yield _sse("done", board_id=board.id, imported=ok, errors=errors)
 
@@ -305,6 +307,7 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
     await db.execute(sql_delete(Automation).where(Automation.board_id == board_id))
     await db.delete(board)
     await db.commit()
+    realtime.publish_reload(board_id)
 
 
 @router.get("/{board_id}/archived")

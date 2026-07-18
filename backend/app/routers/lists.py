@@ -10,6 +10,7 @@ from app.dependencies import get_current_user, require_board_access_by_board_id
 from app.models.automation import Automation
 from app.models.reminder import Reminder, ReminderSent
 from app.models.notification import Notification
+from app import realtime
 
 router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"],
                    dependencies=[Depends(require_board_access_by_board_id)])
@@ -62,6 +63,7 @@ async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(ge
         await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
     await db.delete(lst)
     await db.commit()
+    realtime.publish_reload(board_id)
 
 
 @router.post("/{list_id}/archive", response_model=ListOut)
