@@ -1862,6 +1862,19 @@ export function BoardPage() {
   const applyStreamEvent = useCallback((evt: any) => {
     if (evt.type === "card" && evt.action === "upsert") {
       const card: Card = evt.card;
+      if (card.archived) {
+        // arquivado some da cara do quadro (o /snapshot já filtra archived==False;
+        // sem isto o card reaparecia ao vivo em todo mundo que estava com o board aberto).
+        // O modal aberto NÃO é fechado — card arquivado ainda é visualizável.
+        setCardsByList(prev => {
+          const next: Record<number, Card[]> = {};
+          for (const [lid, cards] of Object.entries(prev)) {
+            next[Number(lid)] = cards.filter(c => c.id !== card.id);
+          }
+          return next;
+        });
+        return;
+      }
       setCardsByList(prev => {
         const next: Record<number, Card[]> = {};
         for (const [lid, cards] of Object.entries(prev)) {
@@ -1881,6 +1894,12 @@ export function BoardPage() {
       setSelectedCard(sc => (sc && sc.id === evt.id ? null : sc));
     } else if (evt.type === "list" && evt.action === "upsert") {
       const lst: BoardList = evt.list;
+      if (lst.archived) {
+        // mesma lógica do card: lista arquivada some da cara do quadro ao vivo.
+        setLists(prev => prev.filter(l => l.id !== lst.id));
+        setCardsByList(prev => { const { [lst.id]: _drop, ...rest } = prev; return rest; });
+        return;
+      }
       setLists(prev => {
         const rest = prev.filter(l => l.id !== lst.id);
         return [...rest, lst].sort((a, b) => a.position - b.position);

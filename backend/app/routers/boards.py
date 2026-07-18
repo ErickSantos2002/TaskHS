@@ -318,15 +318,19 @@ async def stream_ticket(board_id: int, current_user: User = Depends(require_boar
 
 
 @router.get("/{board_id}/stream")
-async def board_stream(board_id: int, ticket: str, db: AsyncSession = Depends(get_db)):
+async def board_stream(board_id: int, ticket: str):
     payload = decode_stream_ticket(ticket)
     if not payload or payload.get("board_id") != board_id:
         raise HTTPException(status_code=401, detail="Ticket inválido")
-    user = (await db.execute(
-        select(User).where(User.email == payload["sub"], User.is_active == True)
-    )).scalar_one_or_none()
-    if user is None or not await user_can_access_board(board_id, user, db):
-        raise HTTPException(status_code=403, detail="Sem acesso ao quadro")
+    # handshake em sessão curta — o gen() abaixo fica horas aberto (StreamingResponse
+    # só termina no disconnect do cliente); se dependêssemos de get_db, cada stream
+    # aberto prenderia uma conexão do pool pela vida toda da conexão SSE.
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(
+            select(User).where(User.email == payload["sub"], User.is_active == True)
+        )).scalar_one_or_none()
+        if user is None or not await user_can_access_board(board_id, user, db):
+            raise HTTPException(status_code=403, detail="Sem acesso ao quadro")
 
     async def gen():
         q = realtime.subscribe(board_id)
