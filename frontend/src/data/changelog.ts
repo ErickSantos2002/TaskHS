@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.8.0",
+    date: "2026-07-17",
+    changes: [
+      { kind: "novidade", text: "O quadro agora atualiza em tempo real: quando alguém (ou a integração) move, cria, arquiva ou edita um cartão, listas ou etiquetas, todo mundo que está com o quadro aberto vê na hora, sem precisar atualizar a página. O cartão aberto também sincroniza ao vivo, sem apagar o que você está digitando." },
+    ],
+  },
+  {
     version: "1.7.1",
     date: "2026-07-17",
     changes: [
