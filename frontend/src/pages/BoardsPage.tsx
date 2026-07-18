@@ -715,12 +715,14 @@ export function BoardsPage() {
             </div>
             <p className="font-semibold text-slate-300 mb-1">Nenhum board ainda</p>
             <p className="text-sm text-slate-500 mb-4">Crie seu primeiro board para começar a organizar as tarefas de SST.</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 transition-all"
-            >
-              <IPlus />Criar Board
-            </button>
+            {isElevated && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 transition-all"
+              >
+                <IPlus />Criar Board
+              </button>
+            )}
           </div>
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -746,8 +748,8 @@ export function BoardsPage() {
               )}
               <div className={view === "grid" ? gridClass : listClass}>
                 {otherBoards.map(renderBoard)}
-                {/* New board button — grid only */}
-                {view === "grid" && (
+                {/* New board button — grid only, e só p/ elevado (membro não cria quadro) */}
+                {isElevated && view === "grid" && (
                   <button
                     onClick={() => setShowModal(true)}
                     className="rounded-xl border-2 border-dashed border-border hover:border-primary/40 hover:text-primary text-slate-600 text-sm font-medium flex flex-col items-center justify-center gap-2 p-8 transition-all duration-150 min-h-30"
