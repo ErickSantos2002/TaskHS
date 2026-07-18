@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models.card import Card
 from app.models.list import List
 from app.models.board import Board, BoardLabel
+
+_log = logging.getLogger(__name__)
 
 # Assinantes por board_id. Preenchido pelo endpoint /stream (Task 3).
 _subscribers: dict[int, set[asyncio.Queue]] = {}
@@ -52,12 +55,13 @@ async def _serialize(board_id: int, kind: str, entity_id: int, action: str) -> d
         if kind == "card":
             # import tardio: evita ciclo (routers.cards importa muita coisa)
             from app.routers.cards import _card_options, _card_to_dict
+            from app.schemas.card import CardOut
             res = await db.execute(select(Card).where(Card.id == entity_id).options(*_card_options()))
             card = res.scalar_one_or_none()
             if card is None:
                 return None
             return {"type": "card", "action": "upsert", "board_id": board_id,
-                    "card": jsonable_encoder(_card_to_dict(card))}
+                    "card": jsonable_encoder(CardOut.model_validate(_card_to_dict(card)).model_dump())}
         if kind == "list":
             from app.schemas.list import ListOut
             lst = await db.get(List, entity_id)
@@ -90,4 +94,4 @@ async def consumer() -> None:
                 _fanout(board_id, event)
         except Exception:
             # Nunca derrubar o consumer por um evento ruim.
-            pass
+            _log.exception("falha ao serializar/entregar evento SSE (%s/%s/%s)", board_id, kind, entity_id)
