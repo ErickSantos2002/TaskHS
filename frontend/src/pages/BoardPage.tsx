@@ -231,6 +231,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [obsOpen, setObsOpen] = useState<number | null>(null);
   const obsValues = [card.obs1, card.obs2, card.obs3, card.obs4, card.obs5, card.obs6];
   const fileRef = useRef<HTMLInputElement>(null);
+  const editingFieldRef = useRef<null | "title" | "description">(null);
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [remindAt, setRemindAt] = useState("");
@@ -266,6 +267,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   useEffect(() => {
+    editingFieldRef.current = null;
     setTitle(card.title);
     setDescription(card.description ?? "");
     setLabels(card.labels);
@@ -275,6 +277,18 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }, [card.id]);
 
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
+
+  useEffect(() => {
+    // Campos de conteudo do card aberto atualizados ao vivo. O campo que a
+    // pessoa esta editando naquele instante fica intocado ate ela sair (blur).
+    if (editingFieldRef.current !== "title") setTitle(card.title);
+    if (editingFieldRef.current !== "description") setDescription(card.description ?? "");
+    setLabels(card.labels);
+    setMembers(card.members);
+    setComments(card.comments);
+    setChecklists(card.checklists ?? []);
+    setAttachments(card.attachments ?? []);
+  }, [card]);
 
   // load image thumbnails as blob object URLs
   const thumbUrlsRef = useRef<string[]>([]);
@@ -366,12 +380,14 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   function handleTitleBlur() {
+    editingFieldRef.current = null;
     const trimmed = title.trim();
     if (!trimmed || trimmed === card.title) return;
     patchCard({ title: trimmed });
   }
 
   function handleDescriptionBlur() {
+    editingFieldRef.current = null;
     const trimmed = description.trim();
     if (trimmed === (card.description ?? "")) return;
     patchCard({ description: trimmed || null });
@@ -600,6 +616,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             <textarea
               value={title}
               onChange={e => setTitle(e.target.value)}
+              onFocus={() => (editingFieldRef.current = "title")}
               onBlur={handleTitleBlur}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleTitleBlur(); } }}
               rows={2}
@@ -708,6 +725,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
+                onFocus={() => (editingFieldRef.current = "description")}
                 onBlur={handleDescriptionBlur}
                 rows={4}
                 placeholder="Adicionar uma descrição mais detalhada…"
