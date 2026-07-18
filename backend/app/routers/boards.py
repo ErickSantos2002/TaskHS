@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,8 @@ from app.models.automation import Automation
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
-from app.dependencies import get_current_user, require_board_access_by_board_id
+from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
+from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
 from datetime import datetime as _dt
 from app.models.audit import AuditLog
@@ -276,6 +278,41 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 @router.get("/{board_id}", response_model=BoardOut)
 async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     return await _get_board_or_404(board_id, db)
+
+
+@router.post("/{board_id}/stream-ticket")
+async def stream_ticket(board_id: int, current_user: User = Depends(require_board_access_by_board_id)):
+    return {"ticket": create_stream_ticket(current_user.email, board_id)}
+
+
+@router.get("/{board_id}/stream")
+async def board_stream(board_id: int, ticket: str, db: AsyncSession = Depends(get_db)):
+    payload = decode_stream_ticket(ticket)
+    if not payload or payload.get("board_id") != board_id:
+        raise HTTPException(status_code=401, detail="Ticket inválido")
+    user = (await db.execute(
+        select(User).where(User.email == payload["sub"], User.is_active == True)
+    )).scalar_one_or_none()
+    if user is None or not await user_can_access_board(board_id, user, db):
+        raise HTTPException(status_code=403, detail="Sem acesso ao quadro")
+
+    async def gen():
+        q = realtime.subscribe(board_id)
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=20)
+                    yield f"data: {_json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+        finally:
+            realtime.unsubscribe(board_id, q)
+
+    return StreamingResponse(
+        gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.patch("/{board_id}", response_model=BoardOut)

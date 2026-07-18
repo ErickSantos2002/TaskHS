@@ -61,6 +61,18 @@ async def require_board_access_by_board_id(
     return current_user
 
 
+async def user_can_access_board(board_id: int, user: User, db: AsyncSession) -> bool:
+    if user.is_elevated:
+        return True
+    q = await db.execute(
+        select(BoardMember.id).where(
+            BoardMember.board_id == board_id,
+            BoardMember.user_id == user.id,
+        ).limit(1)
+    )
+    return q.scalars().first() is not None
+
+
 async def user_can_access_list(list_id: int, user: User, db: AsyncSession) -> bool:
     """A regra crua: esta pessoa alcança o quadro desta lista?
 
