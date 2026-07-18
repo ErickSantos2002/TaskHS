@@ -380,7 +380,6 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   function handleTitleBlur() {
-    editingFieldRef.current = null;
     const trimmed = title.trim();
     if (!trimmed || trimmed === card.title) return;
     patchCard({ title: trimmed });
@@ -617,7 +616,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               value={title}
               onChange={e => setTitle(e.target.value)}
               onFocus={() => (editingFieldRef.current = "title")}
-              onBlur={handleTitleBlur}
+              onBlur={() => { editingFieldRef.current = null; handleTitleBlur(); }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleTitleBlur(); } }}
               rows={2}
               className="w-full text-xl font-bold text-slate-100 bg-transparent resize-none focus:outline-none leading-snug"
