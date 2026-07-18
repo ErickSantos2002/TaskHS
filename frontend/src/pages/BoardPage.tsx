@@ -2390,12 +2390,15 @@ export function BoardPage() {
                     Automações
                   </button>
                 )}
-                <button
-                  onClick={() => setAddingList(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
-                >
-                  <IPlus />Nova Lista
-                </button>
+                {/* Nova Lista: só elevado (membro não cria lista). */}
+                {isElevated && (
+                  <button
+                    onClick={() => setAddingList(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
+                  >
+                    <IPlus />Nova Lista
+                  </button>
+                )}
               </div>
             </div>
 
