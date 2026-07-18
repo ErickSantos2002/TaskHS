@@ -17,6 +17,7 @@ from app.models.automation import Automation
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
+from app.routers.cards import _card_options, _card_to_dict
 from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
@@ -278,6 +279,37 @@ async def import_from_trello(file: UploadFile = File(...), current_user: User = 
 @router.get("/{board_id}", response_model=BoardOut)
 async def get_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_board_access_by_board_id)):
     return await _get_board_or_404(board_id, db)
+
+
+@router.get("/{board_id}/snapshot")
+async def board_snapshot(board_id: int,
+                         current_user: User = Depends(require_board_access_by_board_id),
+                         db: AsyncSession = Depends(get_db)):
+    board = await _get_board_or_404(board_id, db)
+    lists = (await db.execute(
+        select(List).where(List.board_id == board_id, List.archived == False).order_by(List.position)
+    )).scalars().all()
+    labels = (await db.execute(
+        select(BoardLabel).where(BoardLabel.board_id == board_id).order_by(BoardLabel.id)
+    )).scalars().all()
+    cards_by_list: dict[int, list] = {}
+    for l in lists:
+        res = await db.execute(
+            select(Card).where(Card.list_id == l.id, Card.archived == False)
+            .order_by(Card.position).options(*_card_options())
+        )
+        # CardOut.model_validate NO DICT achatado do _card_to_dict — NÃO no card cru:
+        # _card_to_dict achata members->User; CardOut(members: list[UserOut]) descarta
+        # password_hash. Passar _card_to_dict direto (sem CardOut) VAZARIA o hash, porque
+        # este endpoint não tem response_model=CardOut pra filtrar. (Mesma armadilha da
+        # serialização de card no realtime.py.)
+        cards_by_list[l.id] = [CardOut.model_validate(_card_to_dict(c)).model_dump() for c in res.scalars().all()]
+    return {
+        "board": BoardOut.model_validate(board).model_dump(),
+        "lists": [ListOut.model_validate(l).model_dump() for l in lists],
+        "labels": [{"id": x.id, "board_id": x.board_id, "name": x.name, "color": x.color} for x in labels],
+        "cards_by_list": cards_by_list,
+    }
 
 
 @router.post("/{board_id}/stream-ticket")
