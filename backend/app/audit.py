@@ -323,6 +323,10 @@ def _audit_before_flush(session, flush_context, instances):
     for obj in session.dirty:
         if session.is_modified(obj, include_collections=False):
             sse_raw.append((obj, "upsert"))
+        if type(obj) is Card:
+            hist = inspect(obj).attrs.list_id.history
+            if hist.deleted and hist.added and hist.deleted[0] != hist.added[0]:
+                session.info.setdefault("_sse_moves", []).append((obj.id, hist.deleted[0]))
     for obj in session.deleted:
         sse_raw.append((obj, "delete"))
 
@@ -332,6 +336,7 @@ def _audit_after_flush(session, flush_context):
     if session.info.get("audit_silent"):
         session.info.pop("_audit_pending", None)
         session.info.pop("_sse_raw", None)
+        session.info.pop("_sse_moves", None)
         return
     pending = session.info.pop("_audit_pending", None)
     if not pending:
@@ -369,6 +374,14 @@ def _audit_after_flush(session, flush_context):
                 tgt = _sse_target(session, obj, raw_action)
                 if tgt is not None:
                     pend.append(tgt)
+            for card_id, old_list_id in session.info.pop("_sse_moves", []):
+                old_list = session.get(List, old_list_id)
+                card = session.get(Card, card_id)
+                if old_list is None or card is None:
+                    continue
+                new_list = session.get(List, card.list_id)
+                if new_list is not None and new_list.board_id != old_list.board_id:
+                    pend.append((old_list.board_id, "card", card_id, "delete"))
 
 
 @event.listens_for(Session, "after_commit")
@@ -392,6 +405,7 @@ def _sse_after_commit(session):
 def _audit_after_rollback(session):
     session.info.pop("_audit_pending", None)
     session.info.pop("_sse_raw", None)
+    session.info.pop("_sse_moves", None)
     session.info.pop("_sse_pending", None)
 
 
@@ -399,4 +413,5 @@ def _audit_after_rollback(session):
 def _audit_after_soft_rollback(session, previous_transaction):
     session.info.pop("_audit_pending", None)
     session.info.pop("_sse_raw", None)
+    session.info.pop("_sse_moves", None)
     session.info.pop("_sse_pending", None)
