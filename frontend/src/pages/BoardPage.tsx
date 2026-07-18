@@ -1318,7 +1318,8 @@ function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card:
       >
         <IGrip />
       </div>
-      <button type="button" className="w-full text-left" onClick={() => onCardClick(card)}>
+      {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
+      <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
         <CardContent card={card} />
       </button>
     </div>
@@ -1822,15 +1823,19 @@ export function BoardPage() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollDrag = useRef({ active: false, startX: 0, scrollLeft: 0 });
+  const scrollDrag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
+  // Ligado quando o pan andou de verdade: engole o clique seguinte para não abrir o card sem querer.
+  const suppressClick = useRef(false);
+  const PAN_CLICK_SLOP = 5; // px: abaixo disso ainda conta como clique, não como arrasto
 
   function onBoardMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
-    if (target.closest("button, input, textarea, [data-dnd-draggable]")) return;
+    // O card é opt-in (data-pan-surface); o resto dos botões/campos segue fora do pan.
+    if (!target.closest("[data-pan-surface]") && target.closest("button, input, textarea, [data-dnd-draggable]")) return;
     if (e.button !== 0) return;
     const el = scrollRef.current;
     if (!el) return;
-    scrollDrag.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft };
+    scrollDrag.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft, moved: false };
     el.style.cursor = "grabbing";
     el.style.userSelect = "none";
   }
@@ -1840,13 +1845,22 @@ export function BoardPage() {
     const el = scrollRef.current;
     if (!el) return;
     const dx = e.clientX - scrollDrag.current.startX;
+    if (Math.abs(dx) > PAN_CLICK_SLOP) scrollDrag.current.moved = true;
     el.scrollLeft = scrollDrag.current.scrollLeft - dx;
   }
 
   function onBoardMouseUp() {
+    if (scrollDrag.current.active && scrollDrag.current.moved) suppressClick.current = true;
     scrollDrag.current.active = false;
     const el = scrollRef.current;
     if (el) { el.style.cursor = ""; el.style.userSelect = ""; }
+  }
+
+  function onBoardClickCapture(e: React.MouseEvent<HTMLDivElement>) {
+    if (!suppressClick.current) return;
+    suppressClick.current = false;
+    e.preventDefault();
+    e.stopPropagation();
   }
 
   const resync = useCallback(async () => {
@@ -2439,6 +2453,7 @@ export function BoardPage() {
               onMouseMove={onBoardMouseMove}
               onMouseUp={onBoardMouseUp}
               onMouseLeave={onBoardMouseUp}
+              onClickCapture={onBoardClickCapture}
             >
               {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
                   O botão/form de "Adicionar lista" tem self-start, então continua curto. */}

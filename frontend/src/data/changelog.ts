@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.8.2",
+    date: "2026-07-18",
+    changes: [
+      { kind: "correcao", text: "Agora dá para arrastar o quadro para os lados segurando o mouse em cima dos próprios cartões, e não só no espaço vazio. Clicar no cartão continua abrindo ele normalmente, e mover o cartão de lista continua sendo pela alcinha do canto superior direito." },
+    ],
+  },
+  {
     version: "1.8.1",
     date: "2026-07-18",
     changes: [
