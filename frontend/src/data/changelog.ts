@@ -14,6 +14,16 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.8.3",
+    date: "2026-07-20",
+    changes: [
+      { kind: "melhoria", text: "A cor da lista agora tinge a coluna inteira (faixa no topo, contorno e fundo), em vez de colorir só o nome. O título volta a ser branco/escuro conforme o tema, ficando mais fácil de ler, e dá para identificar as etapas do quadro de longe." },
+      { kind: "correcao", text: "No modo claro as listas ficavam com um fundo escuro e um gradiente vazando por trás — agora o fundo acompanha o tema (claro no modo claro, escuro no modo escuro) e o gradiente sumiu." },
+      { kind: "melhoria", text: "A borda das listas ficou mais visível, separando melhor uma coluna da outra." },
+      { kind: "correcao", text: "A barra de rolagem sumia no modo claro por ser quase branca; agora é cinza nos dois temas." },
+    ],
+  },
+  {
     version: "1.8.2",
     date: "2026-07-18",
     changes: [

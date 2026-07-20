@@ -1496,9 +1496,14 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
   return (
     // max-h-full: a coluna cresce até o fim da área do quadro e para ali — daí o scroll
     // passa a acontecer DENTRO da lista (na área de cards), e não na página.
-    <div className="flex flex-col w-[272px] shrink-0 max-h-full rounded-xl overflow-hidden" style={{ backgroundColor: "rgba(13, 22, 36, 0.85)" }}>
+    // A cor da lista tinge a coluna inteira, não só o título. O cálculo do fundo
+    // (claro/escuro) fica no CSS — aqui só entra a cor, via --list-color.
+    <div
+      className="list-column flex flex-col w-[272px] shrink-0 max-h-full rounded-xl overflow-hidden"
+      style={{ "--list-color": list.color } as React.CSSProperties}
+    >
       {/* Column header */}
-      <div className="px-3 py-2.5 shrink-0 border-b border-white/5">
+      <div className="list-column-header px-3 py-2.5 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: list.color }} />
@@ -1515,13 +1520,12 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
               <button
                 onClick={() => setIsRenaming(true)}
                 className="text-sm font-semibold truncate text-slate-100 hover:text-primary transition-colors text-left"
-                style={{ color: list.color }}
                 title="Clique para renomear"
               >
                 {list.title}
               </button>
             ) : (
-              <span className="text-sm font-semibold truncate text-left" style={{ color: list.color }}>
+              <span className="text-sm font-semibold truncate text-left text-slate-100">
                 {list.title}
               </span>
             )}

@@ -98,10 +98,36 @@ html:not(.dark) .text-slate-500 { color: rgb(100 116 139); }
 html:not(.dark) .text-slate-600 { color: rgb(148 163 184); }
 
 /* ── Custom scrollbar ─────────────────────────────────────────── */
+/* Cinza nos dois temas: no claro o --color-border (#ddeee8) sumia contra o fundo. */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 9999px; }
+::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-300); }
+.dark ::-webkit-scrollbar-thumb { background: #33415580; }
+.dark ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-300); }
+
+/* ── Coluna da lista ──────────────────────────────────────────── */
+/* A cor da lista entra por --list-color (style inline no componente) e é
+   misturada aqui, para o fundo base seguir o tema sem precisar de JS.
+   Fundo OPACO de propósito: com alpha, o gradiente do quadro vazava por trás. */
+.list-column {
+  background-color: color-mix(in srgb, var(--list-color) 6%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--list-color) 40%, transparent);
+  border-top: 3px solid var(--list-color);
+}
+.dark .list-column {
+  background-color: color-mix(in srgb, var(--list-color) 12%, #0d1624);
+  border-color: color-mix(in srgb, var(--list-color) 35%, transparent);
+  border-top-color: var(--list-color);
+}
+
+.list-column-header {
+  background-color: color-mix(in srgb, var(--list-color) 14%, #ffffff);
+  border-bottom: 1px solid color-mix(in srgb, var(--list-color) 22%, transparent);
+}
+.dark .list-column-header {
+  background-color: color-mix(in srgb, var(--list-color) 22%, #0d1624);
+}
 
 /* ── Glow utilities ───────────────────────────────────────────── */
 .glow-primary { box-shadow: 0 0 20px -4px color-mix(in srgb, #10b981 40%, transparent); }
