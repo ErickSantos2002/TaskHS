@@ -13,6 +13,7 @@ import app.audit  # noqa: F401 — registra os listeners de auditoria
 from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders, automations, integration, logs
 from app.core.config import settings
 from app.reminders import reminder_loop
+from app.migrations import run_migrations
 from app.audit_context import set_request_actor, get_actor
 from app.models.audit import AuditLog
 
@@ -23,7 +24,11 @@ logger = logging.getLogger("audit")
 async def lifespan(app: FastAPI):
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     async with engine.begin() as conn:
+        # create_all cria só as tabelas que faltam; alterar tabela existente é
+        # com as migrations, que por isso rodam depois. Falha aqui derruba o
+        # boot de propósito — ver app/migrations.py.
         await conn.run_sync(Base.metadata.create_all)
+        await run_migrations(conn)
     from app import realtime
     task = asyncio.create_task(reminder_loop())
     rt_task = asyncio.create_task(realtime.consumer())

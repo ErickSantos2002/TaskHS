@@ -17,6 +17,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "1.9.0",
     date: "2026-07-20",
     changes: [
+      { kind: "melhoria", text: "Mudanças na estrutura do banco passam a ser aplicadas sozinhas quando o sistema sobe. Antes era preciso lembrar de rodar um comando à mão antes de cada atualização — e quando esse passo era esquecido o sistema saía do ar." },
       { kind: "novidade", text: "Cada quadro pode ter um ícone. Em Configurações do board, logo abaixo da Cor, há uma grade com 32 ícones (pasta, pessoas, gráfico, ferramenta, caminhão, dinheiro, laboratório, capacete, estetoscópio e outros) — escolha um e ele passa a aparecer na grade e na lista de Boards, no Dashboard e no cabeçalho do quadro, pintado com a cor do quadro. Dá para reconhecer o quadro sem precisar ler o nome. Quem preferir, é só usar \"Sem ícone\" para voltar ao símbolo padrão." },
     ],
   },
