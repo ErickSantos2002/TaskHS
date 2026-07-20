@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.9.3",
+    date: "2026-07-20",
+    changes: [
+      { kind: "novidade", text: "PDFs anexados agora abrem direto numa janela dentro do TaskHS, pelo botão de olho ao lado do anexo — dá para ler, dar zoom, buscar no texto e imprimir sem precisar baixar. O botão de baixar continua ali para quem quiser o arquivo." },
+      { kind: "melhoria", text: "Anexo que não consegue ser baixado agora avisa: a linha fica marcada em vermelho com o motivo (ex.: arquivo indisponível no servidor), em vez de simplesmente não fazer nada ao clicar." },
+    ],
+  },
+  {
     version: "1.9.2",
     date: "2026-07-20",
     changes: [

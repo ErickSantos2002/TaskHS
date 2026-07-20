@@ -230,6 +230,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [uploading, setUploading] = useState(false);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Anexo cujo arquivo não veio: marca a linha em vermelho em vez de falhar em silêncio.
+  const [attErros, setAttErros] = useState<Record<number, string>>({});
+  const [pdfView, setPdfView] = useState<{ url: string; filename: string } | null>(null);
+  const [abrindoPdf, setAbrindoPdf] = useState<number | null>(null);
   const [obsOpen, setObsOpen] = useState<number | null>(null);
   const obsValues = [card.obs1, card.obs2, card.obs3, card.obs4, card.obs5, card.obs6];
   const fileRef = useRef<HTMLInputElement>(null);
@@ -306,7 +310,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             const url = URL.createObjectURL(blob);
             thumbUrlsRef.current.push(url);
             setThumbs(prev => ({ ...prev, [a.id]: url }));
-          } catch {}
+          } catch (e) {
+            if (cancelled) return;
+            setAttErros(prev => ({ ...prev, [a.id]: e instanceof Error ? e.message : "Falha ao carregar" }));
+          }
         }
       }
     })();
@@ -340,8 +347,40 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       const link = document.createElement("a");
       link.href = url; link.download = a.filename; link.click();
       URL.revokeObjectURL(url);
-    } catch {}
+      setAttErros(prev => { const p = { ...prev }; delete p[a.id]; return p; });
+    } catch (e) {
+      setAttErros(prev => ({ ...prev, [a.id]: e instanceof Error ? e.message : "Falha ao baixar" }));
+    }
   }
+
+  const isPdf = (a: Attachment) =>
+    a.content_type === "application/pdf" || a.filename.toLowerCase().endsWith(".pdf");
+
+  async function handleAbrirPdf(a: Attachment) {
+    setAbrindoPdf(a.id);
+    try {
+      const blob = await api.getBlob(`/lists/${card.list_id}/cards/${card.id}/attachments/${a.id}/download`);
+      setPdfView({ url: URL.createObjectURL(blob), filename: a.filename });
+      setAttErros(prev => { const p = { ...prev }; delete p[a.id]; return p; });
+    } catch (e) {
+      setAttErros(prev => ({ ...prev, [a.id]: e instanceof Error ? e.message : "Falha ao abrir" }));
+    } finally {
+      setAbrindoPdf(null);
+    }
+  }
+
+  function fecharPdf() {
+    setPdfView(null);
+  }
+
+  // Dono do objectURL do PDF: revoga ao trocar de anexo, ao fechar e ao desmontar o modal.
+  useEffect(() => {
+    if (!pdfView) return;
+    const url = pdfView.url;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPdfView(null); };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); URL.revokeObjectURL(url); };
+  }, [pdfView]);
 
   async function handleDeleteAttachment(a: Attachment) {
     try {
@@ -932,9 +971,16 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               ) : (
                 <div className="grid grid-cols-1 gap-1.5">
                   {attachments.map(a => (
-                    <div key={a.id} className="flex items-center gap-2.5 p-2 rounded-lg bg-background-elevated border border-border group/att">
+                    <div key={a.id} className={cn(
+                      "flex items-center gap-2.5 p-2 rounded-lg bg-background-elevated border group/att",
+                      attErros[a.id] ? "border-red-500/50 bg-red-500/5" : "border-border",
+                    )}>
                       {a.is_image && thumbs[a.id] ? (
                         <img src={thumbs[a.id]} alt={a.filename} onClick={() => setLightbox(thumbs[a.id])} className="w-10 h-10 rounded object-cover cursor-pointer shrink-0" />
+                      ) : attErros[a.id] ? (
+                        <div className="w-10 h-10 rounded bg-red-500/10 flex items-center justify-center shrink-0 text-red-400" title="Arquivo indisponível">
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                        </div>
                       ) : (
                         <div className="w-10 h-10 rounded bg-background flex items-center justify-center shrink-0 text-slate-400">
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
@@ -942,8 +988,21 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-slate-200 truncate">{a.filename}</p>
-                        <p className="text-[10px] text-slate-500">{formatSize(a.size)}</p>
+                        {attErros[a.id] ? (
+                          <p className="text-[10px] text-red-400 truncate" title={attErros[a.id]}>{attErros[a.id]}</p>
+                        ) : (
+                          <p className="text-[10px] text-slate-500">{formatSize(a.size)}</p>
+                        )}
                       </div>
+                      {isPdf(a) && (
+                        <button onClick={() => handleAbrirPdf(a)} disabled={abrindoPdf === a.id} title="Visualizar" className="p-1.5 rounded text-slate-500 hover:text-primary hover:bg-background transition-colors disabled:opacity-50">
+                          {abrindoPdf === a.id ? (
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" /></svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          )}
+                        </button>
+                      )}
                       <button onClick={() => handleDownload(a)} title="Baixar" className="p-1.5 rounded text-slate-500 hover:text-primary hover:bg-background transition-colors">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       </button>
@@ -1193,6 +1252,24 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       {lightbox && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-8" onClick={() => setLightbox(null)}>
           <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+        </div>
+      )}
+      {pdfView && (
+        <div className="fixed inset-0 z-[60] flex flex-col p-4 md:p-8" onClick={fecharPdf}>
+          <div className="absolute inset-0 bg-black/80" />
+          <div className="relative flex flex-col w-full h-full max-w-5xl mx-auto bg-background-surface border border-border rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0">
+              <p className="text-sm font-medium text-slate-200 truncate flex-1">{pdfView.filename}</p>
+              <a href={pdfView.url} download={pdfView.filename} title="Baixar" className="p-1.5 rounded text-slate-400 hover:text-primary hover:bg-background transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              </a>
+              <button onClick={fecharPdf} title="Fechar" className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-background transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {/* Leitor nativo do navegador: zoom, busca e paginação sem dependência extra. */}
+            <iframe src={pdfView.url} title={pdfView.filename} className="flex-1 w-full bg-white" />
+          </div>
         </div>
       )}
       {obsOpen !== null && (

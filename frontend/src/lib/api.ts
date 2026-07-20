@@ -65,7 +65,13 @@ export const api = {
       onUnauthorized();
       throw new Error("Sessão expirada. Faça login novamente.");
     }
-    if (!res.ok) throw new Error("Falha ao baixar arquivo");
+    // Preserva o detail do backend (ex.: "Arquivo não encontrado no disco") — sem isso
+    // a tela só conseguia dizer "falhou", sem dizer por quê.
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json())?.detail ?? ""; } catch { /* corpo não-JSON */ }
+      throw new Error(detail || `Falha ao baixar arquivo (${res.status})`);
+    }
     return res.blob();
   },
 };
