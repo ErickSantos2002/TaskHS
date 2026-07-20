@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.9.2",
+    date: "2026-07-20",
+    changes: [
+      { kind: "correcao", text: "No modo claro, o nome \"TaskHS\" no rodapé da barra lateral ficava branco sobre fundo claro e sumia. O mesmo acontecia com o nome da lista dentro do painel de Automações." },
+    ],
+  },
+  {
     version: "1.9.1",
     date: "2026-07-20",
     changes: [

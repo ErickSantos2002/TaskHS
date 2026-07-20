@@ -1744,7 +1744,8 @@ function AutomationsModal({ boardId, lists, onClose }: {
                 <li key={r.id} className={cn("flex items-center gap-3 rounded-xl border border-border p-3.5 transition-opacity", !r.enabled && "opacity-55")}>
                   <div className="flex-1 min-w-0 space-y-1">
                     <p className="text-sm text-slate-200 leading-snug">
-                      Quando movido para <strong className="font-semibold text-white">{listTitle(r.trigger_list_id)}</strong>
+                      {/* slate-100 (invertido no tema claro), não branco fixo. */}
+                      Quando movido para <strong className="font-semibold text-slate-100">{listTitle(r.trigger_list_id)}</strong>
                     </p>
                     <p className="flex items-center gap-1.5 text-xs text-slate-400">
                       <svg className="w-3 h-3 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>

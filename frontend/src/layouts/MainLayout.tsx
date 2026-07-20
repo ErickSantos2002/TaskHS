@@ -248,7 +248,9 @@ export function MainLayout({ children }: MainLayoutProps) {
               className="group w-full flex flex-col items-start gap-1 -mx-1 rounded-lg px-2 py-1.5 text-left hover:bg-background-elevated transition-colors"
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold tracking-tight text-white">TaskHS</span>
+                {/* text-slate-100 e não text-white: o index.css inverte o slate-100
+                    no tema claro, e o branco fixo sumia contra o fundo claro. */}
+                <span className="text-sm font-bold tracking-tight text-slate-100">TaskHS</span>
                 <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-semibold group-hover:bg-primary/20 transition-colors">v{APP_VERSION}</span>
               </div>
               <span className="text-[10px] text-slate-500">© 2026 Health &amp; Safety Tech</span>
