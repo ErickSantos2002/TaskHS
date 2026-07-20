@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
+import { BoardIcon } from "../components/BoardIcon";
 import type { BoardListItem } from "../types";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -219,8 +220,8 @@ export function DashboardPage() {
               >
                 <div className="h-1.5" style={{ backgroundColor: board.color }} />
                 <div className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white/70" style={{ backgroundColor: `${board.color}28` }}>
-                    <IBoard />
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${board.color}28`, color: board.color }}>
+                    <BoardIcon name={board.icon} className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-100 group-hover:text-primary transition-colors truncate">{board.title}</p>

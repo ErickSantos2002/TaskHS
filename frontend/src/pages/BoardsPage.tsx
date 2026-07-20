@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { api, API_BASE } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { BoardIcon } from "../components/BoardIcon";
 import type { BoardListItem, UserBasic } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -407,8 +408,9 @@ function BoardCard({ board, starred, onToggleStar, onClick }: {
       <div className="h-2" style={{ backgroundColor: board.color }} />
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white/80" style={{ backgroundColor: `${board.color}30` }}>
-            {trancado ? <ILock /> : <IBoard />}
+          {/* Cadeado ganha do ícone: sem ele a pessoa perde o aviso de que não entra. */}
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${board.color}30`, color: trancado ? undefined : board.color }}>
+            {trancado ? <ILock /> : <BoardIcon name={board.icon} className="w-5 h-5" />}
           </div>
           <button
             onClick={onToggleStar}
@@ -463,8 +465,9 @@ function BoardRow({ board, starred, onToggleStar, onClick }: {
       )}
     >
       <div className="w-1 self-stretch rounded-full shrink-0" style={{ backgroundColor: board.color }} />
-      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-white/70" style={{ backgroundColor: `${board.color}30` }}>
-        {trancado ? <ILock /> : <IBoard />}
+      {/* Cadeado ganha do ícone: sem ele a pessoa perde o aviso de que não entra. */}
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${board.color}30`, color: trancado ? undefined : board.color }}>
+        {trancado ? <ILock /> : <BoardIcon name={board.icon} className="w-4 h-4" />}
       </div>
       <div className="flex-1 min-w-0">
         <p className={cn(

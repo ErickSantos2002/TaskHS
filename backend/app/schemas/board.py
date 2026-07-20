@@ -1,6 +1,28 @@
+import re
 from datetime import datetime
 from pydantic import BaseModel, field_validator
 from app.models.board import BoardRole
+
+_ICON_RE = re.compile(r"^[a-z0-9-]{1,40}$")
+
+
+def _norm_icon(v: str | None) -> str | None:
+    """Valida so o FORMATO do nome, nao o catalogo.
+
+    A lista de icones validos vive no frontend (lib/boardIcons.tsx); replicar
+    aqui criaria duas listas para manter em sincronia. Nome desconhecido nao
+    quebra nada — o front cai no icone generico.
+
+    String vazia vira None para "limpar o icone" ter uma representacao so.
+    """
+    if v is None:
+        return None
+    v = v.strip()
+    if not v:
+        return None
+    if not _ICON_RE.match(v):
+        raise ValueError("nome de ícone inválido")
+    return v
 
 
 def _norm_obs_labels(v: list[str] | None) -> list[str] | None:
@@ -16,6 +38,7 @@ class BoardCreate(BaseModel):
     title: str
     description: str | None = None
     color: str = "#0ea5e9"
+    icon: str | None = None
     integration_enabled: bool = False
     obs_labels: list[str] = []
 
@@ -23,11 +46,16 @@ class BoardCreate(BaseModel):
     @classmethod
     def _v_obs(cls, v): return _norm_obs_labels(v)
 
+    @field_validator("icon")
+    @classmethod
+    def _v_icon(cls, v): return _norm_icon(v)
+
 
 class BoardUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     color: str | None = None
+    icon: str | None = None
     integration_enabled: bool | None = None
     obs_labels: list[str] | None = None
 
@@ -35,12 +63,17 @@ class BoardUpdate(BaseModel):
     @classmethod
     def _v_obs(cls, v): return _norm_obs_labels(v)
 
+    @field_validator("icon")
+    @classmethod
+    def _v_icon(cls, v): return _norm_icon(v)
+
 
 class BoardOut(BaseModel):
     id: int
     title: str
     description: str | None
     color: str
+    icon: str | None
     owner_id: int
     created_at: datetime
     integration_enabled: bool

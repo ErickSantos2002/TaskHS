@@ -14,6 +14,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
 import { useBoardStream } from "../hooks/useBoardStream";
+import { BoardIcon } from "../components/BoardIcon";
+import { BOARD_ICON_NAMES } from "../lib/boardIcons";
 import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
@@ -1811,6 +1813,7 @@ export function BoardPage() {
   const [editBoardTitle, setEditBoardTitle] = useState("");
   const [editBoardDescription, setEditBoardDescription] = useState("");
   const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
+  const [editBoardIcon, setEditBoardIcon] = useState<string | null>(null);
   const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
   const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [savingBoard, setSavingBoard] = useState(false);
@@ -2124,6 +2127,7 @@ export function BoardPage() {
     setEditBoardTitle(board.title);
     setEditBoardDescription(board.description ?? "");
     setEditBoardColor(board.color);
+    setEditBoardIcon(board.icon);
     setEditIntegrationEnabled(board.integration_enabled);
     setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setConfirmDeleteBoard(false);
@@ -2145,6 +2149,7 @@ export function BoardPage() {
         title: editBoardTitle.trim(),
         description: editBoardDescription.trim() || null,
         color: editBoardColor,
+        icon: editBoardIcon,
         integration_enabled: editIntegrationEnabled,
         obs_labels: editObsLabels.map(s => s.trim()),
       });
@@ -2344,7 +2349,9 @@ export function BoardPage() {
                 <button onClick={() => navigate("/boards")} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors shrink-0">
                   <IBack />
                 </button>
-                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: board.color }} />
+                <div className="shrink-0" style={{ color: board.color }}>
+                  <BoardIcon name={board.icon} className="w-5 h-5" />
+                </div>
                 <div className="min-w-0">
                   <h1 className="text-lg font-extrabold text-slate-100 truncate">{board.title}</h1>
                   <div className="flex items-center gap-2 mt-0.5">
@@ -2557,6 +2564,43 @@ export function BoardPage() {
                       className={cn("w-7 h-7 rounded-full border-2 transition-transform", editBoardColor === c ? "scale-125 border-white/80" : "border-transparent")}
                       style={{ backgroundColor: c }}
                     />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400">Ícone</label>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {/* "Sem ícone" primeiro: é o estado atual de todo quadro antigo,
+                      então precisa estar visível para dar como voltar atrás. */}
+                  <button
+                    type="button"
+                    onClick={() => setEditBoardIcon(null)}
+                    title="Sem ícone"
+                    className={cn(
+                      "aspect-square rounded-lg border flex items-center justify-center text-slate-500 transition-colors",
+                      editBoardIcon === null
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:bg-background-elevated",
+                    )}
+                  >
+                    <IX />
+                  </button>
+                  {BOARD_ICON_NAMES.map(nome => (
+                    <button
+                      key={nome}
+                      type="button"
+                      onClick={() => setEditBoardIcon(nome)}
+                      title={nome}
+                      className={cn(
+                        "aspect-square rounded-lg border flex items-center justify-center transition-colors",
+                        editBoardIcon === nome
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-background-elevated",
+                      )}
+                      style={editBoardIcon === nome ? { color: editBoardColor } : undefined}
+                    >
+                      <BoardIcon name={nome} className="w-4 h-4" />
+                    </button>
                   ))}
                 </div>
               </div>

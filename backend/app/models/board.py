@@ -20,6 +20,9 @@ class Board(Base):
     title: Mapped[str] = mapped_column(String(120))
     description: Mapped[str | None] = mapped_column(String(500))
     color: Mapped[str] = mapped_column(String(7), default="#0ea5e9")
+    # Nome do icone no catalogo do frontend (ex.: "truck"). NULL = sem icone
+    # escolhido -> o front desenha o generico. Ver migration 007.
+    icon: Mapped[str | None] = mapped_column(String(40))
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     integration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))

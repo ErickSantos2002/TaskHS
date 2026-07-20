@@ -15,6 +15,8 @@ export interface Board {
   title: string;
   description: string | null;
   color: string;
+  /** Nome do ícone no catálogo (lib/boardIcons). null = usa o genérico. */
+  icon: string | null;
   owner_id: number;
   created_at: string;
   integration_enabled: boolean;

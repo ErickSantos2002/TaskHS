@@ -48,6 +48,7 @@ def _board_list_item(board: Board, user: User) -> dict:
         "title": board.title,
         "description": board.description,
         "color": board.color,
+        "icon": board.icon,
         "owner_id": board.owner_id,
         "created_at": board.created_at,
         "integration_enabled": board.integration_enabled,
@@ -76,6 +77,7 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
         "title": board.title,
         "description": board.description,
         "color": board.color,
+        "icon": board.icon,
         "owner_id": board.owner_id,
         "created_at": board.created_at,
         "integration_enabled": board.integration_enabled,
@@ -357,7 +359,12 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
-    for field, value in body.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_none=True)
+    # "Sem ícone" manda icon=null de propósito, e o exclude_none acima engoliria
+    # isso — sem esta linha não haveria como LIMPAR o ícone, só trocar.
+    if "icon" in body.model_fields_set:
+        data["icon"] = body.icon
+    for field, value in data.items():
         setattr(board, field, value)
     await db.commit()
     await db.refresh(board)

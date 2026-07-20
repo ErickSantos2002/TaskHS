@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.9.0",
+    date: "2026-07-20",
+    changes: [
+      { kind: "novidade", text: "Cada quadro pode ter um ícone. Em Configurações do board, logo abaixo da Cor, há uma grade com 32 ícones (pasta, pessoas, gráfico, ferramenta, caminhão, dinheiro, laboratório, capacete, estetoscópio e outros) — escolha um e ele passa a aparecer na grade e na lista de Boards, no Dashboard e no cabeçalho do quadro, pintado com a cor do quadro. Dá para reconhecer o quadro sem precisar ler o nome. Quem preferir, é só usar \"Sem ícone\" para voltar ao símbolo padrão." },
+    ],
+  },
+  {
     version: "1.8.3",
     date: "2026-07-20",
     changes: [
