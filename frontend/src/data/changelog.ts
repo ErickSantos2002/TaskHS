@@ -14,6 +14,16 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.9.1",
+    date: "2026-07-20",
+    changes: [
+      { kind: "novidade", text: "A tela de Logs agora tem paginação de verdade, com números de página, \"Anterior\"/\"Próxima\" e a contagem de quantos registros você está vendo. Antes só havia \"Carregar mais\", que ia empilhando tudo numa lista sem fim — para chegar a um registro antigo era preciso clicar muitas vezes." },
+      { kind: "melhoria", text: "As telas de Usuários e Logs passam a ocupar a largura inteira, igual ao Dashboard e à de Boards, em vez de ficarem espremidas no meio com espaço vazio dos lados." },
+      { kind: "melhoria", text: "A janela \"O que há de novo?\" ficou mais larga e mais alta, para caber mais texto sem tanta rolagem." },
+      { kind: "correcao", text: "Partes das telas de Usuários, Logs e Login seguiam o tema do Windows em vez do botão de tema do próprio sistema. Quem usava o computador no modo claro e o TaskHS no escuro (ou o contrário) via cores trocadas nessas telas." },
+    ],
+  },
+  {
     version: "1.9.0",
     date: "2026-07-20",
     changes: [

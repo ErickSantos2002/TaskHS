@@ -1,6 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap");
 @import "tailwindcss";
 
+/* O tema é alternado por uma classe .dark no <html> (ver MainLayout), mas o
+   padrão do Tailwind v4 para `dark:` é @media (prefers-color-scheme) — ou seja,
+   o tema do SISTEMA. Sem esta linha, `dark:` ignora o botão de tema do app e
+   segue o Windows, e quem usa o SO no claro com o app no escuro vê os dois
+   estilos brigando. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Design tokens ──────────────────────────────────────────── */
 @theme {
   /* Font */

@@ -32,7 +32,7 @@ export function ChangelogModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-border bg-background-surface shadow-2xl"
+        className="w-full max-w-3xl rounded-2xl border border-border bg-background-surface shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -47,7 +47,10 @@ export function ChangelogModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Body */}
-        <div className="max-h-[65vh] overflow-y-auto px-6 py-5 space-y-6">
+        {/* Desconta o pt-12 do overlay, o padding de baixo e o cabeçalho, para a
+            caixa caber inteira na tela — com vh fixo, tela baixa gerava rolagem
+            dupla e o botão de fechar saía de vista. */}
+        <div className="max-h-[calc(100vh-16rem)] overflow-y-auto px-6 py-5 space-y-6">
           {CHANGELOG.map((v, i) => (
             <div key={v.version}>
               <div className="flex items-center gap-2.5 mb-2.5">

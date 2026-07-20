@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { Pagination } from "../components/Pagination";
 import type { AuditLog, User } from "../types";
 
 const ACTIONS = ["criar", "editar", "mover", "excluir", "login", "login_falhou", "acesso_negado"];
@@ -33,6 +34,7 @@ export function LogsPage() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [fActor, setFActor] = useState("");
   const [fAction, setFAction] = useState("");
@@ -92,11 +94,26 @@ export function LogsPage() {
     load(0, false, "");
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE));
+  const currentPage = Math.floor(offset / PAGE) + 1;
+
+  /** Troca de página busca no servidor e SUBSTITUI a lista (não acumula, como
+   *  fazia o antigo "Carregar mais"). Volta o scroll ao topo, senão a pessoa
+   *  cai no meio da página nova. */
+  function irParaPagina(pagina: number) {
+    const alvo = Math.min(Math.max(1, pagina), totalPages);
+    if (alvo === currentPage) return;
+    setExpanded(null);
+    load((alvo - 1) * PAGE, false, appliedBase);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }
+
   const inputCls = "text-sm rounded-lg border border-slate-200 dark:border-border bg-transparent px-2.5 py-1.5 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/40";
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-      <div className="max-w-5xl w-full mx-auto px-4 md:px-6 py-6 space-y-5">
+    <div ref={scrollRef} className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+      {/* Largura cheia, igual a Dashboard e Boards — sem max-w/mx-auto. */}
+      <div className="w-full px-4 md:px-6 py-6 space-y-5">
 
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">Logs</h1>
@@ -216,19 +233,24 @@ export function LogsPage() {
               )}
             </div>
           ))}
-        </div>
 
-        {logs.length < total && (
-          <div className="flex justify-center">
-            <button
-              onClick={() => load(offset + PAGE, true, appliedBase)}
-              disabled={loading}
-              className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-200 dark:border-border text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-background-elevated disabled:opacity-50 transition-colors"
-            >
-              {loading ? "Carregando…" : `Carregar mais (${logs.length}/${total})`}
-            </button>
-          </div>
-        )}
+          {/* Paginação servida pelo backend: as props saem do offset/total que a
+              API devolve, não de um array completo em memória — são milhares de
+              registros. Fica DENTRO do card da lista, como um rodapé dele. */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={total}
+            startIndex={offset}
+            endIndex={Math.min(offset + PAGE, total)}
+            hasNextPage={currentPage < totalPages}
+            hasPrevPage={currentPage > 1}
+            goToPage={irParaPagina}
+            goToNextPage={() => irParaPagina(currentPage + 1)}
+            goToPrevPage={() => irParaPagina(currentPage - 1)}
+            itemLabel="registros"
+          />
+        </div>
       </div>
     </div>
   );
