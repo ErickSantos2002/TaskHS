@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.10.0",
+    date: "2026-07-20",
+    changes: [
+      { kind: "novidade", text: "Agora dá para editar e excluir os próprios comentários de um cartão — passe o mouse sobre o comentário e use os botões de lápis e lixeira. Ao editar, o comentário mostra um \"(editado)\" que, ao clicar, revela o texto anterior; nada se perde. Administradores e coordenadores também podem excluir comentários de qualquer pessoa." },
+      { kind: "melhoria", text: "Comentário excluído não some da conversa: fica no lugar marcado como \"Comentário excluído\", preservando a ordem da discussão." },
+    ],
+  },
+  {
     version: "1.9.3",
     date: "2026-07-20",
     changes: [

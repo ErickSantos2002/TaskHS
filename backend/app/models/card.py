@@ -86,6 +86,10 @@ class CardComment(Base):
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Edição/exclusão (soft). Ver migrations/008_comment_edit_delete.sql.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    original_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     card: Mapped["Card"] = relationship("Card", back_populates="comments")
     author: Mapped["User"] = relationship("User", back_populates="comments")

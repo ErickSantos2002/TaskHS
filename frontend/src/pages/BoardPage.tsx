@@ -215,6 +215,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
   const [erroMembroCard, setErroMembroCard] = useState<string | null>(null);
   const [erroComentario, setErroComentario] = useState<string | null>(null);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editandoBody, setEditandoBody] = useState("");
+  const [erroEdicao, setErroEdicao] = useState<string | null>(null);
+  // Comentários editados cujo texto original está aberto (por id).
+  const [originaisAbertos, setOriginaisAbertos] = useState<Set<number>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -451,6 +456,42 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       setErroComentario(e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.");
     } finally {
       setSubmittingComment(false);
+    }
+  }
+
+  const isElevado = currentUser?.role === "administrador" || currentUser?.role === "coordenador";
+  const podeEditarComentario = (c: Comment) => !!currentUser && c.author.id === currentUser.id && !c.deleted_at;
+  const podeExcluirComentario = (c: Comment) => !!currentUser && (c.author.id === currentUser.id || isElevado) && !c.deleted_at;
+
+  function trocaComentario(atualizado: Comment) {
+    setComments(prev => {
+      const updated = prev.map(c => (c.id === atualizado.id ? atualizado : c));
+      onCardUpdate({ id: card.id, comments: updated });
+      return updated;
+    });
+  }
+
+  async function handleEditComment(c: Comment) {
+    const novo = editandoBody.trim();
+    if (!novo) return;
+    if (novo === c.body) { setEditandoId(null); return; }
+    setErroEdicao(null);
+    try {
+      const atualizado = await api.patch<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments/${c.id}`, { body: novo });
+      trocaComentario(atualizado);
+      setEditandoId(null);
+    } catch (e) {
+      setErroEdicao(e instanceof ApiError ? e.message : "Não foi possível editar o comentário.");
+    }
+  }
+
+  async function handleDeleteComment(c: Comment) {
+    if (!confirm("Excluir este comentário? Ele ficará marcado como excluído.")) return;
+    try {
+      const atualizado = await api.del<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments/${c.id}`);
+      trocaComentario(atualizado);
+    } catch (e) {
+      setErroComentario(e instanceof ApiError ? e.message : "Não foi possível excluir o comentário.");
     }
   }
 
@@ -1231,7 +1272,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 <p className="text-xs text-slate-500 italic text-center pt-4">Nenhum comentário ainda.</p>
               )}
               {comments.map(c => (
-                <div key={c.id} className="flex gap-2.5">
+                <div key={c.id} className="flex gap-2.5 group/coment">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-[9px] font-bold text-white leading-none">{c.author.initials}</span>
                   </div>
@@ -1239,8 +1280,59 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                     <div className="flex items-baseline gap-2 mb-1">
                       <span className="text-xs font-semibold text-slate-200">{c.author.name}</span>
                       <span className="text-[10px] text-slate-500 truncate">{new Date(c.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                      {!c.deleted_at && c.edited_at && (
+                        <button
+                          onClick={() => setOriginaisAbertos(prev => { const n = new Set(prev); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })}
+                          className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+                          title={originaisAbertos.has(c.id) ? "Ocultar versão original" : "Ver versão original"}
+                        >
+                          (editado)
+                        </button>
+                      )}
+                      {editandoId !== c.id && (
+                        <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/coment:opacity-100 transition-opacity">
+                          {podeEditarComentario(c) && (
+                            <button onClick={() => { setEditandoId(c.id); setEditandoBody(c.body); setErroEdicao(null); }} title="Editar" className="p-1 rounded text-slate-500 hover:text-primary hover:bg-background-elevated transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                          )}
+                          {podeExcluirComentario(c) && (
+                            <button onClick={() => handleDeleteComment(c)} title="Excluir" className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          )}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
+                    {c.deleted_at ? (
+                      <p className="text-xs text-slate-500 italic bg-background-elevated/50 rounded-lg px-2.5 py-2">Comentário excluído</p>
+                    ) : editandoId === c.id ? (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={editandoBody}
+                          onChange={e => setEditandoBody(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEditComment(c); } if (e.key === "Escape") setEditandoId(null); }}
+                          rows={3}
+                          autoFocus
+                          className="w-full text-xs text-slate-200 leading-relaxed bg-background-elevated rounded-lg px-2.5 py-2 border border-border focus:border-primary focus:outline-none resize-y"
+                        />
+                        {erroEdicao && <p className="text-[11px] text-red-400">{erroEdicao}</p>}
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEditComment(c)} className="text-[11px] font-medium px-2.5 py-1 rounded bg-primary text-white hover:bg-primary-600 transition-colors">Salvar</button>
+                          <button onClick={() => setEditandoId(null)} className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
+                        {c.edited_at && originaisAbertos.has(c.id) && c.original_body != null && (
+                          <div className="mt-1 border-l-2 border-border pl-2">
+                            <p className="text-[10px] text-slate-500 mb-0.5">Versão original:</p>
+                            <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap"><CorpoComentario texto={c.original_body} /></p>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

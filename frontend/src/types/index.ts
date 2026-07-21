@@ -80,6 +80,9 @@ export interface Comment {
   body: string;
   author: User;
   created_at: string;
+  edited_at?: string | null;
+  original_body?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface Attachment {

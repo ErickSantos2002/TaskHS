@@ -17,6 +17,9 @@ class CommentOut(BaseModel):
     body: str
     author: UserOut
     created_at: datetime
+    edited_at: datetime | None = None
+    original_body: str | None = None   # texto da 1ª versão; None em comentário excluído
+    deleted_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
@@ -125,4 +128,8 @@ class CommentCreate(BaseModel):
     # aqui), e a coluna e Text (ilimitada). O limite NAO e o que protege a regex de
     # mencoes — quem faz isso e o teto {1,120} do nome em app/mentions.py, medido:
     # 160 KB em 4ms com o teto, 1.3s sem. Este limite e so sanidade de payload.
+    body: str = Field(min_length=1, max_length=20000)
+
+
+class CommentUpdate(BaseModel):
     body: str = Field(min_length=1, max_length=20000)

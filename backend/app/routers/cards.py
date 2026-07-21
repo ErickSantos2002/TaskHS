@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sql_delete
@@ -12,7 +13,7 @@ from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.models.user import User
 from app.schemas.card import (
-    CardCreate, CardUpdate, CardOut, CommentCreate, CommentOut,
+    CardCreate, CardUpdate, CardOut, CommentCreate, CommentUpdate, CommentOut,
     ChecklistCreate, ChecklistOut, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemOut,
 )
 from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
@@ -49,6 +50,20 @@ def _to_list(v) -> list:
         return [v]
 
 
+def _comment_to_dict(c: CardComment) -> dict:
+    # Comentário excluído não devolve corpo nem original — a UI só mostra o placeholder.
+    deleted = c.deleted_at is not None
+    return {
+        "id": c.id,
+        "body": "" if deleted else c.body,
+        "author": c.author,
+        "created_at": c.created_at,
+        "edited_at": None if deleted else c.edited_at,
+        "original_body": None if deleted else c.original_body,
+        "deleted_at": c.deleted_at,
+    }
+
+
 def _card_to_dict(card: Card) -> dict:
     return {
         "id": card.id,
@@ -71,7 +86,7 @@ def _card_to_dict(card: Card) -> dict:
             for m in _to_list(card.labels) if m.board_label is not None
         ],
         "members": [m.user for m in _to_list(card.members) if m.user is not None],
-        "comments": _to_list(card.comments),
+        "comments": [_comment_to_dict(c) for c in _to_list(card.comments)],
         "attachments": [
             {
                 "id": a.id, "filename": a.filename, "content_type": a.content_type,
@@ -364,7 +379,55 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     result = await db.execute(
         select(CardComment).where(CardComment.id == comment.id).options(selectinload(CardComment.author))
     )
-    return result.scalar_one()
+    return _comment_to_dict(result.scalar_one())
+
+
+async def _get_comment_or_404(comment_id: int, card_id: int, db: AsyncSession) -> CardComment:
+    result = await db.execute(
+        select(CardComment)
+        .where(CardComment.id == comment_id, CardComment.card_id == card_id)
+        .options(selectinload(CardComment.author))
+    )
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comentário não encontrado")
+    return comment
+
+
+@router.patch("/{card_id}/comments/{comment_id}", response_model=CommentOut)
+async def edit_comment(list_id: int, card_id: int, comment_id: int, body: CommentUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
+    comment = await _get_comment_or_404(comment_id, card_id, db)
+    if comment.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Comentário não encontrado")
+    # Editar é só do autor (mencionar terceiros pelo texto de outro seria abuso).
+    if comment.author_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Apenas o autor pode editar o comentário")
+    novo = body.body.strip()
+    if novo and novo != comment.body:
+        # original_body guarda a 1ª versão — só grava se ainda não houver, para o
+        # "ver original" apontar sempre ao texto inicial, não à edição anterior.
+        if comment.original_body is None:
+            comment.original_body = comment.body
+        comment.body = novo
+        comment.edited_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(comment)
+    return _comment_to_dict(comment)
+
+
+@router.delete("/{card_id}/comments/{comment_id}", response_model=CommentOut)
+async def delete_comment(list_id: int, card_id: int, comment_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
+    comment = await _get_comment_or_404(comment_id, card_id, db)
+    # Excluir: autor ou elevado (moderação), espelhando o delete de anexo.
+    if comment.author_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o autor ou um administrador pode excluir o comentário")
+    if comment.deleted_at is None:
+        comment.deleted_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(comment)
+    return _comment_to_dict(comment)
 
 
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)
