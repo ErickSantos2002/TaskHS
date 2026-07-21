@@ -233,6 +233,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [newItemText, setNewItemText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>(card.attachments ?? []);
   const [uploading, setUploading] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const [thumbs, setThumbs] = useState<Record<number, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
   // Anexo cujo arquivo não veio: marca a linha em vermelho em vez de falhar em silêncio.
@@ -343,6 +344,36 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  // Arrastar arquivo do sistema para o cartão anexa. Contador de enter/leave: o
+  // dragenter dispara em cada filho, então um leave solto esconderia o overlay cedo.
+  const dragDepth = useRef(0);
+  // Só reage a arquivos de verdade (dataTransfer com Files), não ao drag do dnd-kit.
+  const ehArrastoDeArquivo = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+
+  function onCardDragEnter(e: React.DragEvent) {
+    if (!ehArrastoDeArquivo(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setArrastando(true);
+  }
+  function onCardDragOver(e: React.DragEvent) {
+    if (!ehArrastoDeArquivo(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function onCardDragLeave(e: React.DragEvent) {
+    if (!ehArrastoDeArquivo(e)) return;
+    dragDepth.current -= 1;
+    if (dragDepth.current <= 0) { dragDepth.current = 0; setArrastando(false); }
+  }
+  function onCardDrop(e: React.DragEvent) {
+    if (!ehArrastoDeArquivo(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setArrastando(false);
+    handleUpload(e.dataTransfer.files);
   }
 
   async function handleDownload(a: Attachment) {
@@ -684,7 +715,21 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-8"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-[900px] rounded-2xl bg-background-surface border border-border shadow-2xl mb-12 overflow-hidden flex flex-col">
+      <div
+        className="relative w-full max-w-[900px] rounded-2xl bg-background-surface border border-border shadow-2xl mb-12 overflow-hidden flex flex-col"
+        onDragEnter={onCardDragEnter}
+        onDragOver={onCardDragOver}
+        onDragLeave={onCardDragLeave}
+        onDrop={onCardDrop}
+      >
+        {arrastando && (
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-primary/20 backdrop-blur-sm border-2 border-dashed border-primary rounded-2xl pointer-events-none">
+            <div className="flex flex-col items-center gap-2 text-primary">
+              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+              <p className="text-sm font-semibold">Solte para anexar ao cartão</p>
+            </div>
+          </div>
+        )}
         {/* Priority color bar */}
         <div className="h-1.5 shrink-0" style={{ backgroundColor: PRIORITY[card.priority].dot }} />
 
@@ -998,7 +1043,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                   </svg>
                   <p className="text-sm font-semibold text-slate-300">Anexos {attachments.length > 0 && <span className="font-normal text-slate-500">({attachments.length})</span>}</p>
                 </div>
-                <button onClick={() => fileRef.current?.click()} disabled={uploading} className="text-xs text-slate-500 hover:text-primary transition-colors disabled:opacity-50">
+                <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Ou arraste um arquivo para o cartão" className="text-xs text-slate-500 hover:text-primary transition-colors disabled:opacity-50">
                   {uploading ? "Enviando…" : "+ Adicionar"}
                 </button>
               </div>

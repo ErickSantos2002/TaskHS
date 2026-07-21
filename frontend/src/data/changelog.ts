@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.10.1",
+    date: "2026-07-20",
+    changes: [
+      { kind: "novidade", text: "Agora dá para anexar arrastando: arraste um arquivo do computador para cima do cartão aberto e solte — aparece um aviso \"Solte para anexar ao cartão\" e o arquivo é enviado. O botão \"+ Adicionar\" continua funcionando para quem preferir escolher pelo explorador." },
+    ],
+  },
+  {
     version: "1.10.0",
     date: "2026-07-20",
     changes: [
