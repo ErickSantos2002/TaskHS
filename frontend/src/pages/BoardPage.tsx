@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo, lazy, Suspense } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -15,6 +15,7 @@ import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
 import { useBoardStream } from "../hooks/useBoardStream";
 import { BoardIcon } from "../components/BoardIcon";
+const PdfViewer = lazy(() => import("../components/PdfViewer"));
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
 import type { Board, BoardList, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
@@ -1499,8 +1500,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {/* Leitor nativo do navegador: zoom, busca e paginação sem dependência extra. */}
-            <iframe src={pdfView.url} title={pdfView.filename} className="flex-1 w-full bg-white" />
+            {/* pdf.js com camada de texto: seleção/cópia funcionam em qualquer navegador. */}
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center text-slate-400 text-sm" style={{ background: "#525659" }}>Carregando PDF…</div>}>
+              <PdfViewer url={pdfView.url} />
+            </Suspense>
           </div>
         </div>
       )}

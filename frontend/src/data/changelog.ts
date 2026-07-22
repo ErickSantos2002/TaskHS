@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.12.0",
+    date: "2026-07-22",
+    changes: [
+      { kind: "melhoria", text: "Agora dá para selecionar e copiar o texto do PDF direto no visualizador — útil para pegar valores, CNPJ, números de OC e etc. de uma proposta sem redigitar. O visualizador continua igual (abrir pelo olho, baixar, fechar), só que o texto passou a ser selecionável em qualquer navegador." },
+    ],
+  },
+  {
     version: "1.11.2",
     date: "2026-07-22",
     changes: [
