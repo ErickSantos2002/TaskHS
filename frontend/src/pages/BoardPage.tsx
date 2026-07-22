@@ -1373,7 +1373,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               {comments.length === 0 && (
                 <p className="text-xs text-slate-500 italic text-center pt-4">Nenhum comentário ainda.</p>
               )}
-              {comments.map(c => (
+              {/* Cópia invertida: mais recente em cima, mais antigo embaixo. */}
+              {[...comments].reverse().map(c => (
                 <div key={c.id} className="flex gap-2.5 group/coment">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-[9px] font-bold text-white leading-none">{c.author.initials}</span>
