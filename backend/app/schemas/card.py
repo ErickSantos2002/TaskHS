@@ -133,3 +133,18 @@ class CommentCreate(BaseModel):
 
 class CommentUpdate(BaseModel):
     body: str = Field(min_length=1, max_length=20000)
+
+
+class ActivityOut(BaseModel):
+    id: int
+    created_at: datetime
+    actor_name: str
+    actor_type: str
+    action: str
+    entity_type: str
+    summary: str
+
+
+class ActivityPage(BaseModel):
+    total: int
+    items: list[ActivityOut]

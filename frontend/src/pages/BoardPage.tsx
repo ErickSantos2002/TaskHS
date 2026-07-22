@@ -16,7 +16,7 @@ import { api, ApiError } from "../lib/api";
 import { useBoardStream } from "../hooks/useBoardStream";
 import { BoardIcon } from "../components/BoardIcon";
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
-import type { Board, BoardList, Card, Comment, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
+import type { Board, BoardList, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // ── Priority config ────────────────────────────────────────────
 
@@ -220,6 +220,12 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [erroEdicao, setErroEdicao] = useState<string | null>(null);
   // Comentários editados cujo texto original está aberto (por id).
   const [originaisAbertos, setOriginaisAbertos] = useState<Set<number>>(new Set());
+  const [abaCard, setAbaCard] = useState<"comentarios" | "atividade">("comentarios");
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityCarregado, setActivityCarregado] = useState(false);
+  const [erroActivity, setErroActivity] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -289,6 +295,15 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }, [card.id]);
 
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
+
+  // Card trocou: zera a aba de atividade (busca de novo ao abrir a aba).
+  useEffect(() => {
+    setAbaCard("comentarios");
+    setActivity([]);
+    setActivityTotal(0);
+    setActivityCarregado(false);
+    setErroActivity(null);
+  }, [card.id]);
 
   useEffect(() => {
     // Campos de conteudo do card aberto atualizados ao vivo. O campo que a
@@ -489,6 +504,31 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       setSubmittingComment(false);
     }
   }
+
+  async function carregarAtividade(reset: boolean) {
+    setActivityLoading(true);
+    setErroActivity(null);
+    try {
+      const off = reset ? 0 : activity.length;
+      const page = await api.get<ActivityPage>(`/lists/${card.list_id}/cards/${card.id}/activity?limit=30&offset=${off}`);
+      setActivity(prev => (reset ? page.items : [...prev, ...page.items]));
+      setActivityTotal(page.total);
+      setActivityCarregado(true);
+    } catch (e) {
+      setErroActivity(e instanceof ApiError ? e.message : "Não foi possível carregar a atividade.");
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  function abrirAbaAtividade() {
+    setAbaCard("atividade");
+    if (!activityCarregado) carregarAtividade(true);
+  }
+
+  // Cor do ponto por ação, para bater o olho no tipo de evento.
+  const corAtividade = (action: string) =>
+    action === "criar" ? "#22c55e" : action === "excluir" ? "#ef4444" : action === "mover" ? "#3b82f6" : "#f59e0b";
 
   const isElevado = currentUser?.role === "administrador" || currentUser?.role === "coordenador";
   const podeEditarComentario = (c: Comment) => !!currentUser && c.author.id === currentUser.id && !c.deleted_at;
@@ -1250,14 +1290,31 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
           {/* RIGHT: activity & comments */}
           <div className="w-[300px] shrink-0 border-l border-border bg-background-elevated/20 flex flex-col p-5 max-h-[75vh]">
-            <div className="flex items-center gap-2 mb-4 shrink-0">
-              <IChat />
-              <p className="text-sm font-semibold text-slate-300">
-                Comentários e atividade
-                {comments.length > 0 && <span className="font-normal text-slate-500 ml-1">({comments.length})</span>}
-              </p>
+            <div className="flex items-center gap-1 mb-4 shrink-0 border-b border-border">
+              <button
+                onClick={() => setAbaCard("comentarios")}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                  abaCard === "comentarios" ? "border-primary text-slate-200" : "border-transparent text-slate-500 hover:text-slate-300",
+                )}
+              >
+                <IChat />
+                Comentários
+                {comments.length > 0 && <span className="font-normal text-slate-500">({comments.length})</span>}
+              </button>
+              <button
+                onClick={abrirAbaAtividade}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors",
+                  abaCard === "atividade" ? "border-primary text-slate-200" : "border-transparent text-slate-500 hover:text-slate-300",
+                )}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Atividade
+              </button>
             </div>
 
+            {abaCard === "comentarios" && <>
             {/* Comment input */}
             <div className="shrink-0 mb-4 relative">
               <textarea
@@ -1382,6 +1439,43 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               ))}
             </div>
+            </>}
+
+            {abaCard === "atividade" && (
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {erroActivity && (
+                  <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-2.5 py-1.5 mb-3">{erroActivity}</p>
+                )}
+                {!activityCarregado && activityLoading && (
+                  <p className="text-xs text-slate-500 italic text-center pt-4">Carregando…</p>
+                )}
+                {activityCarregado && activity.length === 0 && (
+                  <p className="text-xs text-slate-500 italic text-center pt-4">Nenhuma atividade registrada.</p>
+                )}
+                <div className="space-y-3">
+                  {activity.map(a => (
+                    <div key={a.id} className="flex gap-2.5">
+                      <span className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: corAtividade(a.action) }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-300 leading-relaxed break-words">
+                          <span className="font-semibold text-slate-200">{a.actor_name}</span> {a.summary}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{new Date(a.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {activity.length < activityTotal && (
+                  <button
+                    onClick={() => carregarAtividade(false)}
+                    disabled={activityLoading}
+                    className="mt-3 w-full text-xs text-slate-400 hover:text-primary border border-border rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                  >
+                    {activityLoading ? "Carregando…" : `Ver mais (${activityTotal - activity.length} restantes)`}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
         </div>

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import select, func, delete as sql_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
@@ -15,7 +15,9 @@ from app.models.user import User
 from app.schemas.card import (
     CardCreate, CardUpdate, CardOut, CommentCreate, CommentUpdate, CommentOut,
     ChecklistCreate, ChecklistOut, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemOut,
+    ActivityOut, ActivityPage,
 )
+from app.models.audit import AuditLog
 from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
 from app.automations import run_card_moved_automations
 from app.mentions import ids_mencionados, texto_para_notificacao
@@ -428,6 +430,37 @@ async def delete_comment(list_id: int, card_id: int, comment_id: int, db: AsyncS
         await db.commit()
         await db.refresh(comment)
     return _comment_to_dict(comment)
+
+
+@router.get("/{card_id}/activity", response_model=ActivityPage)
+async def card_activity(
+    list_id: int, card_id: int,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # O gate do router (membresia) + este _get_card_or_404 amarram o card à lista da
+    # URL; audit_log não tem FK, então filtrar por card_id aqui é o que restringe o
+    # histórico ao card que o membro pode ver.
+    await _get_card_or_404(card_id, list_id, db)
+    total = (await db.execute(
+        select(func.count()).select_from(AuditLog).where(AuditLog.card_id == card_id)
+    )).scalar() or 0
+    rows = (await db.execute(
+        select(AuditLog).where(AuditLog.card_id == card_id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(limit).offset(offset)
+    )).scalars().all()
+    items = [
+        ActivityOut(
+            id=r.id, created_at=r.created_at, actor_name=r.actor_name,
+            actor_type=r.actor_type, action=r.action, entity_type=r.entity_type,
+            summary=r.summary,
+        )
+        for r in rows
+    ]
+    return ActivityPage(total=total, items=items)
 
 
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)

@@ -85,6 +85,21 @@ export interface Comment {
   deleted_at?: string | null;
 }
 
+export interface Activity {
+  id: number;
+  created_at: string;
+  actor_name: string;
+  actor_type: string;
+  action: string;
+  entity_type: string;
+  summary: string;
+}
+
+export interface ActivityPage {
+  total: number;
+  items: Activity[];
+}
+
 export interface Attachment {
   id: number;
   filename: string;

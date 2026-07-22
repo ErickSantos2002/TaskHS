@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.11.0",
+    date: "2026-07-22",
+    changes: [
+      { kind: "novidade", text: "O painel do lado direito do cartão agora tem duas abas: \"Comentários\" e \"Atividade\". Na aba Atividade você vê o histórico do cartão — quem criou, moveu (de qual lista para qual), editou, anexou, comentou e etc. — com o nome de quem fez e quando. O histórico já era registrado; agora qualquer membro do quadro consegue vê-lo direto no cartão, sem depender da tela de Logs (que é só de administrador)." },
+    ],
+  },
+  {
     version: "1.10.1",
     date: "2026-07-20",
     changes: [
