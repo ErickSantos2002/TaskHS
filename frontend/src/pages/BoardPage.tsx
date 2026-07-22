@@ -1818,9 +1818,9 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
     >
       {/* Column header */}
       <div className="list-column-header px-3 py-2.5 shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: list.color }} />
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 min-w-0 flex-1">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: list.color }} />
             {isRenaming ? (
               <input
                 ref={renameRef}
@@ -1833,13 +1833,13 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
             ) : isElevated ? (
               <button
                 onClick={() => setIsRenaming(true)}
-                className="text-sm font-semibold truncate text-slate-100 hover:text-primary transition-colors text-left"
+                className="text-sm font-semibold break-words leading-snug text-slate-100 hover:text-primary transition-colors text-left"
                 title="Clique para renomear"
               >
                 {list.title}
               </button>
             ) : (
-              <span className="text-sm font-semibold truncate text-left text-slate-100">
+              <span className="text-sm font-semibold break-words leading-snug text-left text-slate-100">
                 {list.title}
               </span>
             )}
