@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.12.2",
+    date: "2026-07-22",
+    changes: [
+      { kind: "correcao", text: "O visualizador de PDF mostrava \"Não foi possível exibir o PDF\" no site publicado, mesmo com o arquivo intacto no servidor. Era o servidor entregando um componente interno do visualizador com o tipo errado, e o navegador o bloqueava. Corrigido — os PDFs voltam a abrir normalmente, sem precisar reenviar nada." },
+    ],
+  },
+  {
     version: "1.12.1",
     date: "2026-07-22",
     changes: [
