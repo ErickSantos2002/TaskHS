@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.11.1",
+    date: "2026-07-22",
+    changes: [
+      { kind: "melhoria", text: "Cards novos criados pela integração (GestorHS) agora entram no topo da lista, não mais no fundo — a chegada mais recente fica logo na frente. Quando o GestorHS move um card de uma etapa para outra, o posicionamento continua como antes." },
+    ],
+  },
+  {
     version: "1.11.0",
     date: "2026-07-22",
     changes: [

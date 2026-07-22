@@ -42,6 +42,15 @@ async def _last_position(db: AsyncSession, list_id: int) -> float:
     return (last or 0.0) + 65536.0
 
 
+async def _top_position(db: AsyncSession, list_id: int) -> float:
+    # Card novo do gestorhs entra no TOPO (a lista é ordenada por position asc, então
+    # topo = menor position). Só a criação usa isto; mover entre listas segue no fundo.
+    first = (await db.execute(
+        select(Card.position).where(Card.list_id == list_id).order_by(Card.position.asc()).limit(1)
+    )).scalar_one_or_none()
+    return (first or 0.0) - 65536.0
+
+
 async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "List", db: AsyncSession) -> None:
     """Aplica os campos do upsert num card que ja existe.
 
@@ -125,7 +134,7 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
             description=body.description,
             due_date=body.due_date,
             priority=body.priority or Priority.medium,
-            position=await _last_position(db, lst.id),
+            position=await _top_position(db, lst.id),
             external_source=body.source,
             external_id=body.external_id,
             archived=body.archived or False,
