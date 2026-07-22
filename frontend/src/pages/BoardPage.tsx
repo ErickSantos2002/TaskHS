@@ -1090,7 +1090,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </div>
               <input
                 ref={fileRef} type="file" multiple hidden
-                accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.xml,image/jpeg,image/png,image/gif,image/webp,application/pdf,text/xml,application/xml"
                 onChange={e => handleUpload(e.target.files)}
               />
               {attachments.length === 0 ? (

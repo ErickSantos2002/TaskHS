@@ -24,8 +24,29 @@ ALLOWED_TYPES: dict[str, str] = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     "application/vnd.ms-excel": ".xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "text/xml": ".xml",
+    "application/xml": ".xml",
 }
+# Aceitos pela extensão do nome quando o navegador manda um content_type genérico.
+# NF-e baixada de portal costuma chegar como application/octet-stream, e recusá-la
+# quebraria o uso do financeiro (foi o pedido). O conteúdo não é executado — só guardado.
+ALLOWED_EXTS_FALLBACK: dict[str, str] = {".xml": "application/xml"}
 MAX_SIZE = 10 * 1024 * 1024
+
+
+def _resolve_ext(filename: str | None, content_type: str | None) -> tuple[str, str] | None:
+    """Devolve (extensão, content_type a gravar) ou None se não permitido.
+
+    1º pela tabela de content_type; senão, pela extensão do nome (fallback do XML).
+    """
+    if content_type in ALLOWED_TYPES:
+        return ALLOWED_TYPES[content_type], content_type
+    nome = (filename or "").lower()
+    for ext, ct in ALLOWED_EXTS_FALLBACK.items():
+        if nome.endswith(ext):
+            # content_type genérico vira o correto, para o download servir como XML.
+            return ext, content_type if content_type in (ct, "text/xml") else ct
+    return None
 
 
 def attachment_to_dict(a: CardAttachment) -> dict:
@@ -59,12 +80,13 @@ async def upload_attachments(
     await _get_card_or_404(card_id, list_id, db)
     created: list[CardAttachment] = []
     for f in files:
-        if f.content_type not in ALLOWED_TYPES:
+        resolvido = _resolve_ext(f.filename, f.content_type)
+        if resolvido is None:
             raise HTTPException(status_code=400, detail=f"Tipo não permitido: {f.filename} ({f.content_type})")
+        ext, content_type = resolvido
         content = await f.read()
         if len(content) > MAX_SIZE:
             raise HTTPException(status_code=400, detail=f"Arquivo grande demais (máx 10 MB): {f.filename}")
-        ext = ALLOWED_TYPES[f.content_type]
         stored_name = f"{uuid.uuid4().hex}{ext}"
         with open(os.path.join(settings.UPLOAD_DIR, stored_name), "wb") as out:
             out.write(content)
@@ -72,7 +94,7 @@ async def upload_attachments(
             card_id=card_id,
             filename=f.filename or stored_name,
             stored_name=stored_name,
-            content_type=f.content_type,
+            content_type=content_type,
             size=len(content),
             uploaded_by=current_user.id,
         )

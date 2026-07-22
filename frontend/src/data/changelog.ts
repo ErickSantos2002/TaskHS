@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.12.1",
+    date: "2026-07-22",
+    changes: [
+      { kind: "melhoria", text: "Os anexos agora aceitam arquivos XML (ex.: NF-e), importante para o setor financeiro. Vale mesmo quando o navegador não identifica o tipo do arquivo — o sistema reconhece pelo final \".xml\" do nome." },
+    ],
+  },
+  {
     version: "1.12.0",
     date: "2026-07-22",
     changes: [
