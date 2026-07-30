@@ -868,6 +868,33 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
+---
+
+## Task 5: Varrer também os comentários *(acrescentada em 2026-07-30, a pedido do Erick)*
+
+Entrou depois que as Tasks 1 e 2 já estavam feitas, e foi executada antes das
+Tasks 3 e 4 para o changelog sair completo de uma vez. **Já implementada** —
+commit `8a90e96`. Registro do que mudou em relação ao plano original:
+
+- `backend/app/routers/search.py`: `_comentarios_do_card()` (subquery
+  correlacionada com `string_agg`, ignorando comentário com `deleted_at`) entra
+  no `concat_ws` do `_feno()`; `montar_snippet` recebe a lista de comentários e
+  ganha a origem `"comentario"`, sempre por último na ordem dos candidatos; o
+  endpoint busca os comentários dos cards que sobraram numa consulta só.
+- `backend/app/schemas/search.py` e `frontend/src/types/index.ts`:
+  `matched_field` ganha `"comentario"`.
+- `frontend/src/components/GlobalSearch.tsx`: a linha do trecho ganha o prefixo
+  "em comentário:" quando a origem é uma conversa.
+- **`backend/migrations/009_card_comments_card_id.sql`** (novo): índice em
+  `card_comments(card_id)`. Contraria o "sem migration" das Global Constraints
+  acima — o `EXPLAIN ANALYZE` mostrou a subquery fazendo 1237 varreduras
+  sequenciais da tabela de comentários numa busca só. É aditivo, idempotente e
+  aplicado sozinho no boot pelo runner de migrations.
+
+**Nota:** o CLAUDE.md ainda diz "sem migrations automáticas". Está
+desatualizado — existe `backend/app/migrations.py`, que aplica os `.sql`
+pendentes no startup e falha o boot se algum quebrar.
+
 ## Notas para quem executar
 
 - **A tranca é o item de maior risco desta feature.** O Step 7 da Task 1 não é formalidade: o repositório já teve incidente de exposição, e uma busca que devolve card de quadro alheio é um vazamento silencioso — ninguém percebe olhando a tela.
