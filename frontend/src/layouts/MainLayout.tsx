@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import logo from "../assets/logo.png";
 import { APP_VERSION } from "../data/changelog";
 import { ChangelogModal } from "../components/ChangelogModal";
+import { GlobalSearch } from "../components/GlobalSearch";
 
 interface AppNotification {
   id: number;
@@ -270,7 +271,9 @@ export function MainLayout({ children }: MainLayoutProps) {
             <IconMenu />
           </button>
 
-          <div className="flex-1" />
+          <div className="flex-1 flex justify-center px-4">
+            <GlobalSearch />
+          </div>
 
           <div className="flex items-center gap-1">
             {/* Theme toggle */}

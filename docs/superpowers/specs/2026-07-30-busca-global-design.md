@@ -35,14 +35,19 @@ participa.
   dropdown de resultados e navegação por teclado.
 - Clique no resultado abre o card no quadro, **inclusive se estiver arquivado**.
 
+- **Comentários** (acrescentado a pedido do Erick em 2026-07-30, depois do
+  desenho original): o texto dos comentários vivos entra na mesma varredura.
+  Muito do que se sabe de um atendimento foi escrito na conversa — inclusive
+  números de série que nunca chegaram aos campos do card.
+
 **Fora (de propósito):**
-- Comentários, itens de checklist e nomes de anexo. Cada um vira JOIN e traz
-  card duplicado no resultado; se Serviços sentir falta, é um incremento pequeno
-  depois (a query já estará pronta para receber mais um `OR`).
+- Itens de checklist e nomes de anexo. Se Serviços sentir falta, é um
+  incremento pequeno depois.
 - Buscar **quadros** por nome — com 11 quadros, a página de Boards já resolve.
 - Filtros (quadro, prioridade, etiqueta, período) e paginação. Se virarem
   necessidade, o caminho é uma página `/busca` dedicada, não inchar o dropdown.
-- Full-text search, `pg_trgm`, `unaccent`, índices. Ver "Desempenho".
+- Full-text search, `pg_trgm`, `unaccent` e índice para o `LIKE`. Ver
+  "Desempenho" — o único índice criado é o de chave estrangeira dos comentários.
 
 ## Volume (o que justifica a solução simples)
 
@@ -98,6 +103,25 @@ de serialização, e não há N+1.
 
 ### O casamento
 
+Os **comentários** entram por uma subquery correlacionada agregada, não por
+JOIN:
+
+```sql
+(SELECT coalesce(string_agg(cc.body, ' '), '')
+   FROM card_comments cc
+  WHERE cc.card_id = cards.id AND cc.deleted_at IS NULL)
+```
+
+Com JOIN, um card com três comentários casando viraria três linhas no
+resultado, e o "todas as palavras" passaria a valer **por comentário** em vez de
+por card — buscar `cliente prazo` deixaria de achar o card em que cada palavra
+está num comentário diferente. Comentário excluído (soft delete) fica de fora.
+
+Isso exige um índice em `card_comments(card_id)` — migration `009`, aplicada
+sozinha no boot pelo runner de migrations. O Postgres não indexa chave
+estrangeira por conta própria, e sem o índice cada card varria a tabela de
+comentários inteira: o `EXPLAIN ANALYZE` mostrava 1237 varreduras numa busca só.
+
 Todos os campos viram um "monte de feno" único por card, normalizado por
 `lower()` + `translate()` (nativo do Postgres, sem extensão):
 
@@ -144,7 +168,7 @@ class SearchResultOut(BaseModel):
     due_date: date | None
     archived: bool
     snippet: str
-    matched_field: str   # "titulo" | "descricao" | "obs" — para o front rotular
+    matched_field: str   # "titulo" | "descricao" | "obs" | "comentario"
 ```
 
 `archived` é `card.archived OR list.archived`: card em lista arquivada também
@@ -156,10 +180,19 @@ O JOIN com `lists` e `boards` já é necessário para o filtro de acesso, então
 ### O snippet
 
 Montado em **Python**, não no SQL (é formatação, não busca). Para cada card do
-resultado: percorre `title`, `description`, `obs1..obs6` na ordem, acha o
-primeiro campo que contém o **primeiro termo** (comparando as versões
-normalizadas), e recorta ~120 caracteres em volta dele, com `…` nas pontas
-cortadas. Quebras de linha viram espaço — o dropdown mostra uma linha só.
+resultado: percorre `title`, `description`, `obs1..obs6` e, por último, os
+comentários, acha o primeiro campo que contém o **primeiro termo** (comparando
+as versões normalizadas), e recorta ~120 caracteres em volta dele, com `…` nas
+pontas cortadas. Quebras de linha viram espaço — o dropdown mostra uma linha só.
+
+Os comentários vêm por último de propósito: quando o termo está no card **e**
+numa conversa, o campo do card explica melhor de onde veio o resultado. Quando
+a origem é um comentário, o front prefixa a linha com "em comentário:" — sem
+isso, o trecho parece um dado do próprio card.
+
+Os textos dos comentários chegam por uma consulta só, pelos `card_id` dos até 20
+cards que sobraram: o `string_agg` da query de casamento serve para casar, não
+para exibir.
 
 É o snippet que produz a linha útil `…Aparelho: Iblow10-c · Série VAM5D0008 /
 Patr. 8`, que é justamente o que Serviços quer conferir antes de clicar.
@@ -236,11 +269,17 @@ Quando o card **não** está arquivado, nada muda: o fluxo atual já funciona.
 
 ## Desempenho
 
-Uma query, um scan sequencial em 1233 linhas, `LIMIT 20`. Sem índice novo: um
-índice B-tree não serve para `LIKE '%x%'`, e um GIN de trigram seria peso morto
-nesse volume. Se um dia a base passar de ~50 mil cards e a busca começar a
-pesar, o caminho é `pg_trgm` + índice GIN sobre a mesma expressão — a query não
-precisa mudar de forma.
+Uma query de casamento (scan sequencial em 1233 linhas, `LIMIT 20`) mais uma
+consulta dos comentários dos até 20 cards que sobraram, usada só para recortar
+o snippet. Medido: ~110 ms de banco por busca antes do índice, menos depois. Em
+desenvolvimento a resposta leva ~500 ms, mas isso é o banco remoto — qualquer
+endpoint autenticado custa ~350 ms aqui; a busca acrescenta ~100 ms.
+
+O único índice novo é o de `card_comments(card_id)` (chave estrangeira, acima).
+Nada de índice para o `LIKE`: um B-tree não serve para `LIKE '%x%'` e um GIN de
+trigram seria peso morto nesse volume. Se um dia a base passar de ~50 mil cards
+e a busca começar a pesar, o caminho é `pg_trgm` + índice GIN sobre a mesma
+expressão — a query não precisa mudar de forma.
 
 O front só chama a API a partir de 2 caracteres e com debounce, então digitar um
 número de série de 9 caracteres gera ~1 requisição, não 9.
@@ -255,6 +294,7 @@ Não há suíte de testes no projeto; a verificação é manual.
 | Termo com `%` ou `_` devolvendo tudo | `q=%` → nenhum resultado (ou só cards que tenham literalmente `%`). |
 | Acento | `calibracao` acha "Calibração"; `CALIBRAÇÃO` acha o mesmo card. |
 | Número de série real | `VAM5D0008` na caixa → o card da ULTRACARGO aparece com o snippet da obs. |
+| Comentário | Termo que só existe num comentário (ex.: `curto conserto`) acha o card, com origem `comentario` e sem duplicar o card no resultado. |
 | Card arquivado | Buscar um arquivado, clicar, e o modal abrir com a faixa "Cartão arquivado". |
 | Resposta fora de ordem | Digitar rápido um termo longo e conferir que o resultado final corresponde ao texto que ficou na caixa. |
 | Build | `cd frontend && npm run build` passando. |

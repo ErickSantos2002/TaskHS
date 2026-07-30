@@ -1,0 +1,12 @@
+-- Índice em card_comments.card_id.
+--
+-- POR QUE: a busca global varre também o texto dos comentários, e faz isso com
+-- uma subquery correlacionada (string_agg por card). Sem índice, cada card
+-- varria a tabela inteira de comentários — o EXPLAIN mostrava 1237 seq scans
+-- numa busca só. O Postgres não cria índice para chave estrangeira sozinho.
+--
+-- Aproveita também a abertura do card, que carrega os comentários por card_id.
+--
+-- Aditiva e idempotente: não trava a aplicação em execução, e o rollback é um
+-- DROP INDEX.
+CREATE INDEX IF NOT EXISTS ix_card_comments_card_id ON card_comments (card_id);

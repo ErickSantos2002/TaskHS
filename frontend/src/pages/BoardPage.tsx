@@ -190,7 +190,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -203,6 +203,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
   onCardCopy: (newCard: Card) => void;
+  onRestore: (card: Card) => void;
 }) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description ?? "");
@@ -784,6 +785,22 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
               <p className="text-sm font-semibold">Solte para anexar ao cartão</p>
             </div>
+          </div>
+        )}
+        {/* Card arquivado (chegou aqui pela busca global, que os inclui): sem
+            este aviso, a pessoa edita um card que não aparece no quadro e não
+            entende por quê. */}
+        {card.archived && (
+          <div className="flex items-center justify-between gap-3 px-6 py-2 bg-slate-500/15 border-b border-border">
+            <p className="text-xs text-slate-400">
+              <span className="font-semibold text-slate-300">Cartão arquivado</span> — não aparece no quadro.
+            </p>
+            <button
+              onClick={() => onRestore(card)}
+              className="text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors font-semibold shrink-0"
+            >
+              Restaurar
+            </button>
           </div>
         )}
         {/* Priority color bar */}
@@ -2302,19 +2319,31 @@ export function BoardPage() {
     }).finally(() => setMembrosLoading(false));
   }, [showEditBoard, boardId]);
 
-  // Deep link: /boards/:id?card=<id> abre o card já aberto (usado pelos links da página de Logs).
+  // Deep link: /boards/:id?card=<id> abre o card já aberto (Logs e busca global).
+  // Com &list=<id>, também abre card ARQUIVADO: ele não está em cardsByList (o
+  // /snapshot filtra archived), então busca o card avulso — o endpoint por
+  // list_id continua trancado, list_id forjado dá 403, não 200.
   useEffect(() => {
     const cardId = Number(searchParams.get("card"));
     if (!cardId) return;
+    if (selectedCard?.id === cardId) return;
     const alvo = Object.values(cardsByList).flat().find(c => c.id === cardId);
-    if (alvo) setSelectedCard(alvo);
-  }, [searchParams, cardsByList]);
+    if (alvo) { setSelectedCard(alvo); return; }
+    const listId = Number(searchParams.get("list"));
+    if (!listId) return;
+    let cancelado = false;
+    api.get<Card>(`/lists/${listId}/cards/${cardId}`)
+      .then(c => { if (!cancelado) setSelectedCard(c); })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [searchParams, cardsByList, selectedCard?.id]);
 
   function fecharCard() {
     setSelectedCard(null);
-    if (searchParams.get("card")) {
+    if (searchParams.get("card") || searchParams.get("list")) {
       const p = new URLSearchParams(searchParams);
       p.delete("card");
+      p.delete("list");
       setSearchParams(p, { replace: true });
     }
   }
@@ -2423,6 +2452,20 @@ export function BoardPage() {
         ...prev,
         [restored.list_id]: [...(prev[restored.list_id] ?? []), restored],
       }));
+    } catch {}
+  }
+
+  // Restaurar direto do modal (card aberto pela busca global, que inclui
+  // arquivados). Diferente de handleRestoreCard, aqui não há linha na lista de
+  // arquivados para remover — o card volta pro quadro e o modal segue aberto.
+  async function handleRestoreFromModal(card: Card) {
+    try {
+      const restored = await api.post<Card>(`/lists/${card.list_id}/cards/${card.id}/restore`, {});
+      setCardsByList(prev => ({
+        ...prev,
+        [restored.list_id]: [...(prev[restored.list_id] ?? []).filter(c => c.id !== restored.id), restored],
+      }));
+      setSelectedCard(restored);
     } catch {}
   }
 
@@ -2835,7 +2878,7 @@ export function BoardPage() {
         <CardDetailModal
           card={selectedCard}
           boardId={boardId}
-          listTitle={lists.find(l => l.id === selectedCard.list_id)?.title ?? ""}
+          listTitle={lists.find(l => l.id === selectedCard.list_id)?.title ?? "lista arquivada"}
           lists={lists}
           boardLabels={boardLabels}
           currentUser={currentUser}
@@ -2845,6 +2888,7 @@ export function BoardPage() {
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
+          onRestore={handleRestoreFromModal}
         />
       )}
 

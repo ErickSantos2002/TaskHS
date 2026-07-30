@@ -14,6 +14,15 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.0",
+    date: "2026-07-30",
+    changes: [
+      { kind: "novidade", text: "Busca global na barra do topo: encontra cards em todos os quadros a que você tem acesso, de qualquer página. Além do título e da descrição, ela varre os campos de observação que a integração preenche e o texto dos comentários — então dá para achar um atendimento pelo número de série do aparelho, mesmo quando ele só foi escrito na conversa do cartão. Ignora acentos (\"calibracao\" acha \"Calibração\"), aceita várias palavras em qualquer ordem, e o atalho Ctrl+K abre a busca de onde você estiver." },
+      { kind: "novidade", text: "Cards arquivados também aparecem no resultado da busca, marcados com o selo \"Arquivado\". Ao abrir um deles, o cartão mostra um aviso no topo com um botão para restaurá-lo direto dali." },
+      { kind: "melhoria", text: "Cada pessoa só encontra cards dos quadros de que participa (administradores e coordenadores continuam enxergando todos), e os cartões abrem mais rápido em quadros com muitos comentários." },
+    ],
+  },
+  {
     version: "1.12.4",
     date: "2026-07-30",
     changes: [
