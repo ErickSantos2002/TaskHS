@@ -183,3 +183,18 @@ export interface AuditLog {
   ip: string | null;
   path: string | null;
 }
+
+export interface SearchResult {
+  card_id: number;
+  list_id: number;
+  board_id: number;
+  board_title: string;
+  board_color: string | null;
+  list_title: string;
+  title: string;
+  priority: Priority;
+  due_date: string | null;
+  archived: boolean;
+  snippet: string;
+  matched_field: "titulo" | "descricao" | "obs";
+}
