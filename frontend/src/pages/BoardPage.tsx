@@ -429,10 +429,25 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => {
     if (!pdfView) return;
     const url = pdfView.url;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPdfView(null); };
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); URL.revokeObjectURL(url); };
+    return () => { URL.revokeObjectURL(url); };
   }, [pdfView]);
+
+  // ESC fecha uma camada por vez, de cima para baixo: primeiro as sobreposicoes
+  // internas (PDF, lightbox, obs); depois, se houver campo em edicao, so tira o
+  // foco dele (o blur e quem salva titulo/descricao); por fim fecha o card.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (pdfView) { setPdfView(null); return; }
+      if (lightbox) { setLightbox(null); return; }
+      if (obsOpen !== null) { setObsOpen(null); return; }
+      const ativo = document.activeElement as HTMLElement | null;
+      if (ativo && ["INPUT", "TEXTAREA", "SELECT"].includes(ativo.tagName)) { ativo.blur(); return; }
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pdfView, lightbox, obsOpen, onClose]);
 
   async function handleDeleteAttachment(a: Attachment) {
     try {
