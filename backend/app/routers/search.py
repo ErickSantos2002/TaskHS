@@ -2,7 +2,8 @@
 
 Pedido de Serviços: achar um atendimento pelo número de série do aparelho, que
 a integração grava no meio do texto de obs1..obs6 — daí a varredura incluir
-essas colunas, e não só título/descrição.
+essas colunas, e não só título/descrição. Os comentários entraram no mesmo
+espírito: muito do que se sabe de um atendimento foi escrito na conversa.
 
 O recorte de acesso é um SUBSELECT no WHERE, nunca um pós-filtro em Python:
 card de quadro alheio não chega a ser materializado, então não há como vazar
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.board import Board, BoardMember
-from app.models.card import Card
+from app.models.card import Card, CardComment
 from app.models.list import List as ListModel
 from app.models.user import User
 from app.schemas.search import SearchResultOut
@@ -56,8 +57,25 @@ def termos_de(q: str) -> list[str]:
     return [t for t in normalizar(q).split() if len(t) >= TAMANHO_MINIMO_TERMO]
 
 
+def _comentarios_do_card():
+    """Os comentários vivos do card colados num texto só.
+
+    Subquery correlacionada e agregada DE PROPÓSITO, em vez de JOIN: com JOIN,
+    um card com três comentários casando viraria três linhas no resultado, e a
+    lógica de "todas as palavras" passaria a valer por comentário, não por card
+    (buscar "cliente prazo" deixaria de achar o card em que cada palavra está
+    num comentário diferente).
+    """
+    return (
+        select(func.coalesce(func.string_agg(CardComment.body, " "), ""))
+        .where(CardComment.card_id == Card.id, CardComment.deleted_at.is_(None))
+        .correlate(Card)
+        .scalar_subquery()
+    )
+
+
 def _feno():
-    """title + description + obs1..6 num texto só, minúsculo e sem acento.
+    """title + description + obs1..6 + comentários num texto só, sem acento.
 
     concat_ws ignora NULL sozinho — não precisa de coalesce em cada coluna.
     """
@@ -65,21 +83,24 @@ def _feno():
         " ",
         Card.title, Card.description,
         Card.obs1, Card.obs2, Card.obs3, Card.obs4, Card.obs5, Card.obs6,
+        _comentarios_do_card(),
     )
     return func.translate(func.lower(juntos), _DE, _PARA)
 
 
-def montar_snippet(card: Card, termo: str) -> tuple[str, str]:
+def montar_snippet(card: Card, termo: str, comentarios: list[str]) -> tuple[str, str]:
     """(trecho, campo) do primeiro campo do card que contém o termo.
 
     É o que faz a linha do dropdown mostrar "…Série VAM5D0008 / Patr. 8" em vez
-    de repetir o título do card.
+    de repetir o título do card. Os comentários vêm por último: quando o termo
+    está no card e também numa conversa, o campo do card explica melhor.
     """
     candidatos = [
         ("titulo", card.title),
         ("descricao", card.description),
         ("obs", card.obs1), ("obs", card.obs2), ("obs", card.obs3),
         ("obs", card.obs4), ("obs", card.obs5), ("obs", card.obs6),
+        *(("comentario", c) for c in comentarios),
     ]
     for campo, texto in candidatos:
         if not texto:
@@ -147,9 +168,23 @@ async def search(
 
     linhas = (await db.execute(stmt)).all()
 
+    # Os comentários dos cards que sobraram, numa consulta só — o snippet
+    # precisa do texto original para recortar o trecho, e o string_agg da query
+    # de cima serve para casar, não para exibir.
+    comentarios: dict[int, list[str]] = {}
+    ids = [linha[0].id for linha in linhas]
+    if ids:
+        q_comentarios = (
+            select(CardComment.card_id, CardComment.body)
+            .where(CardComment.card_id.in_(ids), CardComment.deleted_at.is_(None))
+            .order_by(CardComment.created_at)
+        )
+        for card_id, body in (await db.execute(q_comentarios)).all():
+            comentarios.setdefault(card_id, []).append(body)
+
     resultados: list[SearchResultOut] = []
     for card, list_title, list_archived, board_id, board_title, board_color in linhas:
-        snippet, campo = montar_snippet(card, termos[0])
+        snippet, campo = montar_snippet(card, termos[0], comentarios.get(card.id, []))
         resultados.append(SearchResultOut(
             card_id=card.id,
             list_id=card.list_id,

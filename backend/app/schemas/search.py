@@ -19,4 +19,4 @@ class SearchResultOut(BaseModel):
     due_date: date | None
     archived: bool
     snippet: str
-    matched_field: str  # "titulo" | "descricao" | "obs"
+    matched_field: str  # "titulo" | "descricao" | "obs" | "comentario"

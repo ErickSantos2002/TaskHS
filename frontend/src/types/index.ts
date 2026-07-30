@@ -196,5 +196,5 @@ export interface SearchResult {
   due_date: string | null;
   archived: boolean;
   snippet: string;
-  matched_field: "titulo" | "descricao" | "obs";
+  matched_field: "titulo" | "descricao" | "obs" | "comentario";
 }

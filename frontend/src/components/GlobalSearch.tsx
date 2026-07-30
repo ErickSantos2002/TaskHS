@@ -163,6 +163,11 @@ export function GlobalSearch() {
                 </p>
                 {r.matched_field !== "titulo" && (
                   <p className="text-[11px] text-slate-400 mt-1 truncate">
+                    {/* O trecho que casou pode vir de uma conversa: sem dizer
+                        isso, a linha parece um dado do card e confunde. */}
+                    {r.matched_field === "comentario" && (
+                      <span className="text-slate-500 italic">em comentário: </span>
+                    )}
                     <Realce texto={r.snippet} termos={termos} />
                   </p>
                 )}
