@@ -57,6 +57,7 @@ export function GlobalSearch() {
   useEffect(() => {
     const texto = q.trim();
     if (texto.length < MINIMO) {
+      ++requisicaoRef.current;                       // invalida qualquer requisição em voo
       setResultados([]); setBuscando(false); setErro(false);
       return;
     }
@@ -101,19 +102,19 @@ export function GlobalSearch() {
     navigate(`/boards/${r.board_id}?card=${r.card_id}&list=${r.list_id}`);
   }, [navigate]);
 
+  const mostrarPainel = aberto && q.trim().length >= MINIMO;
+
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
       if (aberto) setAberto(false); else setQ("");
       return;
     }
-    if (!aberto || resultados.length === 0) return;
+    if (!mostrarPainel || resultados.length === 0) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setMarcado(m => (m + 1) % resultados.length); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setMarcado(m => (m - 1 + resultados.length) % resultados.length); }
     if (e.key === "Enter")     { e.preventDefault(); abrir(resultados[marcado]); }
   }
-
-  const mostrarPainel = aberto && q.trim().length >= MINIMO;
 
   return (
     <div className="relative w-full max-w-md" ref={caixaRef}>
