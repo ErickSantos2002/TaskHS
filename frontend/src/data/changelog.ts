@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.1",
+    date: "2026-07-30",
+    changes: [
+      { kind: "melhoria", text: "Ao criar ou editar uma etiqueta, a cor agora sai de um seletor completo — o mesmo círculo de cores do sistema, com o código da cor ao lado — em vez das oito opções fixas. Dá para usar exatamente a cor que você quiser." },
+    ],
+  },
+  {
     version: "1.13.0",
     date: "2026-07-30",
     changes: [

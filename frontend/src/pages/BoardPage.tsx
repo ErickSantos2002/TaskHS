@@ -132,6 +132,34 @@ const IGear = () => (
 
 const LABEL_COLORS = ["#ef4444","#f97316","#f59e0b","#22c55e","#0ea5e9","#8b5cf6","#ec4899","#64748b"];
 
+const COR_PADRAO = "#0ea5e9";
+
+/** Botão que abre o seletor de cores do sistema — a roda de cores, com qualquer
+ *  cor, em vez de uma paleta de oito.
+ *
+ *  O <input type="color"> é o próprio gatilho: fica invisível cobrindo o botão,
+ *  então o clique cai nele e o navegador abre o seletor nativo. Valor fora do
+ *  formato #rrggbb cai no padrão — o input só aceita hexadecimal e, calado,
+ *  transformaria a cor em preto. */
+function SeletorDeCor({ cor, onChange }: { cor: string; onChange: (cor: string) => void }) {
+  const valor = /^#[0-9a-fA-F]{6}$/.test(cor) ? cor : COR_PADRAO;
+  return (
+    <label
+      title="Escolher cor"
+      className="relative inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-background-elevated cursor-pointer transition-colors"
+    >
+      <span className="w-4 h-4 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: valor }} />
+      <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">{valor}</span>
+      <input
+        type="color"
+        value={valor}
+        onChange={e => onChange(e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+      />
+    </label>
+  );
+}
+
 // @[Nome da Pessoa](14) — tem que casar com o MENCAO_RE do backend (app/mentions.py).
 // O {1,120} e o limite do User.name; o teto (em vez de +) evita a varredura quadratica.
 // [0-9]+ e nao \d+: o \d do JS e ASCII, mas o do Python casa digito Unicode
@@ -3171,10 +3199,10 @@ export function BoardPage() {
                         onChange={e => setEditingLabel({ ...editingLabel, name: e.target.value })}
                         className="text-sm bg-background rounded-md border border-border px-2 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50"
                       />
-                      <div className="flex gap-1.5 flex-wrap">
-                        {LABEL_COLORS.map(c => (
-                          <button key={c} onClick={() => setEditingLabel({ ...editingLabel, color: c })} className={cn("w-5 h-5 rounded-full border-2 transition-transform", editingLabel.color === c ? "scale-125 border-white/80" : "border-transparent")} style={{ backgroundColor: c }} />
-                        ))}
+                      {/* div em volta: o pai é flex-col, e sem ela o seletor
+                          esticaria na largura toda. */}
+                      <div>
+                        <SeletorDeCor cor={editingLabel.color} onChange={c => setEditingLabel({ ...editingLabel, color: c })} />
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => handleUpdateBoardLabel(bl.id, editingLabel.name, editingLabel.color)} className="flex-1 text-xs py-1.5 rounded-md bg-primary text-white hover:bg-primary-600 transition-colors font-semibold">Salvar</button>
@@ -3205,11 +3233,7 @@ export function BoardPage() {
                 placeholder="Nome da etiqueta…"
                 className="w-full text-sm bg-background-elevated rounded-lg border border-border px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder-slate-500"
               />
-              <div className="flex gap-1.5 flex-wrap">
-                {LABEL_COLORS.map(c => (
-                  <button key={c} onClick={() => setNewLabelColor(c)} className={cn("w-5 h-5 rounded-full border-2 transition-transform", newLabelColor === c ? "scale-125 border-white/80" : "border-transparent")} style={{ backgroundColor: c }} />
-                ))}
-              </div>
+              <SeletorDeCor cor={newLabelColor} onChange={setNewLabelColor} />
               <button
                 onClick={handleCreateBoardLabel}
                 disabled={!newLabelName.trim()}
