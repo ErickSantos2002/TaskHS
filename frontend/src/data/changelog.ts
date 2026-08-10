@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.3",
+    date: "2026-08-10",
+    changes: [
+      { kind: "correcao", text: "Ajuste de segurança: o endpoint de integração passou a devolver apenas os campos públicos dos usuários na resposta, alinhando-o com o resto da API." },
+    ],
+  },
+  {
     version: "1.13.2",
     date: "2026-08-10",
     changes: [
