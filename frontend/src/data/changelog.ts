@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.4",
+    date: "2026-08-10",
+    changes: [
+      { kind: "melhoria", text: "Na aba \"Arquivados\", agora dá para clicar no nome do card e abrir o conteúdo dele (descrição, comentários, checklists, anexos) sem precisar restaurar antes. Restaurar e Excluir continuam como botões ao lado." },
+    ],
+  },
+  {
     version: "1.13.3",
     date: "2026-08-10",
     changes: [

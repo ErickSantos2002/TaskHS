@@ -3275,10 +3275,19 @@ export function BoardPage() {
                   ? <p className="text-xs text-slate-500 italic text-center pt-8">Nenhum card arquivado.</p>
                   : archivedCards.map(c => (
                     <div key={c.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-background-elevated border border-border">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-200 font-medium truncate">{c.title}</p>
+                      {/* Título clicável abre o card (só leitura do conteúdo). Fecha o
+                          painel de arquivados porque os dois são z-50 e o modal ficaria
+                          atrás. O card vindo de /archived já é completo (labels,
+                          comentários, checklists, anexos), então abre direto. */}
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedCard(c); setShowArchived(false); }}
+                        title="Abrir card"
+                        className="min-w-0 flex-1 text-left group"
+                      >
+                        <p className="text-sm text-slate-200 font-medium truncate group-hover:text-primary transition-colors">{c.title}</p>
                         <p className="text-xs text-slate-500 mt-0.5">Lista: {c.list_title}</p>
-                      </div>
+                      </button>
                       <div className="flex gap-1.5 shrink-0">
                         <button onClick={() => handleRestoreCard(c)} className="text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors font-semibold">Restaurar</button>
                         <button onClick={() => handleDeleteArchivedCard(c)} className="text-xs px-2.5 py-1 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors font-semibold">Excluir</button>
