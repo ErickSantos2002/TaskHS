@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.2",
+    date: "2026-08-10",
+    changes: [
+      { kind: "correcao", text: "A aba \"Arquivados\" não abria em quadros cujos cartões arquivados tinham etiqueta — dava erro e a lista aparecia vazia. Agora os cartões e listas arquivados aparecem normalmente." },
+    ],
+  },
+  {
     version: "1.13.1",
     date: "2026-07-30",
     changes: [
