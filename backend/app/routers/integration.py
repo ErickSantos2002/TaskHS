@@ -11,6 +11,7 @@ from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
 from app.routers.cards import _card_options, _card_to_dict
+from app.schemas.card import CardOut
 from app.audit_context import set_actor_identity
 
 router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[Depends(require_integration_key)])
@@ -160,7 +161,9 @@ async def upsert_card(body: IntegrationCardIn, db: AsyncSession = Depends(get_db
         await _apply_updates(card, body, sent, lst, db)
         await db.commit()
     result = await db.execute(select(Card).where(Card.id == card.id).options(*_card_options()))
-    return _card_to_dict(result.scalar_one())
+    # Via CardOut, nao _card_to_dict cru: sem response_model, o dict cru devolveria
+    # o User CRU em members (com password_hash) para o integrador. UserOut descarta.
+    return CardOut.model_validate(_card_to_dict(result.scalar_one())).model_dump()
 
 
 @router.delete("/cards", status_code=status.HTTP_204_NO_CONTENT)

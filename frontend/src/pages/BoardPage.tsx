@@ -797,7 +797,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-8"
+      // z-[60] (acima dos painéis z-50, ex.: Arquivados): assim o card abre POR
+      // CIMA do painel de arquivados e, ao fechar, volta pra ele — sem precisar
+      // fechar o painel. Os overlays internos (lightbox/pdf) são descendentes e
+      // seguem stackando acima deste.
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-8"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
@@ -3275,10 +3279,21 @@ export function BoardPage() {
                   ? <p className="text-xs text-slate-500 italic text-center pt-8">Nenhum card arquivado.</p>
                   : archivedCards.map(c => (
                     <div key={c.id} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-background-elevated border border-border">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-200 font-medium truncate">{c.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Lista: {c.list_title}</p>
-                      </div>
+                      {/* Título clicável abre o card (só leitura do conteúdo). O modal
+                          é z-[60] e abre POR CIMA deste painel (z-50), então o painel
+                          fica atrás e reaparece ao fechar o card. O card vindo de
+                          /archived já é completo (labels, comentários, checklists,
+                          anexos), então abre direto. <span>, não <p>: conteúdo de
+                          <button> não pode ter <p> (HTML inválido). */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCard(c)}
+                        title="Abrir card"
+                        className="min-w-0 flex-1 text-left group"
+                      >
+                        <span className="block text-sm text-slate-200 font-medium truncate group-hover:text-primary transition-colors">{c.title}</span>
+                        <span className="block text-xs text-slate-500 mt-0.5">Lista: {c.list_title}</span>
+                      </button>
                       <div className="flex gap-1.5 shrink-0">
                         <button onClick={() => handleRestoreCard(c)} className="text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary hover:bg-primary/25 transition-colors font-semibold">Restaurar</button>
                         <button onClick={() => handleDeleteArchivedCard(c)} className="text-xs px-2.5 py-1 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors font-semibold">Excluir</button>

@@ -405,30 +405,30 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
     )
     all_list_ids = [row for row in list_ids_result.scalars().all()]
 
+    # _card_options() (não uma lista à mão): ela carrega labels.board_label, que
+    # _card_to_dict lê. A lista manual anterior omitia isso — card arquivado COM
+    # etiqueta dava lazy-load em sessão async -> MissingGreenlet -> 500.
     cards_result = await db.execute(
         select(Card)
         .where(Card.list_id.in_(all_list_ids), Card.archived == True)
-        .options(
-            selectinload(Card.labels),
-            selectinload(Card.members).selectinload(CardMember.user),
-            selectinload(Card.comments).selectinload(CardComment.author),
-            selectinload(Card.attachments),
-            selectinload(Card.checklists).selectinload(Checklist.items),
-        )
+        .options(*_card_options())
     )
     archived_cards = cards_result.scalars().all()
 
     list_titles = {lst.id: lst.title for lst in (await db.execute(select(List.id, List.title).where(List.board_id == board_id))).all()}
 
     def card_to_dict(card: Card) -> dict:
-        from app.routers.cards import _card_to_dict, _to_list
-        d = _card_to_dict(card)
+        from app.routers.cards import _card_to_dict
+        # CardOut sobre o dict achatado, como em /snapshot: sem isso o endpoint
+        # devolvia o User CRU em members (com password_hash) — não tem
+        # response_model pra filtrar. CardOut(members: list[UserOut]) descarta o hash.
+        d = CardOut.model_validate(_card_to_dict(card)).model_dump()
         d["list_title"] = list_titles.get(card.list_id, "")
         return d
 
     return {
         "cards": [card_to_dict(c) for c in archived_cards],
-        "lists": [lst for lst in archived_lists],
+        "lists": [ListOut.model_validate(lst).model_dump() for lst in archived_lists],
     }
 
 

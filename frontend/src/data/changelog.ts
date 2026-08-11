@@ -14,10 +14,38 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
-    version: "1.13.2",
-    date: "2026-07-30",
+    version: "1.13.6",
+    date: "2026-08-11",
     changes: [
       { kind: "correcao", text: "Quando alguma tela quebrava, o sistema inteiro sumia e ficava só o fundo em branco, sem explicação. Agora aparece um aviso com o que aconteceu e um botão para recarregar — e a barra lateral continua funcionando, então dá para ir para outra tela sem perder a sessão. Se isso acontecer com você, um print do quadro cinza mostra exatamente onde foi o defeito." },
+    ],
+  },
+  {
+    version: "1.13.5",
+    date: "2026-08-10",
+    changes: [
+      { kind: "correcao", text: "Ao abrir um card pela aba \"Arquivados\", o painel agora fica aberto por trás — ao fechar o card você volta direto para a lista de arquivados, sem precisar reabri-la. Também corrigido um detalhe interno de estrutura do botão do card." },
+    ],
+  },
+  {
+    version: "1.13.4",
+    date: "2026-08-10",
+    changes: [
+      { kind: "melhoria", text: "Na aba \"Arquivados\", agora dá para clicar no nome do card e abrir o conteúdo dele (descrição, comentários, checklists, anexos) sem precisar restaurar antes. Restaurar e Excluir continuam como botões ao lado." },
+    ],
+  },
+  {
+    version: "1.13.3",
+    date: "2026-08-10",
+    changes: [
+      { kind: "correcao", text: "Ajuste de segurança: o endpoint de integração passou a devolver apenas os campos públicos dos usuários na resposta, alinhando-o com o resto da API." },
+    ],
+  },
+  {
+    version: "1.13.2",
+    date: "2026-08-10",
+    changes: [
+      { kind: "correcao", text: "A aba \"Arquivados\" não abria em quadros cujos cartões arquivados tinham etiqueta — dava erro e a lista aparecia vazia. Agora os cartões e listas arquivados aparecem normalmente." },
     ],
   },
   {
