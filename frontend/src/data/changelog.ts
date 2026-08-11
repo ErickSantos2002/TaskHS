@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.2",
+    date: "2026-07-30",
+    changes: [
+      { kind: "correcao", text: "Quando alguma tela quebrava, o sistema inteiro sumia e ficava só o fundo em branco, sem explicação. Agora aparece um aviso com o que aconteceu e um botão para recarregar — e a barra lateral continua funcionando, então dá para ir para outra tela sem perder a sessão. Se isso acontecer com você, um print do quadro cinza mostra exatamente onde foi o defeito." },
+    ],
+  },
+  {
     version: "1.13.1",
     date: "2026-07-30",
     changes: [
