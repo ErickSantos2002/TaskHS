@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.8",
+    date: "2026-08-13",
+    changes: [
+      { kind: "melhoria", text: "No aviso de erro, o botão principal passou a ser \"Voltar para o início\", que troca de tela por dentro do sistema sem recarregar a página — assim você não precisa passar pelo Fortipam de novo. Recarregar continua disponível como último recurso, agora avisando que vai pedir o login externo outra vez." },
+    ],
+  },
+  {
     version: "1.13.7",
     date: "2026-08-13",
     changes: [

@@ -20,6 +20,13 @@ interface Props {
    *  PDF) — ali recarregar a página inteira seria desproporcional, e "tentar de
    *  novo" costuma bastar porque a falha é de rede. */
   variante?: "pagina" | "painel";
+  /** Leva a pessoa ao início SEM recarregar a página.
+   *
+   *  Recarregar aqui não é barato: o acesso passa pelo Fortipam (gerenciador de
+   *  senhas externo), e um F5 derruba a sessão DELE — a pessoa tem de se
+   *  autenticar de novo lá fora. Por isso o botão principal troca de tela por
+   *  dentro do próprio app, e recarregar fica como último recurso. */
+  aoVoltar?: () => void;
 }
 
 interface State {
@@ -95,8 +102,9 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
 
           <p className="text-sm text-slate-400">
-            Recarregue a página para continuar. Se der para <span className="font-semibold text-slate-300">mandar um print
-            deste quadro cinza</span> para a equipe, ele diz exatamente onde foi o defeito.
+            Volte ao início para continuar — você <span className="font-semibold text-slate-300">não precisa fazer login de
+            novo</span>. Se der para <span className="font-semibold text-slate-300">mandar um print deste quadro cinza</span>
+            {" "}para a equipe, ele diz exatamente onde foi o defeito.
           </p>
 
           <pre className="text-[11px] leading-relaxed text-slate-400 bg-background rounded-lg border border-border p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-52">
@@ -104,10 +112,22 @@ export class ErrorBoundary extends Component<Props, State> {
           </pre>
 
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              this.setState({ error: null, componentStack: null });
+              this.props.aoVoltar?.();
+            }}
             className="w-full py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-600 transition-colors"
           >
-            Recarregar a página
+            Voltar para o início
+          </button>
+
+          {/* Recarregar fica em segundo plano e avisando o custo: o F5 derruba a
+              sessão do Fortipam e obriga a passar por ele de novo. */}
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full py-2 rounded-lg border border-border text-slate-400 text-xs font-medium hover:bg-background-elevated transition-colors"
+          >
+            Se não resolver, recarregar a página (pede login do Fortipam de novo)
           </button>
         </div>
       </div>

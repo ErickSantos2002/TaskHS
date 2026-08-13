@@ -24,7 +24,10 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {/* Boundary da raiz: pega o que escapa do de dentro — erro no layout, no
         roteador ou no contexto de autenticação. Sem ele, a tela fica branca. */}
-    <ErrorBoundary area="raiz">
+    {/* Aqui fora do roteador não dá para usar useNavigate: troco a URL na mão e
+        deixo o App remontar (o boundary zera o estado no mesmo clique). Sem
+        recarregar — o F5 derrubaria a sessão do Fortipam. */}
+    <ErrorBoundary area="raiz" aoVoltar={() => window.history.pushState({}, '', '/')}>
       <App />
     </ErrorBoundary>
   </StrictMode>,
