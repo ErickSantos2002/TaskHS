@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.13.7",
+    date: "2026-08-13",
+    changes: [
+      { kind: "correcao", text: "Achada e corrigida uma das causas da tela sumir: ao abrir um PDF, o sistema busca o visualizador na hora, e bastava essa busca falhar — uma oscilação de internet, ou o servidor reiniciando durante uma atualização — para a tela inteira apagar. Agora ele tenta de novo sozinho e, se ainda assim não vier, quebra só o painel do PDF (com um \"Tentar de novo\"), mantendo o quadro e o cartão abertos. O arquivo continua disponível pelo botão de baixar." },
+    ],
+  },
+  {
     version: "1.13.6",
     date: "2026-08-11",
     changes: [

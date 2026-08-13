@@ -16,6 +16,10 @@ interface Props {
   children: ReactNode;
   /** Aparece na mensagem e no log — para distinguir a raiz do app da área de conteúdo. */
   area: string;
+  /** "painel" é a versão curta, para um pedaço da tela (ex.: o visualizador de
+   *  PDF) — ali recarregar a página inteira seria desproporcional, e "tentar de
+   *  novo" costuma bastar porque a falha é de rede. */
+  variante?: "pagina" | "painel";
 }
 
 interface State {
@@ -45,6 +49,24 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     const { error, componentStack } = this.state;
     if (!error) return this.props.children;
+
+    if (this.props.variante === "painel") {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center" style={{ background: "#525659" }}>
+          <p className="text-sm font-semibold text-slate-100">Não foi possível carregar o visualizador</p>
+          <p className="text-xs text-slate-300 max-w-sm">
+            Costuma ser uma falha momentânea de conexão. O arquivo está intacto — dá para
+            baixá-lo pelo botão acima enquanto isso.
+          </p>
+          <button
+            onClick={() => this.setState({ error: null, componentStack: null })}
+            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-600 transition-colors"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      );
+    }
 
     // As posições saem minificadas (arquivo.js:linha:coluna). Não tem problema:
     // o build publica o sourcemap, então esses números viram linha de código

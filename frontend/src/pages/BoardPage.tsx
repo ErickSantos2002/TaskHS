@@ -15,7 +15,11 @@ import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
 import { useBoardStream } from "../hooks/useBoardStream";
 import { BoardIcon } from "../components/BoardIcon";
-const PdfViewer = lazy(() => import("../components/PdfViewer"));
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { carregarComRetry } from "../lib/carregarComRetry";
+// Com retry: o visualizador é buscado no clique, e uma requisição que falha
+// (rede oscilando, deploy reiniciando o container) não pode virar erro fatal.
+const PdfViewer = lazy(() => carregarComRetry(() => import("../components/PdfViewer")));
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
 import type { Board, BoardList, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
@@ -1565,9 +1569,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </button>
             </div>
             {/* pdf.js com camada de texto: seleção/cópia funcionam em qualquer navegador. */}
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center text-slate-400 text-sm" style={{ background: "#525659" }}>Carregando PDF…</div>}>
-              <PdfViewer url={pdfView.url} />
-            </Suspense>
+            {/* Boundary aqui dentro: se o visualizador não carregar, quebra só
+                este painel — o quadro atrás continua de pé. */}
+            <ErrorBoundary area="visualizador de PDF" variante="painel">
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center text-slate-400 text-sm" style={{ background: "#525659" }}>Carregando PDF…</div>}>
+                <PdfViewer url={pdfView.url} />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
       )}
