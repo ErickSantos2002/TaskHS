@@ -1832,10 +1832,13 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  onMoveList: (dir: "left" | "right") => void;
   onCardAdded: (c: Card) => void;
   onCardClick: (card: Card) => void;
   onListUpdate: (updated: BoardList) => void;
@@ -1973,6 +1976,28 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
                         ))}
                       </div>
                     )}
+                  </div>
+                  {/* Reordenar a lista (só elevado — o menu inteiro já é). Move uma
+                      posição por clique; desabilitado na ponta correspondente. */}
+                  <div className="flex border-t border-border">
+                    <button
+                      onClick={() => { onMoveList("left"); setShowMenu(false); }}
+                      disabled={!canMoveLeft}
+                      title="Mover lista para a esquerda"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                      Esquerda
+                    </button>
+                    <button
+                      onClick={() => { onMoveList("right"); setShowMenu(false); }}
+                      disabled={!canMoveRight}
+                      title="Mover lista para a direita"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors border-l border-border"
+                    >
+                      Direita
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    </button>
                   </div>
                   <button onClick={() => { handleArchiveList(); setShowMenu(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left border-t border-border">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
@@ -2654,6 +2679,30 @@ export function BoardPage() {
     setCardsByList(prev => { const next = { ...prev }; delete next[listId]; return next; });
   }
 
+  // Reordena a lista trocando a POSIÇÃO com a vizinha (List.position é int, então
+  // trocar os valores dá uma reordenação limpa, sem gaps). Otimista; reverte se o
+  // PATCH falhar. O backend (update_list) já exige elevado — o botão também só
+  // aparece para elevado, mas a tranca real está lá.
+  async function handleMoveList(list: BoardList, dir: "left" | "right") {
+    const idx = lists.findIndex(l => l.id === list.id);
+    const swapIdx = dir === "left" ? idx - 1 : idx + 1;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= lists.length) return;
+    const neighbor = lists[swapIdx];
+    const posList = list.position, posNeighbor = neighbor.position;
+    const aplicar = (pList: number, pNeighbor: number) => setLists(prev => prev
+      .map(l => l.id === list.id ? { ...l, position: pList } : l.id === neighbor.id ? { ...l, position: pNeighbor } : l)
+      .sort((a, b) => a.position - b.position));
+    aplicar(posNeighbor, posList);
+    try {
+      await Promise.all([
+        api.patch(`/boards/${boardId}/lists/${list.id}`, { position: posNeighbor }),
+        api.patch(`/boards/${boardId}/lists/${neighbor.id}`, { position: posList }),
+      ]);
+    } catch {
+      aplicar(posList, posNeighbor);
+    }
+  }
+
   function onDragCancel() {
     setActiveCard(null);
     setActiveListId(null);
@@ -2906,12 +2955,15 @@ export function BoardPage() {
               {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
                   O botão/form de "Adicionar lista" tem self-start, então continua curto. */}
               <div className="inline-flex gap-3 h-full p-3 items-stretch">
-                {lists.map(list => (
+                {lists.map((list, idx) => (
                   <KanbanColumn
                     key={list.id}
                     list={list}
                     cards={filteredCards(list.id)}
                     isElevated={isElevated}
+                    canMoveLeft={idx > 0}
+                    canMoveRight={idx < lists.length - 1}
+                    onMoveList={dir => handleMoveList(list, dir)}
                     onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
                     onCardClick={setSelectedCard}
                     onListUpdate={handleListUpdate}
