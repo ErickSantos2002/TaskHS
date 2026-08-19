@@ -14,6 +14,16 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.0.0",
+    date: "2026-08-19",
+    changes: [
+      { kind: "novidade", text: "No cartão, agora aparece a data de criação, quem criou e — nos arquivados — quem arquivou e quando. Cartões vindos da integração aparecem como criados pela \"Integração (gestor)\". Cartões antigos (anteriores ao registro de atividades) mostram só a data." },
+      { kind: "novidade", text: "Administradores e coordenadores podem reordenar as listas: no menu (⋮) da lista há \"Mover para a esquerda\" e \"Mover para a direita\". É restrito a esses perfis — membros comuns não movem as listas, já que elas são as etapas do fluxo." },
+      { kind: "melhoria", text: "As janelas (cartão, configurações, automações, etiquetas, arquivados, criar/editar usuário e board) não fecham mais ao clicar fora — só pelo botão \"X\" (ou Esc). Assim ninguém perde o que estava digitando com um clique acidental. Os visualizadores de imagem e PDF continuam fechando com um clique, como antes." },
+      { kind: "correcao", text: "Os comentários passam a aparecer sempre do mais recente para o mais antigo, com ordenação garantida por data." },
+    ],
+  },
+  {
     version: "1.13.8",
     date: "2026-08-13",
     changes: [
