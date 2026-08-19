@@ -1977,26 +1977,24 @@ function KanbanColumn({ list, cards, isElevated, canMoveLeft, canMoveRight, onMo
                       </div>
                     )}
                   </div>
-                  {/* Reordenar a lista (só elevado — o menu inteiro já é). Move uma
-                      posição por clique; desabilitado na ponta correspondente. */}
-                  <div className="flex border-t border-border">
+                  {/* Reordenar a lista (só elevado — o menu inteiro já é). Linhas
+                      normais, como os outros itens; desabilitado na ponta. */}
+                  <div className="border-t border-border">
                     <button
                       onClick={() => { onMoveList("left"); setShowMenu(false); }}
                       disabled={!canMoveLeft}
-                      title="Mover lista para a esquerda"
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors text-left"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                      Esquerda
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                      Mover para a esquerda
                     </button>
                     <button
                       onClick={() => { onMoveList("right"); setShowMenu(false); }}
                       disabled={!canMoveRight}
-                      title="Mover lista para a direita"
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors border-l border-border"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors text-left"
                     >
-                      Direita
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      Mover para a direita
                     </button>
                   </div>
                   <button onClick={() => { handleArchiveList(); setShowMenu(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left border-t border-border">
