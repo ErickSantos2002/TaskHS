@@ -260,6 +260,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityCarregado, setActivityCarregado] = useState(false);
   const [erroActivity, setErroActivity] = useState<string | null>(null);
+  // Quem criou / quem arquivou — derivado do log (endpoint /meta). Só a data de
+  // criação vem do próprio card; estes dois campos o modelo não guarda.
+  const [cardMeta, setCardMeta] = useState<{ created_by: string | null; created_by_type: string | null; archived_by: string | null; archived_at: string | null } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -295,6 +298,16 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => {
     api.get<Reminder[]>(`/lists/${card.list_id}/cards/${card.id}/reminders`).then(setReminders).catch(() => {});
   }, [card.id, card.list_id]);
+
+  // Criador/arquivador (derivados do log). card.archived nas deps: se o card for
+  // arquivado com o modal aberto, refaz para trazer quem arquivou.
+  useEffect(() => {
+    let cancel = false;
+    setCardMeta(null);
+    api.get<typeof cardMeta>(`/lists/${card.list_id}/cards/${card.id}/meta`)
+      .then(m => { if (!cancel) setCardMeta(m); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [card.id, card.list_id, card.archived]);
 
   async function handleAddReminder() {
     if (!remindAt || addingReminder) return;
@@ -857,6 +870,17 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               rows={2}
               className="w-full text-xl font-bold text-slate-100 bg-transparent resize-none focus:outline-none leading-snug"
             />
+            {/* Metadados do card: criação (data e autor) e, se arquivado, quem
+                arquivou. Autor/arquivador vêm do endpoint /meta (derivado do log). */}
+            <p className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span>Criado em {new Date(card.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              {cardMeta?.created_by && <span className="text-slate-600">·</span>}
+              {cardMeta?.created_by && <span>por <span className="text-slate-400 font-medium">{cardMeta.created_by_type === "integracao" ? "Integração (gestor)" : cardMeta.created_by}</span></span>}
+              {card.archived && cardMeta?.archived_by && <span className="text-slate-600">·</span>}
+              {card.archived && cardMeta?.archived_by && (
+                <span>arquivado por <span className="text-slate-400 font-medium">{cardMeta.archived_by}</span>{cardMeta.archived_at && ` em ${new Date(cardMeta.archived_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`}</span>
+              )}
+            </p>
           </div>
           <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors mt-1">
             <IX />
