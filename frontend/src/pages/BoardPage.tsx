@@ -819,7 +819,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       // fechar o painel. Os overlays internos (lightbox/pdf) são descendentes e
       // seguem stackando acima deste.
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-8"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      /* Clicar fora NÃO fecha (evita perder trabalho por clique acidental) — só o X ou Esc. */
     >
       <div
         className="relative w-full max-w-[900px] rounded-2xl bg-background-surface border border-border shadow-2xl mb-12 overflow-hidden flex flex-col"
@@ -2083,7 +2083,7 @@ function AutomationsModal({ boardId, lists, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-background-surface shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
@@ -2961,7 +2961,7 @@ export function BoardPage() {
       {/* Edit Board Panel */}
       {showEditBoard && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => setShowEditBoard(false)} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[380px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
@@ -3214,7 +3214,7 @@ export function BoardPage() {
       {/* Label Manager Panel */}
       {showLabelManager && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => { setShowLabelManager(false); setEditingLabel(null); }} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[380px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
@@ -3287,7 +3287,7 @@ export function BoardPage() {
       {/* Archived Panel */}
       {showArchived && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => setShowArchived(false)} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[420px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
