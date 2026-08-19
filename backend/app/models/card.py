@@ -44,6 +44,9 @@ class Card(Base):
     comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan", uselist=True)
     attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan", uselist=True)
     checklists: Mapped[list["Checklist"]] = relationship("Checklist", back_populates="card", cascade="all, delete-orphan", uselist=True)
+    # Marcacao "concluido" PESSOAL: uma linha por usuario que marcou este card.
+    # cascade -> some quando o card e excluido, como members/comments.
+    done_by: Mapped[list["CardDone"]] = relationship("CardDone", back_populates="card", cascade="all, delete-orphan", uselist=True)
 
     # ATENCAO: declarada DEPOIS das colecoes acima, de proposito. O nome `list`
     # sombreia o builtin dentro do corpo da classe — se vier antes, as anotacoes
@@ -76,6 +79,23 @@ class CardMember(Base):
 
     card: Mapped["Card"] = relationship("Card", back_populates="members")
     user: Mapped["User"] = relationship("User", back_populates="card_memberships")
+
+
+class CardDone(Base):
+    """Marcação 'concluído' PESSOAL: a linha existir = este usuário marcou este
+    card como concluído. É privada — nunca entra na serialização do card nem no
+    SSE (que são iguais para todos). Fora do audit de propósito (ação pessoal)."""
+    __tablename__ = "card_done"
+    __table_args__ = (
+        UniqueConstraint("card_id", "user_id", name="card_done_card_user_uniq"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    card: Mapped["Card"] = relationship("Card", back_populates="done_by")
 
 
 class CardComment(Base):

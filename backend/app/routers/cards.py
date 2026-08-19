@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
-from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
+from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem, CardDone
 from app.models.board import BoardLabel, BoardMember
 from app.models.list import List
 from app.models.notification import Notification
@@ -495,6 +495,27 @@ async def card_meta(list_id: int, card_id: int, db: AsyncSession = Depends(get_d
         "archived_by": arquivador.actor_name if arquivador else None,
         "archived_at": arquivador.created_at if arquivador else None,
     }
+
+
+@router.post("/{card_id}/done", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_done(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Marca o card como concluído SÓ para o usuário atual (idempotente).
+    Marcação pessoal: não vai para o card serializado nem para o SSE, e CardDone
+    está fora do audit — nada disso é visível para outras pessoas."""
+    await _get_card_or_404(card_id, list_id, db)
+    ja = (await db.execute(
+        select(CardDone).where(CardDone.card_id == card_id, CardDone.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if ja is None:
+        db.add(CardDone(card_id=card_id, user_id=current_user.id))
+        await db.commit()
+
+
+@router.delete("/{card_id}/done", status_code=status.HTTP_204_NO_CONTENT)
+async def unmark_done(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    await _get_card_or_404(card_id, list_id, db)
+    await db.execute(sql_delete(CardDone).where(CardDone.card_id == card_id, CardDone.user_id == current_user.id))
+    await db.commit()
 
 
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)

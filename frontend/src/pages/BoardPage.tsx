@@ -222,7 +222,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -236,6 +236,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   onCardDelete: (cardId: number) => void;
   onCardCopy: (newCard: Card) => void;
   onRestore: (card: Card) => void;
+  isDone: boolean;
+  onToggleDone: () => void;
 }) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description ?? "");
@@ -881,6 +883,20 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 <span>arquivado por <span className="text-slate-400 font-medium">{cardMeta.archived_by}</span>{cardMeta.archived_at && ` em ${new Date(cardMeta.archived_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`}</span>
               )}
             </p>
+            {/* Concluído PESSOAL: marcação privada, só o próprio usuário vê. */}
+            <button
+              onClick={onToggleDone}
+              title="Marcação pessoal — ninguém mais vê"
+              className={cn(
+                "mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                isDone ? "bg-primary/15 border-primary/40 text-primary" : "border-border text-slate-400 hover:text-slate-200 hover:border-slate-500",
+              )}
+            >
+              <span className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0", isDone ? "bg-primary border-primary" : "border-slate-500")}>
+                {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+              </span>
+              {isDone ? "Concluído (só você vê)" : "Marcar como concluído"}
+            </button>
           </div>
           <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors mt-1">
             <IX />
@@ -1625,7 +1641,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
 // ── CardContent ────────────────────────────────────────────────
 
-function CardContentBase({ card, isDragging = false }: { card: Card; isDragging?: boolean }) {
+function CardContentBase({ card, isDragging = false, isDone = false, onToggleDone }: { card: Card; isDragging?: boolean; isDone?: boolean; onToggleDone?: () => void }) {
   const p = PRIORITY[card.priority];
   const due = card.due_date;
   const overdue = due && isOverdue(due);
@@ -1649,10 +1665,28 @@ function CardContentBase({ card, isDragging = false }: { card: Card; isDragging?
         </div>
       )}
 
-      {/* Title */}
-      <p className="text-sm font-medium text-slate-100 line-clamp-2 leading-snug mb-1.5">
-        {card.title}
-      </p>
+      {/* Title — com a bolinha de "concluído" PESSOAL à esquerda. É <span> (não
+          <button>) porque o card inteiro já é um <button>: nested button é HTML
+          inválido. stopPropagation impede que marcar abra o card. */}
+      <div className="flex items-start gap-1.5 mb-1.5">
+        {onToggleDone && (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={e => { e.stopPropagation(); e.preventDefault(); onToggleDone(); }}
+            title={isDone ? "Concluído (só você vê) — clique para desmarcar" : "Marcar como concluído (só você vê)"}
+            className={cn(
+              "mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all",
+              isDone ? "bg-primary border-primary" : "border-slate-500/60 hover:border-primary opacity-0 group-hover/card:opacity-100",
+            )}
+          >
+            {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+          </span>
+        )}
+        <p className="text-sm font-medium text-slate-100 line-clamp-2 leading-snug">
+          {card.title}
+        </p>
+      </div>
 
       {/* Description */}
       {card.description && (
@@ -1718,7 +1752,7 @@ const CardContent = memo(CardContentBase);
 
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card: Card) => void }) {
+function KanbanCardBase({ card, onCardClick, isDone, listId, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; isDone: boolean; listId: number; onToggleDone: (cardId: number, listId: number) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
@@ -1732,7 +1766,7 @@ function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card:
       </div>
       {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
       <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
-        <CardContent card={card} />
+        <CardContent card={card} isDone={isDone} onToggleDone={() => onToggleDone(card.id, listId)} />
       </button>
     </div>
   );
@@ -1832,10 +1866,12 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, myDone, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
+  myDone: Set<number>;
+  onToggleDone: (cardId: number, listId: number) => void;
   canMoveLeft: boolean;
   canMoveRight: boolean;
   onMoveList: (dir: "left" | "right") => void;
@@ -2033,7 +2069,7 @@ function KanbanColumn({ list, cards, isElevated, canMoveLeft, canMoveRight, onMo
               <p className="text-xs text-slate-600">Nenhum card</p>
             </div>
           )}
-          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} />)}
+          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} isDone={myDone.has(card.id)} listId={list.id} onToggleDone={onToggleDone} />)}
         </DroppableColumn>
       </SortableContext>
 
@@ -2232,6 +2268,9 @@ export function BoardPage() {
   const [activeListId, setActiveListId] = useState<number | null>(null);
   const currentListIdRef = useRef<number | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  // "Concluído" PESSOAL: ids dos cards que EU marquei neste quadro. Camada
+  // própria (não vem no card nem no SSE) — cada um só enxerga a sua.
+  const [myDone, setMyDone] = useState<Set<number>>(new Set());
   const [boardLabels, setBoardLabels] = useState<BoardLabel[]>([]);
   const [showLabelManager, setShowLabelManager] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
@@ -2313,7 +2352,30 @@ export function BoardPage() {
     setLists(snap.lists);
     setBoardLabels(snap.labels);
     setCardsByList(snap.cards_by_list);
+    // Camada pessoal de "concluído": buscada à parte do snapshot, só a minha.
+    api.get<{ card_ids: number[] }>(`/boards/${boardId}/done`)
+      .then(r => setMyDone(new Set(r.card_ids))).catch(() => {});
   }, [boardId]);
+
+  // Alterna "concluído" pessoal. useCallback([]) — estável, para o memo dos cards
+  // não quebrar no arrastar. Otimista; reverte se o request falhar. list_id vem de
+  // quem chama (a coluna sabe), evitando lookup dependente de estado.
+  const toggleDone = useCallback((cardId: number, listId: number) => {
+    setMyDone(prev => {
+      const jaEra = prev.has(cardId);
+      const next = new Set(prev);
+      if (jaEra) next.delete(cardId); else next.add(cardId);
+      const req = jaEra
+        ? api.del(`/lists/${listId}/cards/${cardId}/done`)
+        : api.post(`/lists/${listId}/cards/${cardId}/done`, {});
+      req.catch(() => setMyDone(cur => {
+        const r = new Set(cur);
+        if (jaEra) r.add(cardId); else r.delete(cardId);
+        return r;
+      }));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!boardId) return;
@@ -2959,6 +3021,8 @@ export function BoardPage() {
                     list={list}
                     cards={filteredCards(list.id)}
                     isElevated={isElevated}
+                    myDone={myDone}
+                    onToggleDone={toggleDone}
                     canMoveLeft={idx > 0}
                     canMoveRight={idx < lists.length - 1}
                     onMoveList={dir => handleMoveList(list, dir)}
@@ -3005,6 +3069,8 @@ export function BoardPage() {
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
           onRestore={handleRestoreFromModal}
+          isDone={myDone.has(selectedCard.id)}
+          onToggleDone={() => toggleDone(selectedCard.id, selectedCard.list_id)}
         />
       )}
 
