@@ -1677,7 +1677,9 @@ function CardContentBase({ card, isDragging = false, isDone = false, onToggleDon
             title={isDone ? "Concluído (só você vê) — clique para desmarcar" : "Marcar como concluído (só você vê)"}
             className={cn(
               "mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all",
-              isDone ? "bg-primary border-primary" : "border-slate-500/60 hover:border-primary opacity-0 group-hover/card:opacity-100",
+              // Sempre visível com borda verde (não some quando o mouse sai);
+              // no hover fica mais forte com um leve preenchimento.
+              isDone ? "bg-primary border-primary" : "border-primary/60 hover:border-primary hover:bg-primary/15",
             )}
           >
             {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
