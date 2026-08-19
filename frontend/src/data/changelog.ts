@@ -14,7 +14,7 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
-    version: "2.1.0",
+    version: "2.0.1",
     date: "2026-08-19",
     changes: [
       { kind: "novidade", text: "Marcação de \"concluído\" pessoal: passe o mouse sobre um card e clique na bolinha à esquerda do título para marcá-lo como concluído — ou use o botão \"Marcar como concluído\" dentro do card. É uma marcação SÓ SUA: mais ninguém vê o que você marcou, é a sua forma de controlar o que já resolveu. Fica verde quando marcado; clique de novo para desmarcar." },
