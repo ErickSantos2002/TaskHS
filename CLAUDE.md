@@ -94,7 +94,7 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 
 **Routers (prefixos aninhados, todos sob `/api`):**
 - `auth` → `/api/auth` (register, login, me, CRUD de usuários admin)
-- `boards` → `/api/boards` (inclui `/import` SSE, `/stats` e os membros do quadro: `GET`/`POST /{id}/members`, `DELETE /{id}/members/{user_id}`). `GET /api/boards` lista **todos** os quadros da empresa, cada um com `can_open`, `owner_name` e `members` (schema `BoardListOut`; os membros aí são enxutos — `BoardMemberBriefOut`, sem e-mail, porque a listagem é visível a todo mundo). `GET /api/boards/{id}` devolve o `BoardOut` puro. `/stats` conta **só** os quadros de que a pessoa é membro, de propósito: é o painel pessoal — não "consertar" para bater com a listagem.
+- `boards` → `/api/boards` (inclui `/import` SSE, `/stats` e os membros do quadro: `GET`/`POST /{id}/members`, `DELETE /{id}/members/{user_id}`). `GET /api/boards` lista **todos** os quadros da empresa, cada um com `can_open`, `owner_name` e `members` (schema `BoardListOut`; os membros aí são enxutos — `BoardMemberBriefOut`, sem e-mail, porque a listagem é visível a todo mundo). `GET /api/boards/{id}` devolve o `BoardOut` puro. `/stats` conta os quadros que a pessoa **pode abrir** (mesmo critério de `can_open`): elevado (admin/coordenador) conta a empresa toda, membro comum conta os seus. (Até 2026-08-20 contava só as membresias — mudou porque o painel do admin ficava sempre em "1 quadro" mesmo com acesso a tudo.)
 - `lists` → `/api/boards/{board_id}/lists`
 - `cards` → `/api/lists/{list_id}/cards` (comentários, membros, labels, checklists)
 - `labels` → `/api/boards/{board_id}/labels`

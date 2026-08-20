@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.0.2",
+    date: "2026-08-20",
+    changes: [
+      { kind: "correcao", text: "Os números do topo da Dashboard (quadros, cards, vencidos) agora refletem tudo a que você tem acesso. Para administradores e coordenadores, isso passa a ser a empresa inteira; antes contava só os quadros de que a pessoa era membro formal, o que deixava o painel do admin sempre baixo (ex.: \"1 quadro\") mesmo tendo acesso a todos." },
+    ],
+  },
+  {
     version: "2.0.1",
     date: "2026-08-19",
     changes: [
