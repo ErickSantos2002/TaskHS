@@ -80,6 +80,7 @@ class CardUpdate(BaseModel):
     priority: Priority | None = None
     due_date: date | None = None
     due_date_completed: bool | None = None
+    done: bool | None = None
     position: float | None = None
     list_id: int | None = None
 
@@ -99,6 +100,7 @@ class CardOut(BaseModel):
     position: float
     due_date: date | None
     due_date_completed: bool = False
+    done: bool = False
     archived: bool = False
     created_at: datetime
     updated_at: datetime

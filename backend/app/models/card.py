@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint
+from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -33,6 +33,9 @@ class Card(Base):
     position: Mapped[float] = mapped_column(Float, default=65536.0)
     due_date: Mapped[date | None] = mapped_column(Date)
     due_date_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "Concluído" COMPARTILHADO: um marca, todos veem (via SSE). Coluna do card,
+    # não por usuário. Ver migration 010. (A versão anterior era por usuário.)
+    done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     external_source: Mapped[str | None] = mapped_column(String(50))
     external_id: Mapped[str | None] = mapped_column(String(100))
@@ -44,9 +47,6 @@ class Card(Base):
     comments: Mapped[list["CardComment"]] = relationship("CardComment", back_populates="card", cascade="all, delete-orphan", uselist=True)
     attachments: Mapped[list["CardAttachment"]] = relationship("CardAttachment", back_populates="card", cascade="all, delete-orphan", uselist=True)
     checklists: Mapped[list["Checklist"]] = relationship("Checklist", back_populates="card", cascade="all, delete-orphan", uselist=True)
-    # Marcacao "concluido" PESSOAL: uma linha por usuario que marcou este card.
-    # cascade -> some quando o card e excluido, como members/comments.
-    done_by: Mapped[list["CardDone"]] = relationship("CardDone", back_populates="card", cascade="all, delete-orphan", uselist=True)
 
     # ATENCAO: declarada DEPOIS das colecoes acima, de proposito. O nome `list`
     # sombreia o builtin dentro do corpo da classe — se vier antes, as anotacoes
@@ -79,23 +79,6 @@ class CardMember(Base):
 
     card: Mapped["Card"] = relationship("Card", back_populates="members")
     user: Mapped["User"] = relationship("User", back_populates="card_memberships")
-
-
-class CardDone(Base):
-    """Marcação 'concluído' PESSOAL: a linha existir = este usuário marcou este
-    card como concluído. É privada — nunca entra na serialização do card nem no
-    SSE (que são iguais para todos). Fora do audit de propósito (ação pessoal)."""
-    __tablename__ = "card_done"
-    __table_args__ = (
-        UniqueConstraint("card_id", "user_id", name="card_done_card_user_uniq"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    card: Mapped["Card"] = relationship("Card", back_populates="done_by")
 
 
 class CardComment(Base):

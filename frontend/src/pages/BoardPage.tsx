@@ -883,10 +883,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 <span>arquivado por <span className="text-slate-400 font-medium">{cardMeta.archived_by}</span>{cardMeta.archived_at && ` em ${new Date(cardMeta.archived_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`}</span>
               )}
             </p>
-            {/* Concluído PESSOAL: marcação privada, só o próprio usuário vê. */}
+            {/* Concluído COMPARTILHADO: um marca, todos veem (via SSE). */}
             <button
               onClick={onToggleDone}
-              title="Marcação pessoal — ninguém mais vê"
+              title="Quando marcado, todos veem"
               className={cn(
                 "mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
                 isDone ? "bg-primary/15 border-primary/40 text-primary" : "border-border text-slate-400 hover:text-slate-200 hover:border-slate-500",
@@ -895,7 +895,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <span className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0", isDone ? "bg-primary border-primary" : "border-slate-500")}>
                 {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
               </span>
-              {isDone ? "Concluído (só você vê)" : "Marcar como concluído"}
+              {isDone ? "Concluído" : "Marcar como concluído"}
             </button>
           </div>
           <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors mt-1">
@@ -1674,7 +1674,7 @@ function CardContentBase({ card, isDragging = false, isDone = false, onToggleDon
             role="button"
             tabIndex={-1}
             onClick={e => { e.stopPropagation(); e.preventDefault(); onToggleDone(); }}
-            title={isDone ? "Concluído (só você vê) — clique para desmarcar" : "Marcar como concluído (só você vê)"}
+            title={isDone ? "Concluído — clique para desmarcar" : "Marcar como concluído"}
             className={cn(
               "mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all",
               // Sempre visível com borda verde (não some quando o mouse sai);
@@ -1754,7 +1754,7 @@ const CardContent = memo(CardContentBase);
 
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCardBase({ card, onCardClick, isDone, listId, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; isDone: boolean; listId: number; onToggleDone: (cardId: number, listId: number) => void }) {
+function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone: (card: Card) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
@@ -1768,7 +1768,7 @@ function KanbanCardBase({ card, onCardClick, isDone, listId, onToggleDone }: { c
       </div>
       {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
       <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
-        <CardContent card={card} isDone={isDone} onToggleDone={() => onToggleDone(card.id, listId)} />
+        <CardContent card={card} isDone={card.done} onToggleDone={() => onToggleDone(card)} />
       </button>
     </div>
   );
@@ -1868,12 +1868,11 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, myDone, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
-  myDone: Set<number>;
-  onToggleDone: (cardId: number, listId: number) => void;
+  onToggleDone: (card: Card) => void;
   canMoveLeft: boolean;
   canMoveRight: boolean;
   onMoveList: (dir: "left" | "right") => void;
@@ -2071,7 +2070,7 @@ function KanbanColumn({ list, cards, isElevated, myDone, onToggleDone, canMoveLe
               <p className="text-xs text-slate-600">Nenhum card</p>
             </div>
           )}
-          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} isDone={myDone.has(card.id)} listId={list.id} onToggleDone={onToggleDone} />)}
+          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} onToggleDone={onToggleDone} />)}
         </DroppableColumn>
       </SortableContext>
 
@@ -2270,9 +2269,6 @@ export function BoardPage() {
   const [activeListId, setActiveListId] = useState<number | null>(null);
   const currentListIdRef = useRef<number | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
-  // "Concluído" PESSOAL: ids dos cards que EU marquei neste quadro. Camada
-  // própria (não vem no card nem no SSE) — cada um só enxerga a sua.
-  const [myDone, setMyDone] = useState<Set<number>>(new Set());
   const [boardLabels, setBoardLabels] = useState<BoardLabel[]>([]);
   const [showLabelManager, setShowLabelManager] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
@@ -2354,29 +2350,24 @@ export function BoardPage() {
     setLists(snap.lists);
     setBoardLabels(snap.labels);
     setCardsByList(snap.cards_by_list);
-    // Camada pessoal de "concluído": buscada à parte do snapshot, só a minha.
-    api.get<{ card_ids: number[] }>(`/boards/${boardId}/done`)
-      .then(r => setMyDone(new Set(r.card_ids))).catch(() => {});
   }, [boardId]);
 
-  // Alterna "concluído" pessoal. useCallback([]) — estável, para o memo dos cards
-  // não quebrar no arrastar. Otimista; reverte se o request falhar. list_id vem de
-  // quem chama (a coluna sabe), evitando lookup dependente de estado.
-  const toggleDone = useCallback((cardId: number, listId: number) => {
-    setMyDone(prev => {
-      const jaEra = prev.has(cardId);
-      const next = new Set(prev);
-      if (jaEra) next.delete(cardId); else next.add(cardId);
-      const req = jaEra
-        ? api.del(`/lists/${listId}/cards/${cardId}/done`)
-        : api.post(`/lists/${listId}/cards/${cardId}/done`, {});
-      req.catch(() => setMyDone(cur => {
-        const r = new Set(cur);
-        if (jaEra) r.add(cardId); else r.delete(cardId);
-        return r;
-      }));
-      return next;
-    });
+  // Alterna "concluído" COMPARTILHADO: é um campo do card, então PATCH normal —
+  // que já dispara o SSE e atualiza todo mundo ao vivo. Otimista (atualiza o
+  // estado local na hora), reverte se o request falhar. useCallback([]) estável
+  // via updater funcional, para o memo dos cards não quebrar no arrastar.
+  const toggleDone = useCallback((card: Card) => {
+    const novo = !card.done;
+    const setDone = (valor: boolean) => {
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) next[Number(lid)] = cards.map(c => c.id === card.id ? { ...c, done: valor } : c);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === card.id ? { ...sc, done: valor } : sc));
+    };
+    setDone(novo);
+    api.patch(`/lists/${card.list_id}/cards/${card.id}`, { done: novo }).catch(() => setDone(!novo));
   }, []);
 
   useEffect(() => {
@@ -3023,7 +3014,6 @@ export function BoardPage() {
                     list={list}
                     cards={filteredCards(list.id)}
                     isElevated={isElevated}
-                    myDone={myDone}
                     onToggleDone={toggleDone}
                     canMoveLeft={idx > 0}
                     canMoveRight={idx < lists.length - 1}
@@ -3071,8 +3061,8 @@ export function BoardPage() {
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
           onRestore={handleRestoreFromModal}
-          isDone={myDone.has(selectedCard.id)}
-          onToggleDone={() => toggleDone(selectedCard.id, selectedCard.list_id)}
+          isDone={selectedCard.done}
+          onToggleDone={() => toggleDone(selectedCard)}
         />
       )}
 

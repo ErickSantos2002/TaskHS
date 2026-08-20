@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
-from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem, CardDone
+from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
 from app.models.board import BoardLabel, BoardMember
 from app.models.list import List
 from app.models.notification import Notification
@@ -78,6 +78,7 @@ def _card_to_dict(card: Card) -> dict:
         "position": card.position,
         "due_date": card.due_date,
         "due_date_completed": card.due_date_completed,
+        "done": card.done,
         "archived": card.archived,
         "external_source": card.external_source,
         "external_id": card.external_id,
@@ -497,25 +498,9 @@ async def card_meta(list_id: int, card_id: int, db: AsyncSession = Depends(get_d
     }
 
 
-@router.post("/{card_id}/done", status_code=status.HTTP_204_NO_CONTENT)
-async def mark_done(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Marca o card como concluído SÓ para o usuário atual (idempotente).
-    Marcação pessoal: não vai para o card serializado nem para o SSE, e CardDone
-    está fora do audit — nada disso é visível para outras pessoas."""
-    await _get_card_or_404(card_id, list_id, db)
-    ja = (await db.execute(
-        select(CardDone).where(CardDone.card_id == card_id, CardDone.user_id == current_user.id)
-    )).scalar_one_or_none()
-    if ja is None:
-        db.add(CardDone(card_id=card_id, user_id=current_user.id))
-        await db.commit()
-
-
-@router.delete("/{card_id}/done", status_code=status.HTTP_204_NO_CONTENT)
-async def unmark_done(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    await _get_card_or_404(card_id, list_id, db)
-    await db.execute(sql_delete(CardDone).where(CardDone.card_id == card_id, CardDone.user_id == current_user.id))
-    await db.commit()
+# "Concluído" é COMPARTILHADO: um campo (done) do card, alternado pelo PATCH
+# update_card comum — que já audita e dispara o SSE para todos. Não há mais rota
+# própria nem tabela por usuário (ver migration 010).
 
 
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)

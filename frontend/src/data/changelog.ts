@@ -17,7 +17,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     version: "2.0.1",
     date: "2026-08-19",
     changes: [
-      { kind: "novidade", text: "Marcação de \"concluído\" pessoal: passe o mouse sobre um card e clique na bolinha à esquerda do título para marcá-lo como concluído — ou use o botão \"Marcar como concluído\" dentro do card. É uma marcação SÓ SUA: mais ninguém vê o que você marcou, é a sua forma de controlar o que já resolveu. Fica verde quando marcado; clique de novo para desmarcar." },
+      { kind: "novidade", text: "Marcação de \"concluído\" nos cards: clique na bolinha à esquerda do título — ou no botão \"Marcar como concluído\" dentro do card — para marcá-lo. A marcação é compartilhada e em tempo real: quando alguém marca, todos que estão no quadro veem na hora, ficando verde. Clique de novo para desmarcar. Fica registrado no histórico do card quem marcou." },
     ],
   },
   {

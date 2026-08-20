@@ -131,6 +131,8 @@ export interface Card {
   position: number;
   due_date: string | null;
   due_date_completed: boolean;
+  /** "Concluído" COMPARTILHADO (um marca, todos veem). Vem no card, via SSE. */
+  done: boolean;
   archived: boolean;
   created_at: string;
   updated_at: string;

@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db, AsyncSessionLocal
 from app.models.board import Board, BoardMember, BoardRole, BoardLabel
 from app.models.list import List
-from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttachment, Checklist, ChecklistItem, CardDone
+from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttachment, Checklist, ChecklistItem
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
@@ -313,19 +313,6 @@ async def board_snapshot(board_id: int,
         "labels": [{"id": x.id, "board_id": x.board_id, "name": x.name, "color": x.color} for x in labels],
         "cards_by_list": cards_by_list,
     }
-
-
-@router.get("/{board_id}/done")
-async def my_done_cards(board_id: int, current_user: User = Depends(require_board_access_by_board_id), db: AsyncSession = Depends(get_db)):
-    """Ids dos cards que O USUÁRIO ATUAL marcou como concluído neste quadro.
-    Marcação pessoal — cada um só recebe a sua; o front pinta a bolinha com isso."""
-    rows = (await db.execute(
-        select(CardDone.card_id)
-        .join(Card, Card.id == CardDone.card_id)
-        .join(List, List.id == Card.list_id)
-        .where(List.board_id == board_id, CardDone.user_id == current_user.id)
-    )).scalars().all()
-    return {"card_ids": list(rows)}
 
 
 @router.post("/{board_id}/stream-ticket")

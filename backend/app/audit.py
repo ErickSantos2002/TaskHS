@@ -181,6 +181,9 @@ def _describe(session, obj, action, changes):
             marcou = (changes.get("due_date_completed") or {}).get("para")
             acao = "marcou" if marcou else "desmarcou"
             summary = f'{acao} a data de entrega como concluída no card "{obj.title}"'
+        elif action == "editar" and set(changes) == {"done"}:
+            marcou = (changes.get("done") or {}).get("para")
+            summary = f'{"marcou" if marcou else "desmarcou"} o card "{obj.title}" como concluído'
         else:
             summary = f'{verb} o card "{obj.title}"'
 
