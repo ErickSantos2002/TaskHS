@@ -70,7 +70,7 @@ próxima requisição e em qualquer log de proxy no caminho.
 
 Aqui o callback guarda o JWT sob um **ticket opaco de uso único** e manda só o
 ticket na URL. O front troca o ticket pelo token num `POST`. Ticket já usado, ou
-com mais de 60 s, devolve 401.
+com mais de 60 s, é recusado (400 — ver "Backend").
 
 Isso não é invenção: o TaskHS já usa exatamente essa ideia no SSE
 (`POST /api/boards/{id}/stream-ticket`, ticket de ~60 s), porque `EventSource`
@@ -103,10 +103,24 @@ simplesmente não terá SSO — entra pela senha.
 
 ### SSO desligável
 
-As cinco envs nascem com default `""` no `config.py`. Com `MS_CLIENT_ID` vazio o
-`GET /auth/microsoft` responde 503 e o front esconde o botão. Assim quem sobe o
-projeto local sem app no Azure não vê nada quebrado, e o `.env.example` pode ir
-para o repo público com os campos em branco.
+As cinco envs nascem com default `""` no `config.py` e uma property
+`sso_enabled` diz se as quatro do Microsoft estão preenchidas. Com o SSO
+desligado o `GET /auth/microsoft` responde 503 e o front esconde o botão — que
+ele descobre por `GET /api/auth/sso/status` → `{"enabled": bool}`, endpoint
+público de uma linha. A alternativa (um `VITE_SSO_ENABLED` no build do front)
+duplicaria a configuração em duas pontas que podem discordar.
+
+Assim quem sobe o projeto local sem app no Azure não vê nada quebrado, e o
+`.env.example` pode ir para o repo público com os campos em branco.
+
+### Chamada do MSAL fora do event loop
+
+A biblioteca `msal` é síncrona — `get_authorization_request_url` e
+`acquire_token_by_authorization_code` fazem HTTP bloqueante. Chamadas diretas de
+dentro de um endpoint `async` travam o event loop enquanto a Microsoft responde,
+e com 1 worker isso segura todas as outras requisições, inclusive os streams SSE
+abertos. As duas entram por `asyncio.to_thread(...)`. O `GET /me` do Graph, esse
+sim, sai por `httpx.AsyncClient`.
 
 ## Backend
 
@@ -115,16 +129,21 @@ para o repo público com os campos em branco.
 | `requirements.txt` | `+ msal`, `+ httpx` (pinados) |
 | `app/core/config.py` | `+ MS_CLIENT_ID`, `MS_TENANT_ID`, `MS_CLIENT_SECRET`, `MS_REDIRECT_URI`, `FRONTEND_URL` — todos `str = ""`; `+ property sso_enabled` |
 | `app/core/sso_tickets.py` | **criar** — `issue(jwt) -> str`, `redeem(ticket) -> str \| None` |
-| `app/services/microsoft_auth.py` | **criar** — `get_authorization_url()`, `exchange_code_for_token(code)`, `get_user_profile(access_token)` |
-| `app/routers/auth.py` | `+ GET /microsoft`, `+ GET /microsoft/callback`, `+ POST /sso/exchange` |
+| `app/services/microsoft_auth.py` | **criar** — `get_authorization_url()`, `exchange_code_for_token(code)`, `get_user_email(access_token)` |
+| `app/routers/auth.py` | `+ GET /microsoft`, `+ GET /microsoft/callback`, `+ POST /sso/exchange`, `+ GET /sso/status` |
 | `backend/.env.example` | `+` as cinco vars, **vazias** |
 
 `microsoft_auth.py` espelha o `microsoft_auth_service.py` do CRM, com duas
 diferenças: `SCOPES = ["User.Read"]` (o CRM pede cinco escopos) e o `GET /me` sai
 por `httpx.AsyncClient`, porque aqui tudo é async.
 
-Os três endpoints são **públicos** — não podem depender de `get_current_user`,
-já que o objetivo deles é justamente criar a sessão.
+Os quatro endpoints são **públicos** — não podem depender de
+`get_current_user`, já que o objetivo deles é justamente criar a sessão.
+
+O `POST /sso/exchange` devolve **400** (e não 401) para ticket inválido,
+expirado ou já usado. É de propósito: o cliente HTTP do front trata todo 401
+como sessão expirada — limpa o localStorage e joga para o `/login` sem
+mensagem. Com 400, a página de callback consegue mostrar o que houve.
 
 ### Auditoria
 
@@ -193,14 +212,17 @@ renovação é gerar outro no portal e atualizar as duas pontas.
 Não há suíte de testes no projeto; a verificação é manual.
 
 1. Backend sobe e `/docs` lista `GET /api/auth/microsoft`,
-   `GET /api/auth/microsoft/callback` e `POST /api/auth/sso/exchange`.
-2. Com as envs vazias: botão some do login, `GET /auth/microsoft` devolve 503.
+   `GET /api/auth/microsoft/callback`, `POST /api/auth/sso/exchange` e
+   `GET /api/auth/sso/status`.
+2. Com as envs vazias: `sso/status` devolve `{"enabled": false}`, o botão some
+   do login e `GET /auth/microsoft` devolve 503.
 3. Fluxo feliz no navegador: clicar no botão → autenticar com a conta
    corporativa → voltar logado, com o nome certo na sidebar.
 4. Conta Microsoft sem usuário no TaskHS → `/login` com a mensagem de
    "nenhuma conta TaskHS".
 5. Usuário desativado na tela de Usuários → mensagem de conta inativa.
-6. Repetir o `POST /sso/exchange` com o mesmo ticket → 401.
+6. Repetir o `POST /sso/exchange` com o mesmo ticket → 400, e a página de
+   callback mostra a mensagem em vez de piscar para o `/login`.
 7. `npm run build` passa.
 8. Login por e-mail e senha continua funcionando.
 9. Tela de Logs mostra o acesso como `login`, com "via Microsoft" no resumo.
