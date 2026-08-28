@@ -1,14 +1,23 @@
+import asyncio
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User, Role
 from app.schemas.user import UserCreate, UserOut, TokenOut, LoginIn, UserAdminCreate, UserAdminUpdate
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import hash_password, verify_password, create_access_token, decode_token
+from app.core.config import settings
+from app.core import sso_tickets
+from app.services import microsoft_auth
 from app.dependencies import get_current_user
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
+
+logger = logging.getLogger("audit")
 
 
 async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
@@ -145,3 +154,101 @@ async def admin_delete_user(user_id: int, db: AsyncSession = Depends(get_db), cu
         raise HTTPException(status_code=403, detail="Apenas administradores podem excluir administradores")
     await db.delete(user)
     await db.commit()
+
+
+class SsoExchangeIn(BaseModel):
+    ticket: str
+
+
+def _erro_login(motivo: str) -> RedirectResponse:
+    """Devolve o navegador para o /login do front com o motivo na query."""
+    return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}/login?erro={motivo}", status_code=302)
+
+
+@router.get("/sso/status")
+async def sso_status():
+    """Diz ao front se deve mostrar o botão 'Entrar com Microsoft'."""
+    return {"enabled": settings.sso_enabled}
+
+
+@router.get("/microsoft")
+async def microsoft_login():
+    if not settings.sso_enabled:
+        raise HTTPException(status_code=503, detail="Login com Microsoft não está configurado")
+    # msal é bloqueante: fora do event loop, senão trava os SSE abertos.
+    url = await asyncio.to_thread(microsoft_auth.get_authorization_url)
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/microsoft/callback")
+async def microsoft_callback(
+    code: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.sso_enabled:
+        raise HTTPException(status_code=503, detail="Login com Microsoft não está configurado")
+    if error or not code:
+        return _erro_login("falha_microsoft")
+
+    try:
+        ms_token = await asyncio.to_thread(microsoft_auth.exchange_code_for_token, code)
+        email = await microsoft_auth.get_user_email(ms_token)
+    except Exception as e:
+        logger.warning("SSO Microsoft: falha ao autenticar (%s)", type(e).__name__)
+        return _erro_login("falha_microsoft")
+
+    if not email:
+        return _erro_login("falha_microsoft")
+
+    resultado = await db.execute(select(User).where(User.email == email))
+    user = resultado.scalar_one_or_none()
+    actor = get_actor()
+    ip = actor.ip[:45] if actor.ip else None
+    path = actor.path[:255] if actor.path else None
+
+    if not user or not user.is_active:
+        motivo = "usuario_nao_encontrado" if not user else "usuario_inativo"
+        db.add(AuditLog(
+            actor_type="usuario", actor_user_id=(user.id if user else None),
+            actor_name=(user.name if user else email)[:120], actor_email=email[:255],
+            action="login_falhou", entity_type="sessao", entity_id=(user.id if user else None),
+            entity_label=email[:255],
+            summary=f"login via Microsoft recusado ({motivo}): {email}",
+            ip=ip, path=path,
+        ))
+        await db.commit()
+        return _erro_login(motivo)
+
+    db.add(AuditLog(
+        actor_type="usuario", actor_user_id=user.id, actor_name=user.name[:120],
+        actor_email=user.email[:255], action="login", entity_type="sessao",
+        entity_id=user.id, entity_label=user.email[:255],
+        summary=f'"{user.name}" entrou no sistema via Microsoft',
+        ip=ip, path=path,
+    ))
+    await db.commit()
+
+    ticket = sso_tickets.issue(create_access_token(user.email))
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback?ticket={ticket}",
+        status_code=302,
+    )
+
+
+@router.post("/sso/exchange", response_model=TokenOut)
+async def sso_exchange(body: SsoExchangeIn, db: AsyncSession = Depends(get_db)):
+    """Troca o ticket de uso único pelo JWT. 400 (não 401) de propósito:
+    o cliente HTTP do front trata 401 como sessão expirada e redireciona
+    sem mensagem — aqui queremos que a tela de callback explique."""
+    token = sso_tickets.redeem(body.ticket)
+    email = decode_token(token) if token else None
+    if not email:
+        raise HTTPException(status_code=400, detail="Ticket inválido ou expirado")
+
+    resultado = await db.execute(select(User).where(User.email == email))
+    user = resultado.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="Ticket inválido ou expirado")
+
+    return TokenOut(access_token=token, user=UserOut.model_validate(user))
