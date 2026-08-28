@@ -469,25 +469,30 @@ Esperado:
 - `302 https://login.microsoftonline.com/...` (a URL de autorização)
 - `{"detail":"Ticket inválido ou expirado"}` com `status=400`
 
-- [ ] **Step 4: Verificar o caminho do ticket bom**
+- [ ] **Step 4: Verificar a lógica do ticket bom**
 
-Emitir um ticket por dentro e trocá-lo por HTTP, usando um e-mail que existe na base — pegue um sem expor senha nenhuma:
+⚠️ **Correção da receita original (2026-08-28).** A primeira versão deste step mandava
+emitir o ticket num `docker compose exec ... python -c` e trocá-lo por HTTP. Isso não
+funciona: o cofre é um `dict` **em memória do processo**, e o `exec` sobe um processo
+Python separado do uvicorn — o ticket emitido lá nunca existe para o servidor. A troca
+por HTTP com ticket válido só é exercitável pelo fluxo real do navegador, que acontece
+na **Task 5, Step 5** (itens 2 e 3). Aqui verifica-se a lógica, no mesmo processo:
 
 ```bash
-EMAIL=$(./scripts/psql-dev.sh -tAc "SELECT email FROM users WHERE is_active ORDER BY id LIMIT 1;")
-TICKET=$(docker compose exec -T backend python -c "
+docker compose exec -T backend python -c "
+import asyncio
 from app.core import sso_tickets
-from app.core.security import create_access_token
-print(sso_tickets.issue(create_access_token('$EMAIL')))
-" | tr -d '\r\n')
-curl -s -X POST http://localhost:8000/api/auth/sso/exchange \
-  -H 'Content-Type: application/json' -d "{\"ticket\":\"$TICKET\"}" | head -c 200
-echo
-curl -s -X POST http://localhost:8000/api/auth/sso/exchange \
-  -H 'Content-Type: application/json' -d "{\"ticket\":\"$TICKET\"}" -w "\nstatus=%{http_code}\n"
+from app.core.security import create_access_token, decode_token
+
+t = sso_tickets.issue(create_access_token('fulano@exemplo.com'))
+jwt1 = sso_tickets.redeem(t)
+print('assunto do jwt resgatado:', decode_token(jwt1))
+print('segundo resgate:', sso_tickets.redeem(t))
+"
 ```
 
-Esperado: a primeira chamada devolve `{"access_token":"...","token_type":"bearer","user":{...}}`; a segunda devolve 400 (ticket queimado).
+Esperado: `assunto do jwt resgatado: fulano@exemplo.com` e `segundo resgate: None`.
+(Não imprima o JWT inteiro — só o assunto que o `decode_token` devolve.)
 
 - [ ] **Step 5: Commit**
 
