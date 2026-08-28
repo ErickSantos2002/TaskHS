@@ -36,11 +36,19 @@ def get_authorization_url() -> str:
 
 def exchange_code_for_token(code: str) -> str:
     """Troca o authorization code pelo access token da Microsoft."""
-    resultado = _msal_app().acquire_token_by_authorization_code(
-        code=code,
-        scopes=SCOPES,
-        redirect_uri=settings.MS_REDIRECT_URI,
-    )
+    try:
+        resultado = _msal_app().acquire_token_by_authorization_code(
+            code=code,
+            scopes=SCOPES,
+            redirect_uri=settings.MS_REDIRECT_URI,
+        )
+    except ValueError:
+        # ValueError do próprio código (dict sem access_token); relança direto
+        raise
+    except Exception as e:
+        # Exceções de rede (timeout, DNS, conexão recusada, etc.)
+        raise ValueError(f"falha ao conectar com autoridade Microsoft: {type(e).__name__}")
+
     if "access_token" not in resultado:
         # error_description pode conter o motivo; nunca contém segredo nosso.
         raise ValueError(
@@ -59,6 +67,9 @@ async def get_user_email(access_token: str) -> str:
         resp = await client.get(GRAPH_ME_URL, headers={"Authorization": f"Bearer {access_token}"})
     if resp.status_code != 200:
         raise ValueError(f"Graph /me respondeu {resp.status_code}")
-    dados = resp.json()
+    try:
+        dados = resp.json()
+    except Exception as e:
+        raise ValueError(f"Graph /me respondeu com JSON inválido: {type(e).__name__}")
     email = dados.get("mail") or dados.get("userPrincipalName") or ""
     return email.lower().strip()
