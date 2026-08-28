@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.2.0",
+    date: "2026-08-28",
+    changes: [
+      { kind: "novidade", text: "Agora dá para mover o card de lista sem fechar o cartão: no menu \"⋮\" ao lado do X, escolha \"Mover para…\" e clique na lista de destino. O card vai para o fim da lista escolhida e o cartão continua aberto, já mostrando a lista nova — não precisa mais fechar e procurar o card no meio do quadro." },
+      { kind: "melhoria", text: "As ações do cartão (mover, copiar, arquivar e excluir) saíram do rodapé e foram para o menu \"⋮\" do topo. O cartão ficou menos poluído e, principalmente, \"Arquivar\" não é mais um link solto logo abaixo de \"Adicionar checklist\" — agora está dentro do menu e pede confirmação, que era de onde vinham os arquivamentos sem querer." },
+    ],
+  },
+  {
     version: "2.1.0",
     date: "2026-08-28",
     changes: [
