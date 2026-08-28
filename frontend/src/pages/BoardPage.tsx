@@ -222,7 +222,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -232,6 +232,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   integrationEnabled: boolean;
   obsLabels: string[];
   onClose: () => void;
+  onCardMove: (destListId: number) => Promise<void>;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
   onCardCopy: (newCard: Card) => void;
@@ -265,8 +266,16 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   // Quem criou / quem arquivou — derivado do log (endpoint /meta). Só a data de
   // criação vem do próprio card; estes dois campos o modelo não guarda.
   const [cardMeta, setCardMeta] = useState<{ created_by: string | null; created_by_type: string | null; archived_by: string | null; archived_at: string | null } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Menu de ações do cabeçalho (mover/copiar/arquivar/excluir). Troca de vista
+  // no lugar em vez de abrir submenu flutuante — posicionar submenu dentro de
+  // modal é dor à toa, e a lista de listas pode ser longa.
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [menuVista, setMenuVista] = useState<"raiz" | "mover" | "arquivar" | "excluir">("raiz");
+  const [movendo, setMovendo] = useState<number | null>(null);
+  const [arquivando, setArquivando] = useState(false);
+  const [erroAcao, setErroAcao] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
   const [showCopyForm, setShowCopyForm] = useState(false);
   const [copyTitle, setCopyTitle] = useState("");
   const [copyListId, setCopyListId] = useState<number>(card.list_id);
@@ -489,13 +498,61 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       if (pdfView) { setPdfView(null); return; }
       if (lightbox) { setLightbox(null); return; }
       if (obsOpen !== null) { setObsOpen(null); return; }
+      // Esc com o menu aberto fecha só o menu — fechar o card junto seria
+      // perder o lugar por causa de um clique de curiosidade.
+      if (menuAberto) { setMenuAberto(false); setMenuVista("raiz"); return; }
       const ativo = document.activeElement as HTMLElement | null;
       if (ativo && ["INPUT", "TEXTAREA", "SELECT"].includes(ativo.tagName)) { ativo.blur(); return; }
       onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pdfView, lightbox, obsOpen, onClose]);
+  }, [pdfView, lightbox, obsOpen, menuAberto, onClose]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuAberto(false);
+        setMenuVista("raiz");
+      }
+    }
+    if (menuAberto) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [menuAberto]);
+
+  function abrirMenu() {
+    setMenuAberto(p => !p);
+    setMenuVista("raiz");
+    setErroAcao("");
+  }
+
+  async function handleMoverParaLista(destino: BoardList) {
+    if (destino.id === card.list_id || movendo !== null) return;
+    setErroAcao("");
+    setMovendo(destino.id);
+    try {
+      await onCardMove(destino.id);
+      setMenuAberto(false);
+      setMenuVista("raiz");
+    } catch {
+      setErroAcao("Não foi possível mover o card. Tente de novo.");
+    } finally {
+      setMovendo(null);
+    }
+  }
+
+  async function handleArquivarCard() {
+    setErroAcao("");
+    setArquivando(true);
+    try {
+      await api.post(`/lists/${card.list_id}/cards/${card.id}/archive`, {});
+      onCardDelete(card.id);
+      onClose();
+    } catch {
+      setErroAcao("Não foi possível arquivar o card. Tente de novo.");
+      setArquivando(false);
+    }
+  }
 
   async function handleDeleteAttachment(a: Attachment) {
     try {
@@ -732,7 +789,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       onClose();
     } catch {
       setDeleting(false);
-      setConfirmDelete(false);
+      setErroAcao("Não foi possível excluir o card. Tente de novo.");
     }
   }
 
@@ -898,9 +955,114 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               {isDone ? "Concluído" : "Marcar como concluído"}
             </button>
           </div>
-          <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors mt-1">
-            <IX />
-          </button>
+          <div className="flex items-center gap-1 shrink-0 mt-1">
+            {/* Menu de ações. Antes estas quatro ficavam soltas no rodapé da
+                coluna esquerda — "Arquivar card" era um link logo abaixo de
+                "Adicionar checklist", e gente arquivava sem querer. */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={abrirMenu}
+                aria-label="Ações do card"
+                title="Ações do card"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors"
+              >
+                <IDots />
+              </button>
+              {menuAberto && (
+                <div className="absolute right-0 top-full mt-1 z-30 w-64 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
+
+                  {menuVista === "raiz" && (
+                    <>
+                      {!card.archived && (
+                        <>
+                          <button onClick={() => setMenuVista("mover")} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left">
+                            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7-7 7M3 12h17" /></svg>
+                            <span className="flex-1">Mover para…</span>
+                            <span className="text-xs text-slate-500 truncate max-w-[6.5rem]">{listTitle}</span>
+                          </button>
+                          <button
+                            onClick={() => { setCopyTitle(card.title); setCopyListId(card.list_id); setShowCopyForm(true); setMenuAberto(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left"
+                          >
+                            <ICopy /><span>Copiar card</span>
+                          </button>
+                          <button onClick={() => setMenuVista("arquivar")} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left">
+                            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                            <span>Arquivar card</span>
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => setMenuVista("excluir")} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-red-400 hover:bg-background-elevated transition-colors text-left border-t border-border">
+                        <ITrash /><span>Excluir card</span>
+                      </button>
+                    </>
+                  )}
+
+                  {menuVista === "mover" && (
+                    <>
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
+                        <button onClick={() => setMenuVista("raiz")} aria-label="Voltar" className="p-0.5 rounded text-slate-400 hover:text-slate-200 transition-colors">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <span className="text-xs font-semibold text-slate-300">Mover para</span>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {lists.map(l => {
+                          const atual = l.id === card.list_id;
+                          return (
+                            <button
+                              key={l.id}
+                              onClick={() => handleMoverParaLista(l)}
+                              disabled={atual || movendo !== null}
+                              className={cn(
+                                "w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors",
+                                atual ? "text-slate-500 cursor-default" : "text-slate-300 hover:bg-background-elevated",
+                                movendo !== null && !atual && "opacity-60",
+                              )}
+                            >
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
+                              <span className="flex-1 truncate">{l.title}</span>
+                              {atual && <span className="text-[10px] uppercase tracking-wide text-slate-600 shrink-0">atual</span>}
+                              {movendo === l.id && <span className="text-[10px] text-slate-500 shrink-0">movendo…</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {menuVista === "arquivar" && (
+                    <div className="p-3 space-y-2.5">
+                      <p className="text-xs text-slate-300">Arquivar este card? Ele sai do quadro e passa a aparecer em <span className="font-semibold text-slate-200">Arquivados</span>.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setMenuVista("raiz")} className="text-xs px-3 py-1.5 rounded-lg border border-border text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
+                        <button onClick={handleArquivarCard} disabled={arquivando} className="flex-1 text-xs py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors font-semibold">
+                          {arquivando ? "Arquivando…" : "Arquivar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {menuVista === "excluir" && (
+                    <div className="p-3 space-y-2.5">
+                      <p className="text-xs text-slate-300">Excluir este card? Esta ação <span className="font-semibold text-slate-200">não pode ser desfeita</span>.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setMenuVista("raiz")} className="text-xs px-3 py-1.5 rounded-lg border border-border text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
+                        <button onClick={handleDeleteCard} disabled={deleting} className="flex-1 text-xs py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold">
+                          {deleting ? "Excluindo…" : "Excluir"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {erroAcao && <p className="px-3 py-2 text-xs text-danger border-t border-border">{erroAcao}</p>}
+                </div>
+              )}
+            </div>
+            <button onClick={onClose} aria-label="Fechar" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors">
+              <IX />
+            </button>
+          </div>
         </div>
 
         {/* Two-column body */}
@@ -1323,26 +1485,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </button>
             )}
 
-            {/* Archive */}
-            <div className="pt-2">
-              <button
-                onClick={async () => {
-                  try {
-                    await api.post(`/lists/${card.list_id}/cards/${card.id}/archive`, {});
-                    onCardDelete(card.id);
-                    onClose();
-                  } catch {}
-                }}
-                className="flex items-center gap-2 text-xs text-slate-500 hover:text-amber-400 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-                <span>Arquivar card</span>
-              </button>
-            </div>
-
-            {/* Copy */}
-            <div className="pt-2">
-              {showCopyForm ? (
+            {/* Copiar card: o formulário continua aqui, mas quem o abre agora é
+                o menu de ações do cabeçalho. Arquivar e excluir também moraram
+                neste rodapé — foram para o menu, com confirmação. */}
+            {showCopyForm && (
+              <div className="pt-2">
                 <div className="flex flex-col gap-2 p-3 rounded-lg bg-background-elevated border border-border">
                   <p className="text-xs font-semibold text-slate-300">Copiar card</p>
                   <input
@@ -1369,33 +1516,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                     </button>
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => { setCopyTitle(card.title); setCopyListId(card.list_id); setShowCopyForm(true); }}
-                  className="flex items-center gap-2 text-xs text-slate-500 hover:text-primary transition-colors"
-                >
-                  <ICopy /><span>Copiar card</span>
-                </button>
-              )}
-            </div>
-
-            {/* Delete */}
-            <div className="pt-2 border-t border-border">
-              {confirmDelete ? (
-                <div className="flex items-center gap-3">
-                  <p className="text-xs text-slate-500 flex-1">Tem certeza? Esta ação não pode ser desfeita.</p>
-                  <button onClick={() => setConfirmDelete(false)} className="text-xs px-3 py-1.5 rounded-lg border border-border text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
-                  <button onClick={handleDeleteCard} disabled={deleting} className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold">
-                    {deleting ? "Excluindo…" : "Confirmar"}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-2 text-xs text-slate-500 hover:text-red-400 transition-colors">
-                  <ITrash /><span>Excluir card</span>
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
+
 
           {/* RIGHT: activity & comments */}
           <div className="w-[300px] shrink-0 border-l border-border bg-background-elevated/20 flex flex-col p-5 max-h-[75vh]">
@@ -2526,6 +2650,40 @@ export function BoardPage() {
     setSelectedCard(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
   }
 
+  /** Move o card para outra lista, do modal (o drag tem caminho próprio, em
+   *  onDragEnd). Entra no FIM da lista de destino — um clique não tem como
+   *  dizer "entre o terceiro e o quarto", e é o mesmo destino de arrastar para
+   *  a área vazia da coluna.
+   *
+   *  Só mexe no estado depois que o PATCH volta: sem update otimista não há
+   *  rollback para escrever, e o custo é uma ida ao servidor com o menu
+   *  mostrando "movendo…". O SSE reconcilia o resto do quadro. */
+  async function moverCardParaLista(cardId: number, origemListId: number, destListId: number) {
+    if (destListId === origemListId) return;
+    const destino = cardsByList[destListId] ?? [];
+    const ultima = destino[destino.length - 1];
+    const novaPosicao = ultima ? ultima.position + 65536 : 65536;
+
+    await api.patch(`/lists/${origemListId}/cards/${cardId}`, { list_id: destListId, position: novaPosicao });
+
+    setCardsByList(prev => {
+      const next: Record<number, Card[]> = {};
+      let movido: Card | undefined;
+      for (const [lid, cards] of Object.entries(prev)) {
+        next[Number(lid)] = cards.filter(c => {
+          if (c.id === cardId) { movido = c; return false; }
+          return true;
+        });
+      }
+      if (movido) {
+        const atualizado = { ...movido, list_id: destListId, position: novaPosicao };
+        next[destListId] = [...(next[destListId] ?? []), atualizado].sort((a, b) => a.position - b.position);
+      }
+      return next;
+    });
+    setSelectedCard(prev => prev && prev.id === cardId ? { ...prev, list_id: destListId, position: novaPosicao } : prev);
+  }
+
   function handleCardDelete(cardId: number) {
     setCardsByList(prev => {
       const next = { ...prev };
@@ -3057,6 +3215,7 @@ export function BoardPage() {
           integrationEnabled={board?.integration_enabled ?? false}
           obsLabels={board?.obs_labels ?? []}
           onClose={fecharCard}
+          onCardMove={destListId => moverCardParaLista(selectedCard.id, selectedCard.list_id, destListId)}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
