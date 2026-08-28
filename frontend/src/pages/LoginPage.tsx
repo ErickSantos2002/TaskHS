@@ -1,18 +1,40 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { api, API_BASE } from "../lib/api";
 import logo from "../assets/logo.png";
 import { APP_VERSION } from "../data/changelog";
+
+const ERROS_SSO: Record<string, string> = {
+  usuario_nao_encontrado: "Nenhuma conta TaskHS para este e-mail Microsoft. Fale com o administrador.",
+  usuario_inativo: "Sua conta está inativa. Fale com o administrador.",
+  falha_microsoft: "Falha na autenticação com a Microsoft. Tente novamente.",
+};
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // Mensagem vinda do callback do SSO (o backend devolve aqui com ?erro=) —
+  // erro derivado direto no estado inicial (evita setState síncrono dentro
+  // de um efeito, que o lint reprova; mesmo padrão de AuthCallbackPage.tsx).
+  const [error, setError] = useState(() => {
+    const codigo = searchParams.get("erro");
+    return codigo ? (ERROS_SSO[codigo] ?? "Não foi possível entrar. Tente novamente.") : "";
+  });
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const [ssoAtivo, setSsoAtivo] = useState(false);
+
+  // Sem app configurado no Azure, o botão nem aparece.
+  useEffect(() => {
+    api.get<{ enabled: boolean }>("/auth/sso/status")
+      .then(r => setSsoAtivo(r.enabled))
+      .catch(() => setSsoAtivo(false));
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -123,6 +145,28 @@ export function LoginPage() {
               ) : "Entrar"}
             </button>
           </form>
+
+            {ssoAtivo && (
+              <>
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-border" />
+                  <span className="text-xs text-slate-400 uppercase tracking-wide">ou</span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-border" />
+                </div>
+                <a
+                  href={`${API_BASE}/auth/microsoft`}
+                  className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-background-elevated text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-background-surface active:scale-[0.98] transition-all duration-150"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 23 23" aria-hidden="true">
+                    <path fill="#f25022" d="M0 0h11v11H0z" />
+                    <path fill="#7fba00" d="M12 0h11v11H12z" />
+                    <path fill="#00a4ef" d="M0 12h11v11H0z" />
+                    <path fill="#ffb900" d="M12 12h11v11H12z" />
+                  </svg>
+                  Entrar com Microsoft
+                </a>
+              </>
+            )}
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">

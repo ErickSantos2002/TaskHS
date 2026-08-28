@@ -18,7 +18,7 @@
 - **Interface e mensagens em português.**
 - **Cada mudança fecha com entrada nova no changelog** (`frontend/src/data/changelog.ts`); versão desta feature: **1.14.0**.
 - **Envs já configuradas** por Erick em 2026-08-28, no `backend/.env` local e no Easypanel: `MS_CLIENT_ID`, `MS_TENANT_ID`, `MS_CLIENT_SECRET`, `MS_REDIRECT_URI`, `FRONTEND_URL`. Os valores locais apontam para **produção** — para testar na máquina, trocar `MS_REDIRECT_URI` para `http://localhost:8000/api/auth/microsoft/callback` e `FRONTEND_URL` para `http://localhost:5173` (a redirect URI de dev já está cadastrada no Azure).
-- Backend roda em Docker: `docker compose up -d --build`; depois de editar Python, `docker compose restart backend` e conferir `docker compose logs -f backend`.
+- Backend roda em Docker. O `backend/Dockerfile` faz `COPY . .` e o compose **não** tem bind mount do código: `docker compose restart backend` reinicia a imagem antiga e **não** enxerga o Python que você acabou de editar. Depois de qualquer edição no backend, sempre `docker compose up -d --build` (e conferir `docker compose logs --tail 30 backend`).
 - Front: `cd frontend && npm run dev` (http://localhost:5173).
 - Branch: `feat/sso-microsoft`, criada a partir da `main`.
 
@@ -289,7 +289,7 @@ async def get_user_email(access_token: str) -> str:
 - [ ] **Step 3: Verificar que a URL de autorização sai correta**
 
 ```bash
-docker compose restart backend
+docker compose up -d --build
 docker compose exec -T backend python -c "
 from urllib.parse import urlparse, parse_qs
 from app.services import microsoft_auth
@@ -454,7 +454,7 @@ async def sso_exchange(body: SsoExchangeIn, db: AsyncSession = Depends(get_db)):
 - [ ] **Step 3: Verificar que os endpoints existem e respondem**
 
 ```bash
-docker compose restart backend
+docker compose up -d --build
 sleep 3
 curl -s http://localhost:8000/api/auth/sso/status
 echo
@@ -469,25 +469,30 @@ Esperado:
 - `302 https://login.microsoftonline.com/...` (a URL de autorização)
 - `{"detail":"Ticket inválido ou expirado"}` com `status=400`
 
-- [ ] **Step 4: Verificar o caminho do ticket bom**
+- [ ] **Step 4: Verificar a lógica do ticket bom**
 
-Emitir um ticket por dentro e trocá-lo por HTTP, usando um e-mail que existe na base — pegue um sem expor senha nenhuma:
+⚠️ **Correção da receita original (2026-08-28).** A primeira versão deste step mandava
+emitir o ticket num `docker compose exec ... python -c` e trocá-lo por HTTP. Isso não
+funciona: o cofre é um `dict` **em memória do processo**, e o `exec` sobe um processo
+Python separado do uvicorn — o ticket emitido lá nunca existe para o servidor. A troca
+por HTTP com ticket válido só é exercitável pelo fluxo real do navegador, que acontece
+na **Task 5, Step 5** (itens 2 e 3). Aqui verifica-se a lógica, no mesmo processo:
 
 ```bash
-EMAIL=$(./scripts/psql-dev.sh -tAc "SELECT email FROM users WHERE is_active ORDER BY id LIMIT 1;")
-TICKET=$(docker compose exec -T backend python -c "
+docker compose exec -T backend python -c "
+import asyncio
 from app.core import sso_tickets
-from app.core.security import create_access_token
-print(sso_tickets.issue(create_access_token('$EMAIL')))
-" | tr -d '\r\n')
-curl -s -X POST http://localhost:8000/api/auth/sso/exchange \
-  -H 'Content-Type: application/json' -d "{\"ticket\":\"$TICKET\"}" | head -c 200
-echo
-curl -s -X POST http://localhost:8000/api/auth/sso/exchange \
-  -H 'Content-Type: application/json' -d "{\"ticket\":\"$TICKET\"}" -w "\nstatus=%{http_code}\n"
+from app.core.security import create_access_token, decode_token
+
+t = sso_tickets.issue(create_access_token('fulano@exemplo.com'))
+jwt1 = sso_tickets.redeem(t)
+print('assunto do jwt resgatado:', decode_token(jwt1))
+print('segundo resgate:', sso_tickets.redeem(t))
+"
 ```
 
-Esperado: a primeira chamada devolve `{"access_token":"...","token_type":"bearer","user":{...}}`; a segunda devolve 400 (ticket queimado).
+Esperado: `assunto do jwt resgatado: fulano@exemplo.com` e `segundo resgate: None`.
+(Não imprima o JWT inteiro — só o assunto que o `decode_token` devolve.)
 
 - [ ] **Step 5: Commit**
 
@@ -761,7 +766,7 @@ Esperado: passa. O rodapé do login deve passar a mostrar `v1.14.0`.
 
 - [ ] **Step 5: Verificação ponta a ponta (a que vale)**
 
-Pré-requisito: no `backend/.env`, `MS_REDIRECT_URI=http://localhost:8000/api/auth/microsoft/callback` e `FRONTEND_URL=http://localhost:5173`; `docker compose restart backend`.
+Pré-requisito: no `backend/.env`, `MS_REDIRECT_URI=http://localhost:8000/api/auth/microsoft/callback` e `FRONTEND_URL=http://localhost:5173`; `docker compose up -d backend`.
 
 1. Abrir `http://localhost:5173/login` → o botão "Entrar com Microsoft" aparece abaixo do divisor "ou".
 2. Clicar → cai na tela da Microsoft → autenticar com a conta corporativa → volta e entra no sistema, com o nome certo na sidebar.
@@ -770,7 +775,8 @@ Pré-requisito: no `backend/.env`, `MS_REDIRECT_URI=http://localhost:8000/api/au
 5. Abrir `http://localhost:5173/login?erro=usuario_nao_encontrado` → mensagem "Nenhuma conta TaskHS para este e-mail Microsoft…".
 6. Entrar como administrador e conferir em **Logs** que existe uma linha `login` com o resumo "…entrou no sistema via Microsoft".
 7. Fazer logout e entrar por e-mail e senha → continua funcionando.
-8. SSO desligado: comentar `MS_CLIENT_ID` no `backend/.env`, `docker compose restart backend`,
+8. SSO desligado: comentar `MS_CLIENT_ID` no `backend/.env`, `docker compose up -d backend`
+   (env muda sem rebuild),
    e conferir que `curl -s localhost:8000/api/auth/sso/status` devolve `{"enabled":false}`,
    que `curl -o /dev/null -w "%{http_code}" localhost:8000/api/auth/microsoft` devolve 503
    e que o botão some da tela de login. **Descomentar e reiniciar ao terminar.**
