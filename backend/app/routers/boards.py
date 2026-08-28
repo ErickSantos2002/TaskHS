@@ -107,10 +107,16 @@ async def list_boards(db: AsyncSession = Depends(get_db), current_user: User = D
 
 @router.get("/stats")
 async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    board_ids_q = await db.execute(
-        select(Board.id).join(BoardMember, BoardMember.board_id == Board.id).where(BoardMember.user_id == current_user.id)
-    )
-    board_ids = board_ids_q.scalars().all()
+    # Conta os quadros que a pessoa PODE ABRIR (mesmo critério de can_open na
+    # listagem e da tranca): elevado (admin/coordenador) abre todos; membro comum
+    # só os seus. Antes contava só as membresias, o que deixava o painel do admin
+    # sempre em "1 quadro" mesmo com acesso à empresa toda.
+    if current_user.is_elevated:
+        board_ids = (await db.execute(select(Board.id))).scalars().all()
+    else:
+        board_ids = (await db.execute(
+            select(Board.id).join(BoardMember, BoardMember.board_id == Board.id).where(BoardMember.user_id == current_user.id)
+        )).scalars().all()
     boards_count = len(board_ids)
 
     if not board_ids:

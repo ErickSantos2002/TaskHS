@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint
+from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from app.database import Base
@@ -33,6 +33,9 @@ class Card(Base):
     position: Mapped[float] = mapped_column(Float, default=65536.0)
     due_date: Mapped[date | None] = mapped_column(Date)
     due_date_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "Concluído" COMPARTILHADO: um marca, todos veem (via SSE). Coluna do card,
+    # não por usuário. Ver migration 010. (A versão anterior era por usuário.)
+    done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     external_source: Mapped[str | None] = mapped_column(String(50))
     external_id: Mapped[str | None] = mapped_column(String(100))

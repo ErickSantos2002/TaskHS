@@ -222,7 +222,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -236,6 +236,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   onCardDelete: (cardId: number) => void;
   onCardCopy: (newCard: Card) => void;
   onRestore: (card: Card) => void;
+  isDone: boolean;
+  onToggleDone: () => void;
 }) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description ?? "");
@@ -260,6 +262,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityCarregado, setActivityCarregado] = useState(false);
   const [erroActivity, setErroActivity] = useState<string | null>(null);
+  // Quem criou / quem arquivou — derivado do log (endpoint /meta). Só a data de
+  // criação vem do próprio card; estes dois campos o modelo não guarda.
+  const [cardMeta, setCardMeta] = useState<{ created_by: string | null; created_by_type: string | null; archived_by: string | null; archived_at: string | null } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCopyForm, setShowCopyForm] = useState(false);
@@ -295,6 +300,16 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => {
     api.get<Reminder[]>(`/lists/${card.list_id}/cards/${card.id}/reminders`).then(setReminders).catch(() => {});
   }, [card.id, card.list_id]);
+
+  // Criador/arquivador (derivados do log). card.archived nas deps: se o card for
+  // arquivado com o modal aberto, refaz para trazer quem arquivou.
+  useEffect(() => {
+    let cancel = false;
+    setCardMeta(null);
+    api.get<typeof cardMeta>(`/lists/${card.list_id}/cards/${card.id}/meta`)
+      .then(m => { if (!cancel) setCardMeta(m); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [card.id, card.list_id, card.archived]);
 
   async function handleAddReminder() {
     if (!remindAt || addingReminder) return;
@@ -806,7 +821,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
       // fechar o painel. Os overlays internos (lightbox/pdf) são descendentes e
       // seguem stackando acima deste.
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-8"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      /* Clicar fora NÃO fecha (evita perder trabalho por clique acidental) — só o X ou Esc. */
     >
       <div
         className="relative w-full max-w-[900px] rounded-2xl bg-background-surface border border-border shadow-2xl mb-12 overflow-hidden flex flex-col"
@@ -857,6 +872,31 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               rows={2}
               className="w-full text-xl font-bold text-slate-100 bg-transparent resize-none focus:outline-none leading-snug"
             />
+            {/* Metadados do card: criação (data e autor) e, se arquivado, quem
+                arquivou. Autor/arquivador vêm do endpoint /meta (derivado do log). */}
+            <p className="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span>Criado em {new Date(card.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+              {cardMeta?.created_by && <span className="text-slate-600">·</span>}
+              {cardMeta?.created_by && <span>por <span className="text-slate-400 font-medium">{cardMeta.created_by_type === "integracao" ? "Integração (gestor)" : cardMeta.created_by}</span></span>}
+              {card.archived && cardMeta?.archived_by && <span className="text-slate-600">·</span>}
+              {card.archived && cardMeta?.archived_by && (
+                <span>arquivado por <span className="text-slate-400 font-medium">{cardMeta.archived_by}</span>{cardMeta.archived_at && ` em ${new Date(cardMeta.archived_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`}</span>
+              )}
+            </p>
+            {/* Concluído COMPARTILHADO: um marca, todos veem (via SSE). */}
+            <button
+              onClick={onToggleDone}
+              title="Quando marcado, todos veem"
+              className={cn(
+                "mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                isDone ? "bg-primary/15 border-primary/40 text-primary" : "border-border text-slate-400 hover:text-slate-200 hover:border-slate-500",
+              )}
+            >
+              <span className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0", isDone ? "bg-primary border-primary" : "border-slate-500")}>
+                {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+              </span>
+              {isDone ? "Concluído" : "Marcar como concluído"}
+            </button>
           </div>
           <button onClick={onClose} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors mt-1">
             <IX />
@@ -1442,8 +1482,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               {comments.length === 0 && (
                 <p className="text-xs text-slate-500 italic text-center pt-4">Nenhum comentário ainda.</p>
               )}
-              {/* Cópia invertida: mais recente em cima, mais antigo embaixo. */}
-              {[...comments].reverse().map(c => (
+              {/* Mais recente em cima, mais antigo embaixo. Ordena EXPLÍCITO por
+                  data (não confia no .reverse() da ordem do banco, que não tem
+                  order_by garantido). */}
+              {[...comments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(c => (
                 <div key={c.id} className="flex gap-2.5 group/coment">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0 mt-0.5">
                     <span className="text-[9px] font-bold text-white leading-none">{c.author.initials}</span>
@@ -1599,7 +1641,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
 // ── CardContent ────────────────────────────────────────────────
 
-function CardContentBase({ card, isDragging = false }: { card: Card; isDragging?: boolean }) {
+function CardContentBase({ card, isDragging = false, isDone = false, onToggleDone }: { card: Card; isDragging?: boolean; isDone?: boolean; onToggleDone?: () => void }) {
   const p = PRIORITY[card.priority];
   const due = card.due_date;
   const overdue = due && isOverdue(due);
@@ -1623,10 +1665,30 @@ function CardContentBase({ card, isDragging = false }: { card: Card; isDragging?
         </div>
       )}
 
-      {/* Title */}
-      <p className="text-sm font-medium text-slate-100 line-clamp-2 leading-snug mb-1.5">
-        {card.title}
-      </p>
+      {/* Title — com a bolinha de "concluído" PESSOAL à esquerda. É <span> (não
+          <button>) porque o card inteiro já é um <button>: nested button é HTML
+          inválido. stopPropagation impede que marcar abra o card. */}
+      <div className="flex items-start gap-1.5 mb-1.5">
+        {onToggleDone && (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={e => { e.stopPropagation(); e.preventDefault(); onToggleDone(); }}
+            title={isDone ? "Concluído — clique para desmarcar" : "Marcar como concluído"}
+            className={cn(
+              "mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all",
+              // Sempre visível com borda verde (não some quando o mouse sai);
+              // no hover fica mais forte com um leve preenchimento.
+              isDone ? "bg-primary border-primary" : "border-primary/60 hover:border-primary hover:bg-primary/15",
+            )}
+          >
+            {isDone && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+          </span>
+        )}
+        <p className="text-sm font-medium text-slate-100 line-clamp-2 leading-snug">
+          {card.title}
+        </p>
+      </div>
 
       {/* Description */}
       {card.description && (
@@ -1692,7 +1754,7 @@ const CardContent = memo(CardContentBase);
 
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card: Card) => void }) {
+function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone: (card: Card) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
@@ -1706,7 +1768,7 @@ function KanbanCardBase({ card, onCardClick }: { card: Card; onCardClick: (card:
       </div>
       {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
       <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
-        <CardContent card={card} />
+        <CardContent card={card} isDone={card.done} onToggleDone={() => onToggleDone(card)} />
       </button>
     </div>
   );
@@ -1806,10 +1868,14 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
+  onToggleDone: (card: Card) => void;
+  canMoveLeft: boolean;
+  canMoveRight: boolean;
+  onMoveList: (dir: "left" | "right") => void;
   onCardAdded: (c: Card) => void;
   onCardClick: (card: Card) => void;
   onListUpdate: (updated: BoardList) => void;
@@ -1948,6 +2014,26 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
                       </div>
                     )}
                   </div>
+                  {/* Reordenar a lista (só elevado — o menu inteiro já é). Linhas
+                      normais, como os outros itens; desabilitado na ponta. */}
+                  <div className="border-t border-border">
+                    <button
+                      onClick={() => { onMoveList("left"); setShowMenu(false); }}
+                      disabled={!canMoveLeft}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                      Mover para a esquerda
+                    </button>
+                    <button
+                      onClick={() => { onMoveList("right"); setShowMenu(false); }}
+                      disabled={!canMoveRight}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      Mover para a direita
+                    </button>
+                  </div>
                   <button onClick={() => { handleArchiveList(); setShowMenu(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left border-t border-border">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                     Arquivar lista
@@ -1984,7 +2070,7 @@ function KanbanColumn({ list, cards, isElevated, onCardAdded, onCardClick, onLis
               <p className="text-xs text-slate-600">Nenhum card</p>
             </div>
           )}
-          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} />)}
+          {cards.map(card => <KanbanCard key={card.id} card={card} onCardClick={onCardClick} onToggleDone={onToggleDone} />)}
         </DroppableColumn>
       </SortableContext>
 
@@ -2057,7 +2143,7 @@ function AutomationsModal({ boardId, lists, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 pt-12">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-background-surface shadow-2xl" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
@@ -2265,6 +2351,24 @@ export function BoardPage() {
     setBoardLabels(snap.labels);
     setCardsByList(snap.cards_by_list);
   }, [boardId]);
+
+  // Alterna "concluído" COMPARTILHADO: é um campo do card, então PATCH normal —
+  // que já dispara o SSE e atualiza todo mundo ao vivo. Otimista (atualiza o
+  // estado local na hora), reverte se o request falhar. useCallback([]) estável
+  // via updater funcional, para o memo dos cards não quebrar no arrastar.
+  const toggleDone = useCallback((card: Card) => {
+    const novo = !card.done;
+    const setDone = (valor: boolean) => {
+      setCardsByList(prev => {
+        const next: Record<number, Card[]> = {};
+        for (const [lid, cards] of Object.entries(prev)) next[Number(lid)] = cards.map(c => c.id === card.id ? { ...c, done: valor } : c);
+        return next;
+      });
+      setSelectedCard(sc => (sc && sc.id === card.id ? { ...sc, done: valor } : sc));
+    };
+    setDone(novo);
+    api.patch(`/lists/${card.list_id}/cards/${card.id}`, { done: novo }).catch(() => setDone(!novo));
+  }, []);
 
   useEffect(() => {
     if (!boardId) return;
@@ -2628,6 +2732,30 @@ export function BoardPage() {
     setCardsByList(prev => { const next = { ...prev }; delete next[listId]; return next; });
   }
 
+  // Reordena a lista trocando a POSIÇÃO com a vizinha (List.position é int, então
+  // trocar os valores dá uma reordenação limpa, sem gaps). Otimista; reverte se o
+  // PATCH falhar. O backend (update_list) já exige elevado — o botão também só
+  // aparece para elevado, mas a tranca real está lá.
+  async function handleMoveList(list: BoardList, dir: "left" | "right") {
+    const idx = lists.findIndex(l => l.id === list.id);
+    const swapIdx = dir === "left" ? idx - 1 : idx + 1;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= lists.length) return;
+    const neighbor = lists[swapIdx];
+    const posList = list.position, posNeighbor = neighbor.position;
+    const aplicar = (pList: number, pNeighbor: number) => setLists(prev => prev
+      .map(l => l.id === list.id ? { ...l, position: pList } : l.id === neighbor.id ? { ...l, position: pNeighbor } : l)
+      .sort((a, b) => a.position - b.position));
+    aplicar(posNeighbor, posList);
+    try {
+      await Promise.all([
+        api.patch(`/boards/${boardId}/lists/${list.id}`, { position: posNeighbor }),
+        api.patch(`/boards/${boardId}/lists/${neighbor.id}`, { position: posList }),
+      ]);
+    } catch {
+      aplicar(posList, posNeighbor);
+    }
+  }
+
   function onDragCancel() {
     setActiveCard(null);
     setActiveListId(null);
@@ -2880,12 +3008,16 @@ export function BoardPage() {
               {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
                   O botão/form de "Adicionar lista" tem self-start, então continua curto. */}
               <div className="inline-flex gap-3 h-full p-3 items-stretch">
-                {lists.map(list => (
+                {lists.map((list, idx) => (
                   <KanbanColumn
                     key={list.id}
                     list={list}
                     cards={filteredCards(list.id)}
                     isElevated={isElevated}
+                    onToggleDone={toggleDone}
+                    canMoveLeft={idx > 0}
+                    canMoveRight={idx < lists.length - 1}
+                    onMoveList={dir => handleMoveList(list, dir)}
                     onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
                     onCardClick={setSelectedCard}
                     onListUpdate={handleListUpdate}
@@ -2929,13 +3061,15 @@ export function BoardPage() {
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}
           onRestore={handleRestoreFromModal}
+          isDone={selectedCard.done}
+          onToggleDone={() => toggleDone(selectedCard)}
         />
       )}
 
       {/* Edit Board Panel */}
       {showEditBoard && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => setShowEditBoard(false)} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[380px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
@@ -3188,7 +3322,7 @@ export function BoardPage() {
       {/* Label Manager Panel */}
       {showLabelManager && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => { setShowLabelManager(false); setEditingLabel(null); }} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[380px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">
@@ -3261,7 +3395,7 @@ export function BoardPage() {
       {/* Archived Panel */}
       {showArchived && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/40" onClick={() => setShowArchived(false)} />
+          <div className="flex-1 bg-black/40" />
           <div className="w-[420px] bg-background-surface border-l border-border flex flex-col h-full shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div className="flex items-center gap-2">

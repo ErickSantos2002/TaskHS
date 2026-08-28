@@ -14,10 +14,34 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
-    version: "1.14.0",
+    version: "2.1.0",
     date: "2026-08-28",
     changes: [
       { kind: "novidade", text: "Agora dá para entrar no TaskHS com a conta Microsoft da empresa: na tela de login, clique em \"Entrar com Microsoft\" e use o mesmo e-mail e senha do Outlook — sem precisar decorar mais uma senha. O login por e-mail e senha continua funcionando normalmente. Só entra quem já tem usuário cadastrado no TaskHS; se o seu e-mail não estiver na lista, fale com o administrador." },
+    ],
+  },
+  {
+    version: "2.0.2",
+    date: "2026-08-20",
+    changes: [
+      { kind: "correcao", text: "Os números do topo da Dashboard (quadros, cards, vencidos) agora refletem tudo a que você tem acesso. Para administradores e coordenadores, isso passa a ser a empresa inteira; antes contava só os quadros de que a pessoa era membro formal, o que deixava o painel do admin sempre baixo (ex.: \"1 quadro\") mesmo tendo acesso a todos." },
+    ],
+  },
+  {
+    version: "2.0.1",
+    date: "2026-08-19",
+    changes: [
+      { kind: "novidade", text: "Marcação de \"concluído\" nos cards: clique na bolinha à esquerda do título — ou no botão \"Marcar como concluído\" dentro do card — para marcá-lo. A marcação é compartilhada e em tempo real: quando alguém marca, todos que estão no quadro veem na hora, ficando verde. Clique de novo para desmarcar. Fica registrado no histórico do card quem marcou." },
+    ],
+  },
+  {
+    version: "2.0.0",
+    date: "2026-08-19",
+    changes: [
+      { kind: "novidade", text: "No cartão, agora aparece a data de criação, quem criou e — nos arquivados — quem arquivou e quando. Cartões vindos da integração aparecem como criados pela \"Integração (gestor)\". Cartões antigos (anteriores ao registro de atividades) mostram só a data." },
+      { kind: "novidade", text: "Administradores e coordenadores podem reordenar as listas: no menu (⋮) da lista há \"Mover para a esquerda\" e \"Mover para a direita\". É restrito a esses perfis — membros comuns não movem as listas, já que elas são as etapas do fluxo." },
+      { kind: "melhoria", text: "As janelas (cartão, configurações, automações, etiquetas, arquivados, criar/editar usuário e board) não fecham mais ao clicar fora — só pelo botão \"X\" (ou Esc). Assim ninguém perde o que estava digitando com um clique acidental. Os visualizadores de imagem e PDF continuam fechando com um clique, como antes." },
+      { kind: "correcao", text: "Os comentários passam a aparecer sempre do mais recente para o mais antigo, com ordenação garantida por data." },
     ],
   },
   {

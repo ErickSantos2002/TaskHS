@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete as sql_delete
+from sqlalchemy import select, func, delete as sql_delete, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
@@ -78,6 +78,7 @@ def _card_to_dict(card: Card) -> dict:
         "position": card.position,
         "due_date": card.due_date,
         "due_date_completed": card.due_date_completed,
+        "done": card.done,
         "archived": card.archived,
         "external_source": card.external_source,
         "external_id": card.external_id,
@@ -461,6 +462,45 @@ async def card_activity(
         for r in rows
     ]
     return ActivityPage(total=total, items=items)
+
+
+@router.get("/{card_id}/meta")
+async def card_meta(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Quem criou e quem arquivou o card, derivado do log de auditoria (o modelo
+    Card não guarda esses atores). Sem response_model, mas devolve só primitivos —
+    nenhum objeto ORM, então não há risco de vazar campo sensível.
+
+    Cards criados antes do log (13/07/2026) ou por caminho não auditado devolvem
+    created_by null — o front cai só na data de criação, que vem do próprio card."""
+    await _get_card_or_404(card_id, list_id, db)
+
+    criador = (await db.execute(
+        select(AuditLog).where(
+            AuditLog.card_id == card_id, AuditLog.entity_type == "card", AuditLog.action == "criar",
+        ).order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(1)
+    )).scalar_one_or_none()
+
+    # Arquivar = edição que setou archived -> true. `changes` é texto JSON; casta
+    # para jsonb e lê o campo. isnot(None) evita cast de linha sem changes.
+    arquivador = (await db.execute(
+        select(AuditLog).where(
+            AuditLog.card_id == card_id, AuditLog.entity_type == "card",
+            AuditLog.changes.isnot(None),
+            text("(audit_log.changes::jsonb -> 'archived' ->> 'para') = 'true'"),
+        ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(1)
+    )).scalar_one_or_none()
+
+    return {
+        "created_by": criador.actor_name if criador else None,
+        "created_by_type": criador.actor_type if criador else None,
+        "archived_by": arquivador.actor_name if arquivador else None,
+        "archived_at": arquivador.created_at if arquivador else None,
+    }
+
+
+# "Concluído" é COMPARTILHADO: um campo (done) do card, alternado pelo PATCH
+# update_card comum — que já audita e dispara o SSE para todos. Não há mais rota
+# própria nem tabela por usuário (ver migration 010).
 
 
 @router.post("/{card_id}/members/{user_id}", status_code=status.HTTP_201_CREATED)

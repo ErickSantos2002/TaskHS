@@ -332,7 +332,7 @@ function CreateBoardModal({ onClose, onCreated }: { onClose: () => void; onCreat
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-background-surface border border-border shadow-xl p-6" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-slate-100 mb-4">Novo Board</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
