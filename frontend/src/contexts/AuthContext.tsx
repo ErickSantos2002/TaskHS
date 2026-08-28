@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { api } from "../lib/api";
 
-interface User {
+export interface User {
   id: number;
   name: string;
   email: string;
@@ -13,6 +13,7 @@ interface User {
 interface AuthContextValue {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWithToken: (token: string, user: User) => void;
   logout: () => void;
 }
 
@@ -41,12 +42,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return raw ? JSON.parse(raw) : null;
   });
 
+  const loginWithToken = useCallback((token: string, u: User) => {
+    localStorage.setItem("taskhs-token", token);
+    localStorage.setItem("taskhs-user", JSON.stringify(u));
+    setUser(u);
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.post<{ access_token: string; user: User }>("/auth/login", { email, password });
-    localStorage.setItem("taskhs-token", data.access_token);
-    localStorage.setItem("taskhs-user", JSON.stringify(data.user));
-    setUser(data.user);
-  }, []);
+    loginWithToken(data.access_token, data.user);
+  }, [loginWithToken]);
 
   const logout = useCallback(() => {
     localStorage.removeItem("taskhs-token");
@@ -54,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, loginWithToken, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
