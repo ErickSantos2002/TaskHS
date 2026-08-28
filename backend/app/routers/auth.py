@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,9 +161,20 @@ class SsoExchangeIn(BaseModel):
     ticket: str
 
 
+SSO_STATE_COOKIE = "taskhs_sso_state"
+SSO_STATE_COOKIE_PATH = "/api/auth"
+
+
 def _erro_login(motivo: str) -> RedirectResponse:
     """Devolve o navegador para o /login do front com o motivo na query."""
     return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}/login?erro={motivo}", status_code=302)
+
+
+def _limpa_state_cookie(resp: RedirectResponse) -> RedirectResponse:
+    """Apaga o cookie de state do fluxo SSO. Chamar em toda saída do callback
+    (sucesso e erro) — cookie de state que sobrevive é state reutilizável."""
+    resp.delete_cookie(SSO_STATE_COOKIE, path=SSO_STATE_COOKIE_PATH)
+    return resp
 
 
 @router.get("/sso/status")
@@ -175,31 +187,60 @@ async def sso_status():
 async def microsoft_login():
     if not settings.sso_enabled:
         raise HTTPException(status_code=503, detail="Login com Microsoft não está configurado")
-    # msal é bloqueante: fora do event loop, senão trava os SSE abertos.
-    url = await asyncio.to_thread(microsoft_auth.get_authorization_url)
-    return RedirectResponse(url=url, status_code=302)
+    state = secrets.token_urlsafe(32)
+    try:
+        # msal é bloqueante: fora do event loop, senão trava os SSE abertos.
+        url = await asyncio.to_thread(microsoft_auth.get_authorization_url, state)
+    except Exception as e:
+        logger.warning("SSO Microsoft: falha ao iniciar login (%s)", type(e).__name__)
+        return _erro_login("falha_microsoft")
+    resp = RedirectResponse(url=url, status_code=302)
+    resp.set_cookie(
+        SSO_STATE_COOKIE,
+        state,
+        httponly=True,
+        samesite="lax",
+        max_age=300,
+        path=SSO_STATE_COOKIE_PATH,
+        # secure=True quebraria em dev (backend em http://localhost:8000).
+        secure=settings.MS_REDIRECT_URI.startswith("https://"),
+    )
+    return resp
 
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(
+    request: Request,
     code: str | None = None,
     error: str | None = None,
+    state: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     if not settings.sso_enabled:
         raise HTTPException(status_code=503, detail="Login com Microsoft não está configurado")
+
+    # Proteção contra login-CSRF: o state que voltou precisa bater com o que
+    # foi gravado no cookie em /microsoft. Comparação em tempo constante.
+    # Confere antes de qualquer troca de código com a Microsoft.
+    cookie_state = request.cookies.get(SSO_STATE_COOKIE)
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        return _limpa_state_cookie(_erro_login("falha_microsoft"))
+
     if error or not code:
-        return _erro_login("falha_microsoft")
+        return _limpa_state_cookie(_erro_login("falha_microsoft"))
 
     try:
         ms_token = await asyncio.to_thread(microsoft_auth.exchange_code_for_token, code)
         email = await microsoft_auth.get_user_email(ms_token)
+    except ValueError as e:
+        logger.warning("SSO Microsoft: falha ao autenticar (ValueError: %s)", str(e))
+        return _limpa_state_cookie(_erro_login("falha_microsoft"))
     except Exception as e:
         logger.warning("SSO Microsoft: falha ao autenticar (%s)", type(e).__name__)
-        return _erro_login("falha_microsoft")
+        return _limpa_state_cookie(_erro_login("falha_microsoft"))
 
     if not email:
-        return _erro_login("falha_microsoft")
+        return _limpa_state_cookie(_erro_login("falha_microsoft"))
 
     resultado = await db.execute(select(User).where(User.email == email))
     user = resultado.scalar_one_or_none()
@@ -218,7 +259,7 @@ async def microsoft_callback(
             ip=ip, path=path,
         ))
         await db.commit()
-        return _erro_login(motivo)
+        return _limpa_state_cookie(_erro_login(motivo))
 
     db.add(AuditLog(
         actor_type="usuario", actor_user_id=user.id, actor_name=user.name[:120],
@@ -230,10 +271,11 @@ async def microsoft_callback(
     await db.commit()
 
     ticket = sso_tickets.issue(create_access_token(user.email))
-    return RedirectResponse(
+    resp = RedirectResponse(
         url=f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback?ticket={ticket}",
         status_code=302,
     )
+    return _limpa_state_cookie(resp)
 
 
 @router.post("/sso/exchange", response_model=TokenOut)

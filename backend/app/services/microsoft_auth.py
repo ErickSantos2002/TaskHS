@@ -25,12 +25,17 @@ def _msal_app() -> msal.ConfidentialClientApplication:
     )
 
 
-def get_authorization_url() -> str:
-    """URL de login da Microsoft para onde redirecionar o navegador."""
+def get_authorization_url(state: str) -> str:
+    """URL de login da Microsoft para onde redirecionar o navegador.
+
+    O `state` é gerado e conferido pelo endpoint (auth.py) — este serviço
+    só repassa para o msal, sem gerar nem guardar nada.
+    """
     return _msal_app().get_authorization_request_url(
         scopes=SCOPES,
         redirect_uri=settings.MS_REDIRECT_URI,
         prompt="select_account",
+        state=state,
     )
 
 
@@ -64,7 +69,10 @@ async def get_user_email(access_token: str) -> str:
     userPrincipalName.
     """
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(GRAPH_ME_URL, headers={"Authorization": f"Bearer {access_token}"})
+        try:
+            resp = await client.get(GRAPH_ME_URL, headers={"Authorization": f"Bearer {access_token}"})
+        except Exception as e:
+            raise ValueError(f"falha ao conectar com o Graph: {type(e).__name__}")
     if resp.status_code != 200:
         raise ValueError(f"Graph /me respondeu {resp.status_code}")
     try:
