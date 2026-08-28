@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "1.14.0",
+    date: "2026-08-28",
+    changes: [
+      { kind: "novidade", text: "Agora dá para entrar no TaskHS com a conta Microsoft da empresa: na tela de login, clique em \"Entrar com Microsoft\" e use o mesmo e-mail e senha do Outlook — sem precisar decorar mais uma senha. O login por e-mail e senha continua funcionando normalmente. Só entra quem já tem usuário cadastrado no TaskHS; se o seu e-mail não estiver na lista, fale com o administrador." },
+    ],
+  },
+  {
     version: "1.13.8",
     date: "2026-08-13",
     changes: [
