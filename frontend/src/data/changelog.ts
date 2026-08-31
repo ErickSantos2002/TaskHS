@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.2.1",
+    date: "2026-08-31",
+    changes: [
+      { kind: "correcao", text: "Quem desistia do login com a Microsoft — voltando ou negando o acesso na tela dela — caía no TaskHS com a mensagem \"Falha na autenticação com a Microsoft\", como se algo tivesse quebrado. Agora volta para a tela de login sem mensagem nenhuma, porque não houve falha: foi uma desistência." },
+      { kind: "correcao", text: "O retorno do login com a Microsoft derrubava a resposta do servidor quando recebia um endereço malformado, com acento ou emoji no lugar do código de segurança. Não dava acesso a ninguém, mas quebrava a página em vez de devolver a pessoa ao login — agora qualquer retorno estranho cai na tela de login normalmente." },
+    ],
+  },
+  {
     version: "2.2.0",
     date: "2026-08-28",
     changes: [
