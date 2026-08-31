@@ -170,6 +170,12 @@ def _erro_login(motivo: str) -> RedirectResponse:
     return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}/login?erro={motivo}", status_code=302)
 
 
+def _volta_ao_login() -> RedirectResponse:
+    """Devolve o navegador ao /login sem mensagem — para quando não houve
+    falha nenhuma, só desistência de quem estava entrando."""
+    return RedirectResponse(url=f"{settings.FRONTEND_URL.rstrip('/')}/login", status_code=302)
+
+
 def _limpa_state_cookie(resp: RedirectResponse) -> RedirectResponse:
     """Apaga o cookie de state do fluxo SSO. Chamar em toda saída do callback
     (sucesso e erro) — cookie de state que sobrevive é state reutilizável."""
@@ -222,9 +228,23 @@ async def microsoft_callback(
     # Proteção contra login-CSRF: o state que voltou precisa bater com o que
     # foi gravado no cookie em /microsoft. Comparação em tempo constante.
     # Confere antes de qualquer troca de código com a Microsoft.
+    # compare_digest sobre str exige ASCII nos dois lados e levanta TypeError
+    # com qualquer outra coisa — e o state chega da query, controlado por quem
+    # chama. Em bytes a comparação aceita qualquer entrada e continua em tempo
+    # constante. As duas guardas antes dela impedem .encode() em None.
     cookie_state = request.cookies.get(SSO_STATE_COOKIE)
-    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+    if (
+        not state
+        or not cookie_state
+        or not secrets.compare_digest(state.encode(), cookie_state.encode())
+    ):
         return _limpa_state_cookie(_erro_login("falha_microsoft"))
+
+    if error == "access_denied":
+        # A pessoa cancelou o consentimento na tela da Microsoft. Ela sabe o
+        # que fez; "falha na autenticação" seria o sistema se culpando por uma
+        # escolha dela. Volta ao login em silêncio.
+        return _limpa_state_cookie(_volta_ao_login())
 
     if error or not code:
         return _limpa_state_cookie(_erro_login("falha_microsoft"))
