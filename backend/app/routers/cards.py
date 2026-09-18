@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
-from app.models.card import Card, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
+from app.models.card import Card, CardAttachment, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
 from app.models.board import BoardLabel, BoardMember
 from app.models.list import List
 from app.models.notification import Notification
@@ -21,6 +21,9 @@ from app.models.audit import AuditLog
 from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
 from app.automations import run_card_moved_automations
 from app.mentions import ids_mencionados, texto_para_notificacao
+# Reusa o serializador do router de anexos para o anexo ter UMA forma só no JSON.
+# Import seguro: routers/__init__.py é vazio e attachments.py não importa cards.py.
+from app.routers.attachments import attachment_to_dict
 
 
 class CardCopyBody(BaseModel):
@@ -52,7 +55,7 @@ def _to_list(v) -> list:
         return [v]
 
 
-def _comment_to_dict(c: CardComment) -> dict:
+def _comment_to_dict(c: CardComment, anexos: list[dict] | None = None) -> dict:
     # Comentário excluído não devolve corpo nem original — a UI só mostra o placeholder.
     deleted = c.deleted_at is not None
     return {
@@ -63,10 +66,31 @@ def _comment_to_dict(c: CardComment) -> dict:
         "edited_at": None if deleted else c.edited_at,
         "original_body": None if deleted else c.original_body,
         "deleted_at": c.deleted_at,
+        # Comentário excluído não exibe as imagens. Elas NÃO somem do card: seguem
+        # no bloco Anexos, que é outra lista. Ver spec 2026-09-18.
+        "attachments": [] if deleted else (anexos or []),
     }
 
 
+async def _anexos_do_comentario(comment_id: int, db: AsyncSession) -> list[dict]:
+    """Imagens de UM comentário. Usado pelos endpoints que devolvem um comentário
+    isolado (criar/editar/excluir), onde não há o card carregado para agrupar."""
+    result = await db.execute(
+        select(CardAttachment)
+        .where(CardAttachment.comment_id == comment_id)
+        .order_by(CardAttachment.id)
+    )
+    return [attachment_to_dict(a) for a in result.scalars().all()]
+
+
 def _card_to_dict(card: Card) -> dict:
+    anexos = _to_list(card.attachments)
+    # Agrupa em memória: o card já carrega comentários e anexos pelo _card_options(),
+    # então isto não custa consulta nenhuma.
+    por_comentario: dict[int, list[dict]] = {}
+    for a in anexos:
+        if a.comment_id is not None:
+            por_comentario.setdefault(a.comment_id, []).append(attachment_to_dict(a))
     return {
         "id": card.id,
         "list_id": card.list_id,
@@ -89,15 +113,11 @@ def _card_to_dict(card: Card) -> dict:
             for m in _to_list(card.labels) if m.board_label is not None
         ],
         "members": [m.user for m in _to_list(card.members) if m.user is not None],
-        "comments": [_comment_to_dict(c) for c in _to_list(card.comments)],
-        "attachments": [
-            {
-                "id": a.id, "filename": a.filename, "content_type": a.content_type,
-                "size": a.size, "uploaded_by": a.uploaded_by, "uploaded_at": a.uploaded_at,
-                "is_image": (a.content_type or "").startswith("image/"),
-            }
-            for a in _to_list(card.attachments)
-        ],
+        "comments": [_comment_to_dict(c, por_comentario.get(c.id)) for c in _to_list(card.comments)],
+        # A lista de Anexos do card continua trazendo TODOS os anexos, inclusive os
+        # que vieram em comentário — é isso que faz a imagem do comentário aparecer
+        # no bloco Anexos sem código novo.
+        "attachments": [attachment_to_dict(a) for a in anexos],
         "checklists": _to_list(card.checklists),
     }
 
@@ -322,8 +342,36 @@ async def restore_card(list_id: int, card_id: int, db: AsyncSession = Depends(ge
 @router.post("/{card_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
 async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
+
+    # Ids repetidos ([7, 7]) achariam 1 de 2 e dariam 400 por um erro do cliente
+    # que nao e erro de verdade. Dedup antes de contar.
+    ids_pedidos = sorted(set(body.attachment_ids))
+    anexos_do_comentario: list[CardAttachment] = []
+    if ids_pedidos:
+        res = await db.execute(
+            select(CardAttachment).where(
+                CardAttachment.id.in_(ids_pedidos),
+                # ESTE card. Sem esta linha, o id de um anexo de outro quadro
+                # apareceria no comentario daqui — leitura de arquivo alheio pela
+                # porta dos fundos. Mesma armadilha do "destino no corpo" que o
+                # CLAUDE.md descreve para update_card/copy_card.
+                CardAttachment.card_id == card_id,
+                CardAttachment.comment_id.is_(None),
+                CardAttachment.content_type.startswith("image/"),
+            )
+        )
+        anexos_do_comentario = list(res.scalars().all())
+        if len(anexos_do_comentario) != len(ids_pedidos):
+            # Recusa o comentario inteiro: melhor do que criar um comentario com
+            # metade das imagens e deixar a pessoa descobrir depois.
+            raise HTTPException(status_code=400, detail="Imagem inválida ou já usada em outro comentário.")
+
     comment = CardComment(card_id=card_id, author_id=current_user.id, body=body.body)
     db.add(comment)
+    if anexos_do_comentario:
+        await db.flush()   # precisa do id do comentario para carimbar os anexos
+        for a in anexos_do_comentario:
+            a.comment_id = comment.id
     lst = await db.execute(select(List).where(List.id == list_id))
     lst_obj = lst.scalar_one_or_none()
     board_id = lst_obj.board_id if lst_obj else None
@@ -331,6 +379,9 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     # O trecho do sino e texto puro: sem isto ele mostraria "@[Adriana Paz](14)".
     limpo = texto_para_notificacao(body.body)
     trecho = f"{limpo[:80]}{'…' if len(limpo) > 80 else ''}"
+    # Comentario so com imagem: sem isto a notificacao sairia com os dois pontos e
+    # nada depois ('Fulano comentou em "X": ').
+    so_imagem = not limpo.strip()
 
     # O corpo vem do CLIENTE. Sem validar contra board_members, alguem forja
     # @[Quem Quiser](99) e o sistema entrega ao usuario 99 uma notificacao com o
@@ -354,7 +405,11 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
         db.add(Notification(
             user_id=uid,
             type="card_mention",
-            message=f"{current_user.name} mencionou você em \"{card.title}\": {trecho}",
+            message=(
+                f"{current_user.name} mencionou você em \"{card.title}\""
+                if so_imagem else
+                f"{current_user.name} mencionou você em \"{card.title}\": {trecho}"
+            ),
             card_id=card_id,
             board_id=board_id,
         ))
@@ -374,7 +429,11 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
             db.add(Notification(
                 user_id=m.user_id,
                 type="card_comment",
-                message=f"{current_user.name} comentou em \"{card.title}\": {trecho}",
+                message=(
+                    f"{current_user.name} enviou uma imagem em \"{card.title}\""
+                    if so_imagem else
+                    f"{current_user.name} comentou em \"{card.title}\": {trecho}"
+                ),
                 card_id=card_id,
                 board_id=board_id,
             ))
@@ -382,7 +441,7 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     result = await db.execute(
         select(CardComment).where(CardComment.id == comment.id).options(selectinload(CardComment.author))
     )
-    return _comment_to_dict(result.scalar_one())
+    return _comment_to_dict(result.scalar_one(), await _anexos_do_comentario(comment.id, db))
 
 
 async def _get_comment_or_404(comment_id: int, card_id: int, db: AsyncSession) -> CardComment:
@@ -416,7 +475,7 @@ async def edit_comment(list_id: int, card_id: int, comment_id: int, body: Commen
         comment.edited_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(comment)
-    return _comment_to_dict(comment)
+    return _comment_to_dict(comment, await _anexos_do_comentario(comment.id, db))
 
 
 @router.delete("/{card_id}/comments/{comment_id}", response_model=CommentOut)
@@ -430,7 +489,7 @@ async def delete_comment(list_id: int, card_id: int, comment_id: int, db: AsyncS
         comment.deleted_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(comment)
-    return _comment_to_dict(comment)
+    return _comment_to_dict(comment, await _anexos_do_comentario(comment.id, db))
 
 
 @router.get("/{card_id}/activity", response_model=ActivityPage)

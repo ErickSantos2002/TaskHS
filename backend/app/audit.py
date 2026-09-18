@@ -307,6 +307,8 @@ def _audit_before_flush(session, flush_context, instances):
         changes = _diff(obj)
         if not changes:
             continue
+        if type(obj) is CardAttachment and set(changes) <= {"comment_id"}:
+            continue  # anexo so ganhou dono (o comentario); o "anexou" ja foi registrado
         if type(obj) is Card:
             if set(changes) <= {"position"}:
                 continue  # só reordenou dentro da lista → não audita

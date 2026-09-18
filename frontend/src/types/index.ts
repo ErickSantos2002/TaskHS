@@ -83,6 +83,8 @@ export interface Comment {
   edited_at?: string | null;
   original_body?: string | null;
   deleted_at?: string | null;
+  // Imagens enviadas no comentário. São anexos do card (mesmo tipo do bloco Anexos).
+  attachments?: Attachment[];
 }
 
 export interface Activity {

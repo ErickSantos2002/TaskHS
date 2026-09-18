@@ -23,6 +23,14 @@ const PdfViewer = lazy(() => carregarComRetry(() => import("../components/PdfVie
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
 import type { Board, BoardList, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
+// Imagem no comentário: só imagem, e menos tipos que o bloco Anexos (que aceita
+// PDF/XML/planilha). Decisão de produto, ver spec 2026-09-18.
+const TIPOS_IMAGEM_COMENTARIO = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const MAX_IMAGENS_COMENTARIO = 5;
+const MAX_BYTES_IMAGEM = 10 * 1024 * 1024;   // espelha MAX_SIZE do backend
+
+type ImagemPendente = { id: string; file: File; url: string };
+
 // ── Priority config ────────────────────────────────────────────
 
 const PRIORITY: Record<Priority, { label: string; border: string; dot: string; badge: string }> = {
@@ -252,6 +260,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [allUsers, setAllUsers] = useState<UserBasic[]>([]);
   const [erroMembroCard, setErroMembroCard] = useState<string | null>(null);
   const [erroComentario, setErroComentario] = useState<string | null>(null);
+  // Imagens escolhidas para o próximo comentário. Vivem só no navegador até o
+  // clique em "Enviar" — ver spec 2026-09-18 ("Por que subir só no Enviar").
+  const [imagensComentario, setImagensComentario] = useState<ImagemPendente[]>([]);
+  const comentarioFileRef = useRef<HTMLInputElement>(null);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [editandoBody, setEditandoBody] = useState("");
   const [erroEdicao, setErroEdicao] = useState<string | null>(null);
@@ -350,6 +362,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     setMembers(card.members);
     setComments(card.comments);
     setChecklists(card.checklists ?? []);
+    // Card trocou com o modal aberto (deep-link do sino/busca troca selectedCard
+    // sem desmontar). Sem isto, o print colado no card A subiria para o card B ao
+    // clicar em Enviar, virando anexo do card errado — e os objectURL de A nunca
+    // seriam revogados, porque o cleanup deles só roda no unmount.
+    setImagensComentario(prev => { prev.forEach(i => URL.revokeObjectURL(i.url)); return []; });
   }, [card.id]);
 
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
@@ -402,6 +419,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => {
     return () => { thumbUrlsRef.current.forEach(URL.revokeObjectURL); };
   }, []);
+
+  // Os objectURL da pré-visualização não passam pelo thumbUrlsRef. Sem isto,
+  // quem cola cinco prints e fecha o card deixa cinco blobs presos na memória —
+  // e este modal fica aberto bastante tempo.
+  const imagensPendentesRef = useRef<ImagemPendente[]>([]);
+  useEffect(() => { imagensPendentesRef.current = imagensComentario; }, [imagensComentario]);
+  useEffect(() => () => { imagensPendentesRef.current.forEach(i => URL.revokeObjectURL(i.url)); }, []);
 
   async function handleUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -605,13 +629,74 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     patchCard({ description: trimmed || null });
   }
 
+  function nomeParaColagem(file: File): string {
+    const ext = file.type === "image/png" ? "png"
+      : file.type === "image/gif" ? "gif"
+      : file.type === "image/webp" ? "webp" : "jpg";
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `colado-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
+  }
+
+  // Colar, arrastar e o botão de clipe caem todos aqui.
+  function adicionarImagensComentario(files: File[]) {
+    if (files.length === 0) return;
+    setErroComentario(null);
+    let erro: string | null = null;
+    const aceitas: ImagemPendente[] = [];
+    for (const f of files) {
+      if (imagensComentario.length + aceitas.length >= MAX_IMAGENS_COMENTARIO) {
+        erro = `No máximo ${MAX_IMAGENS_COMENTARIO} imagens por comentário.`;
+        break;
+      }
+      if (!TIPOS_IMAGEM_COMENTARIO.includes(f.type)) {
+        erro = "No comentário só entra imagem (JPG, PNG, GIF ou WEBP). Para outros arquivos, use o bloco Anexos.";
+        continue;
+      }
+      if (f.size > MAX_BYTES_IMAGEM) {
+        erro = `"${f.name}" passa de 10 MB.`;
+        continue;
+      }
+      // Imagem colada chega sem nome utilizável: os navegadores mandam "image.png"
+      // para todo mundo, e o bloco Anexos viraria uma pilha de image.png iguais.
+      const arquivo = f.name && f.name !== "image.png" ? f : new File([f], nomeParaColagem(f), { type: f.type });
+      aceitas.push({ id: crypto.randomUUID(), file: arquivo, url: URL.createObjectURL(arquivo) });
+    }
+    if (aceitas.length > 0) setImagensComentario(prev => [...prev, ...aceitas]);
+    if (erro) setErroComentario(erro);
+  }
+
+  function removerImagemComentario(id: string) {
+    const alvo = imagensComentario.find(i => i.id === id);
+    if (alvo) URL.revokeObjectURL(alvo.url);
+    setImagensComentario(prev => prev.filter(i => i.id !== id));
+  }
+
   async function handleAddComment() {
     const body = commentBody.trim();
-    if (!body || submittingComment) return;
+    if ((!body && imagensComentario.length === 0) || submittingComment) return;
     setSubmittingComment(true);
     setErroComentario(null);
+    // Marca se as imagens JÁ subiram, para a mensagem de erro do passo seguinte
+    // não convidar a pessoa a mandar tudo de novo e duplicar o anexo.
+    let jaSubiu = false;
     try {
-      const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body });
+      let attachment_ids: number[] = [];
+      if (imagensComentario.length > 0) {
+        const criados = await api.upload<Attachment[]>(
+          `/lists/${card.list_id}/cards/${card.id}/attachments`,
+          imagensComentario.map(i => i.file),
+        );
+        attachment_ids = criados.map(a => a.id);
+        // A imagem é anexo do card a partir daqui — o bloco Anexos mostra na hora.
+        const novosAnexos = [...attachments, ...criados];
+        setAttachments(novosAnexos);
+        onCardUpdate({ id: card.id, attachments: novosAnexos });
+        imagensComentario.forEach(i => URL.revokeObjectURL(i.url));
+        setImagensComentario([]);
+        jaSubiu = true;
+      }
+      const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body, attachment_ids });
       const updated = [...comments, comment];
       setComments(updated);
       setCommentBody("");
@@ -620,7 +705,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     } catch (e) {
       // Sem isto o envio falha em silencio: o botao volta ao normal, o texto fica na
       // caixa, e a pessoa nao sabe por que.
-      setErroComentario(e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.");
+      const msg = e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.";
+      setErroComentario(jaSubiu ? `${msg} As imagens já foram salvas em Anexos — não precisa mandar de novo.` : msg);
     } finally {
       setSubmittingComment(false);
     }
@@ -1549,12 +1635,36 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
             {abaCard === "comentarios" && <>
             {/* Comment input */}
-            <div className="shrink-0 mb-4 relative">
+            <div
+              className="shrink-0 mb-4 relative"
+              onDragEnter={e => { if (Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.stopPropagation(); } }}
+              onDragOver={e => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                e.preventDefault(); e.stopPropagation();
+                e.dataTransfer.dropEffect = "copy";
+              }}
+              onDrop={e => {
+                if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+                // stopPropagation É O PONTO: sem ele o onCardDrop do modal captura o
+                // arquivo e manda direto para o bloco Anexos — a imagem sumiria do
+                // comentário e apareceria lá embaixo, sem explicação.
+                e.preventDefault(); e.stopPropagation();
+                dragDepth.current = 0;
+                setArrastando(false);   // o overlay do card já apareceu ao entrar no modal
+                adicionarImagensComentario(Array.from(e.dataTransfer.files));
+              }}
+            >
               <textarea
                 ref={comentarioRef}
                 value={commentBody}
                 onChange={onChangeComentario}
                 onSelect={e => recalcMencao(e.currentTarget)}
+                onPaste={e => {
+                  const imagens = Array.from(e.clipboardData.files).filter(f => f.type.startsWith("image/"));
+                  if (imagens.length === 0) return;   // colagem de texto segue normal
+                  e.preventDefault();
+                  adicionarImagensComentario(imagens);
+                }}
                 onKeyDown={e => {
                   // Enquanto o seletor de mencao esta aberto, Esc fecha e Enter
                   // escolhe o primeiro — sem isso o Enter enviaria o comentario
@@ -1571,8 +1681,29 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 maxLength={20000}
                 className="w-full text-sm text-slate-200 bg-background-elevated border border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder-slate-500 leading-relaxed"
               />
+              <input
+                ref={comentarioFileRef} type="file" multiple hidden
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={e => { adicionarImagensComentario(Array.from(e.target.files ?? [])); e.target.value = ""; }}
+              />
               {erroComentario && (
                 <p className="mt-1.5 text-xs text-red-400 bg-red-500/10 rounded-lg px-2.5 py-1.5">{erroComentario}</p>
+              )}
+              {imagensComentario.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {imagensComentario.map(img => (
+                    <div key={img.id} className="relative">
+                      <img src={img.url} alt={img.file.name} className="w-16 h-16 rounded-lg object-cover border border-border" />
+                      <button
+                        onClick={() => removerImagemComentario(img.id)}
+                        title="Tirar esta imagem"
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-background-surface border border-border text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
               {mencaoQuery !== null && mencaoCandidatos.length > 0 && (
                 <div className="absolute bottom-full left-0 mb-1 z-20 w-56 rounded-xl bg-background-surface border border-border shadow-xl overflow-hidden">
@@ -1590,15 +1721,28 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                   ))}
                 </div>
               )}
-              {commentBody.trim() && (
+              <div className="mt-1.5 flex items-center gap-2">
                 <button
-                  onClick={handleAddComment}
-                  disabled={submittingComment}
-                  className="mt-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 disabled:opacity-40 transition-all"
+                  onClick={() => comentarioFileRef.current?.click()}
+                  title="Anexar imagem (ou cole com Ctrl+V)"
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-primary hover:bg-background-elevated transition-colors"
                 >
-                  {submittingComment ? "Enviando…" : "Enviar"}
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
                 </button>
-              )}
+                {/* O Enviar aparece também quando só há imagem — comentário sem
+                    texto é válido desde a v2.3.0. */}
+                {(commentBody.trim() || imagensComentario.length > 0) && (
+                  <button
+                    onClick={handleAddComment}
+                    disabled={submittingComment}
+                    className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary-600 disabled:opacity-40 transition-all"
+                  >
+                    {submittingComment ? "Enviando…" : "Enviar"}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Comments list */}
@@ -1662,14 +1806,48 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       </div>
                     ) : (
                       <>
-                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
-                        {c.edited_at && originaisAbertos.has(c.id) && c.original_body != null && (
+                        {/* Comentário só com imagem não renderiza a bolha cinza vazia. */}
+                        {c.body && (
+                          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
+                        )}
+                        {/* Sem texto e sem imagem = a imagem foi apagada no bloco Anexos.
+                            Não existe lápide por imagem: comentário com texto que perdeu
+                            uma das fotos mostra só o que sobrou. Ver spec 2026-09-18. */}
+                        {!c.body && (c.attachments ?? []).length === 0 && (
+                          <p className="text-xs text-slate-500 italic">imagem removida</p>
+                        )}
+                        {c.edited_at && originaisAbertos.has(c.id) && c.original_body && (
                           <div className="mt-1 border-l-2 border-border pl-2">
                             <p className="text-[10px] text-slate-500 mb-0.5">Versão original:</p>
                             <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap"><CorpoComentario texto={c.original_body} /></p>
                           </div>
                         )}
                       </>
+                    )}
+                    {/* FORA do ternário de propósito: assim as miniaturas continuam
+                        visíveis enquanto o texto está sendo editado. Comentário
+                        excluído não mostra imagem — mas ela segue no bloco Anexos. */}
+                    {!c.deleted_at && (c.attachments ?? []).length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(c.attachments ?? []).map(a => (
+                          thumbs[a.id] ? (
+                            <img
+                              key={a.id} src={thumbs[a.id]} alt={a.filename}
+                              onClick={() => setLightbox(thumbs[a.id])}
+                              className="w-28 h-28 rounded-lg object-cover cursor-pointer border border-border hover:border-primary transition-colors"
+                            />
+                          ) : attErros[a.id] ? (
+                            <div key={a.id} className="w-28 h-28 rounded-lg bg-red-500/10 border border-red-500/50 flex items-center justify-center text-[10px] text-red-400 text-center px-2">
+                              Imagem indisponível
+                            </div>
+                          ) : (
+                            // A miniatura vem do mesmo efeito que abastece o bloco
+                            // Anexos (a imagem do comentário É um anexo do card),
+                            // então não há requisição nova — só a espera do blob.
+                            <div key={a.id} className="w-28 h-28 rounded-lg bg-background-elevated border border-border animate-pulse" />
+                          )
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
