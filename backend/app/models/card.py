@@ -103,6 +103,12 @@ class CardAttachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"))
+    # Imagem que veio junto de um comentário (v2.3.0). NULL = anexo solto.
+    # O ondelete="SET NULL" tem que existir aqui também, e não só na migration:
+    # num banco novo a tabela nasce do create_all, não da migration. Ver 011.
+    comment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("card_comments.id", ondelete="SET NULL"), nullable=True
+    )
     filename: Mapped[str] = mapped_column(String(255))
     url: Mapped[str | None] = mapped_column(String(1000))
     stored_name: Mapped[str | None] = mapped_column(String(255))
