@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.3.0",
+    date: "2026-09-18",
+    changes: [
+      { kind: "novidade", text: "Agora dá para mandar imagem no comentário do card. Tire o print e cole com Ctrl+V direto na caixa de comentário — não precisa mais salvar em arquivo antes. Também dá para arrastar a imagem para cima da caixa ou escolher pelo ícone de clipe. São até 5 imagens por comentário, e o comentário pode ser só a imagem, sem texto nenhum." },
+      { kind: "melhoria", text: "A imagem mandada no comentário entra sozinha na lista de Anexos do card. Ou seja: ela aparece junto do texto que a explica e também fica guardada com os outros arquivos do card, sem ninguém precisar anexar duas vezes. Apagar o comentário não apaga a imagem dos Anexos." },
+    ],
+  },
+  {
     version: "2.2.1",
     date: "2026-08-31",
     changes: [
