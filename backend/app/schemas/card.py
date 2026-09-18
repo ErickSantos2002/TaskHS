@@ -12,17 +12,6 @@ class LabelOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CommentOut(BaseModel):
-    id: int
-    body: str
-    author: UserOut
-    created_at: datetime
-    edited_at: datetime | None = None
-    original_body: str | None = None   # texto da 1ª versão; None em comentário excluído
-    deleted_at: datetime | None = None
-    model_config = {"from_attributes": True}
-
-
 class AttachmentOut(BaseModel):
     id: int
     filename: str
@@ -38,6 +27,20 @@ class AttachmentOut(BaseModel):
     @classmethod
     def derive_is_image(cls, v: Any, info: Any) -> Any:
         return v
+
+
+class CommentOut(BaseModel):
+    id: int
+    body: str
+    author: UserOut
+    created_at: datetime
+    edited_at: datetime | None = None
+    original_body: str | None = None   # texto da 1ª versão; None em comentário excluído
+    deleted_at: datetime | None = None
+    # Imagens enviadas junto deste comentário (v2.3.0). São anexos do card, no
+    # mesmo formato do bloco Anexos — o front não precisa de um segundo tipo.
+    attachments: list[AttachmentOut] = []
+    model_config = {"from_attributes": True}
 
 
 class ChecklistItemOut(BaseModel):
