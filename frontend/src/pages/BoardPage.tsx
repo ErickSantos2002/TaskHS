@@ -669,11 +669,29 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
   async function handleAddComment() {
     const body = commentBody.trim();
-    if (!body || submittingComment) return;
+    if ((!body && imagensComentario.length === 0) || submittingComment) return;
     setSubmittingComment(true);
     setErroComentario(null);
+    // Marca se as imagens JÁ subiram, para a mensagem de erro do passo seguinte
+    // não convidar a pessoa a mandar tudo de novo e duplicar o anexo.
+    let jaSubiu = false;
     try {
-      const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body });
+      let attachment_ids: number[] = [];
+      if (imagensComentario.length > 0) {
+        const criados = await api.upload<Attachment[]>(
+          `/lists/${card.list_id}/cards/${card.id}/attachments`,
+          imagensComentario.map(i => i.file),
+        );
+        attachment_ids = criados.map(a => a.id);
+        // A imagem é anexo do card a partir daqui — o bloco Anexos mostra na hora.
+        const novosAnexos = [...attachments, ...criados];
+        setAttachments(novosAnexos);
+        onCardUpdate({ id: card.id, attachments: novosAnexos });
+        imagensComentario.forEach(i => URL.revokeObjectURL(i.url));
+        setImagensComentario([]);
+        jaSubiu = true;
+      }
+      const comment = await api.post<Comment>(`/lists/${card.list_id}/cards/${card.id}/comments`, { body, attachment_ids });
       const updated = [...comments, comment];
       setComments(updated);
       setCommentBody("");
@@ -682,7 +700,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     } catch (e) {
       // Sem isto o envio falha em silencio: o botao volta ao normal, o texto fica na
       // caixa, e a pessoa nao sabe por que.
-      setErroComentario(e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.");
+      const msg = e instanceof ApiError ? e.message : "Não foi possível enviar o comentário.";
+      setErroComentario(jaSubiu ? `${msg} As imagens já foram salvas em Anexos — não precisa mandar de novo.` : msg);
     } finally {
       setSubmittingComment(false);
     }
@@ -1782,7 +1801,16 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       </div>
                     ) : (
                       <>
-                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
+                        {/* Comentário só com imagem não renderiza a bolha cinza vazia. */}
+                        {c.body && (
+                          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-background-elevated rounded-lg px-2.5 py-2"><CorpoComentario texto={c.body} /></p>
+                        )}
+                        {/* Sem texto e sem imagem = a imagem foi apagada no bloco Anexos.
+                            Não existe lápide por imagem: comentário com texto que perdeu
+                            uma das fotos mostra só o que sobrou. Ver spec 2026-09-18. */}
+                        {!c.body && (c.attachments ?? []).length === 0 && (
+                          <p className="text-xs text-slate-500 italic">imagem removida</p>
+                        )}
                         {c.edited_at && originaisAbertos.has(c.id) && c.original_body != null && (
                           <div className="mt-1 border-l-2 border-border pl-2">
                             <p className="text-[10px] text-slate-500 mb-0.5">Versão original:</p>
@@ -1790,6 +1818,31 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                           </div>
                         )}
                       </>
+                    )}
+                    {/* FORA do ternário de propósito: assim as miniaturas continuam
+                        visíveis enquanto o texto está sendo editado. Comentário
+                        excluído não mostra imagem — mas ela segue no bloco Anexos. */}
+                    {!c.deleted_at && (c.attachments ?? []).length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(c.attachments ?? []).map(a => (
+                          thumbs[a.id] ? (
+                            <img
+                              key={a.id} src={thumbs[a.id]} alt={a.filename}
+                              onClick={() => setLightbox(thumbs[a.id])}
+                              className="w-28 h-28 rounded-lg object-cover cursor-pointer border border-border hover:border-primary transition-colors"
+                            />
+                          ) : attErros[a.id] ? (
+                            <div key={a.id} className="w-28 h-28 rounded-lg bg-red-500/10 border border-red-500/50 flex items-center justify-center text-[10px] text-red-400 text-center px-2">
+                              Imagem indisponível
+                            </div>
+                          ) : (
+                            // A miniatura vem do mesmo efeito que abastece o bloco
+                            // Anexos (a imagem do comentário É um anexo do card),
+                            // então não há requisição nova — só a espera do blob.
+                            <div key={a.id} className="w-28 h-28 rounded-lg bg-background-elevated border border-border animate-pulse" />
+                          )
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
