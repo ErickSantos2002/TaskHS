@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.card import Priority
 from app.schemas.user import UserOut
 
@@ -133,7 +133,19 @@ class CommentCreate(BaseModel):
     # aqui), e a coluna e Text (ilimitada). O limite NAO e o que protege a regex de
     # mencoes — quem faz isso e o teto {1,120} do nome em app/mentions.py, medido:
     # 160 KB em 4ms com o teto, 1.3s sem. Este limite e so sanidade de payload.
-    body: str = Field(min_length=1, max_length=20000)
+    #
+    # min_length caiu de 1 para 0 na v2.3.0: comentario so com imagem e valido.
+    # Quem garante que nao entra comentario vazio de verdade e o validator abaixo.
+    body: str = Field(min_length=0, max_length=20000)
+    # Anexos que ja existem neste card e ainda nao tem dono. O endpoint carimba o
+    # comment_id neles. Teto de 5 para o historico nao virar mural de fotos.
+    attachment_ids: list[int] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def _texto_ou_imagem(self):
+        if not self.body.strip() and not self.attachment_ids:
+            raise ValueError("Escreva um texto ou anexe uma imagem.")
+        return self
 
 
 class CommentUpdate(BaseModel):

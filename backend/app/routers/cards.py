@@ -342,8 +342,36 @@ async def restore_card(list_id: int, card_id: int, db: AsyncSession = Depends(ge
 @router.post("/{card_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
 async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
+
+    # Ids repetidos ([7, 7]) achariam 1 de 2 e dariam 400 por um erro do cliente
+    # que nao e erro de verdade. Dedup antes de contar.
+    ids_pedidos = sorted(set(body.attachment_ids))
+    anexos_do_comentario: list[CardAttachment] = []
+    if ids_pedidos:
+        res = await db.execute(
+            select(CardAttachment).where(
+                CardAttachment.id.in_(ids_pedidos),
+                # ESTE card. Sem esta linha, o id de um anexo de outro quadro
+                # apareceria no comentario daqui — leitura de arquivo alheio pela
+                # porta dos fundos. Mesma armadilha do "destino no corpo" que o
+                # CLAUDE.md descreve para update_card/copy_card.
+                CardAttachment.card_id == card_id,
+                CardAttachment.comment_id.is_(None),
+                CardAttachment.content_type.startswith("image/"),
+            )
+        )
+        anexos_do_comentario = list(res.scalars().all())
+        if len(anexos_do_comentario) != len(ids_pedidos):
+            # Recusa o comentario inteiro: melhor do que criar um comentario com
+            # metade das imagens e deixar a pessoa descobrir depois.
+            raise HTTPException(status_code=400, detail="Imagem inválida ou já usada em outro comentário.")
+
     comment = CardComment(card_id=card_id, author_id=current_user.id, body=body.body)
     db.add(comment)
+    if anexos_do_comentario:
+        await db.flush()   # precisa do id do comentario para carimbar os anexos
+        for a in anexos_do_comentario:
+            a.comment_id = comment.id
     lst = await db.execute(select(List).where(List.id == list_id))
     lst_obj = lst.scalar_one_or_none()
     board_id = lst_obj.board_id if lst_obj else None
@@ -351,6 +379,9 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     # O trecho do sino e texto puro: sem isto ele mostraria "@[Adriana Paz](14)".
     limpo = texto_para_notificacao(body.body)
     trecho = f"{limpo[:80]}{'…' if len(limpo) > 80 else ''}"
+    # Comentario so com imagem: sem isto a notificacao sairia com os dois pontos e
+    # nada depois ('Fulano comentou em "X": ').
+    so_imagem = not limpo.strip()
 
     # O corpo vem do CLIENTE. Sem validar contra board_members, alguem forja
     # @[Quem Quiser](99) e o sistema entrega ao usuario 99 uma notificacao com o
@@ -374,7 +405,11 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
         db.add(Notification(
             user_id=uid,
             type="card_mention",
-            message=f"{current_user.name} mencionou você em \"{card.title}\": {trecho}",
+            message=(
+                f"{current_user.name} mencionou você em \"{card.title}\""
+                if so_imagem else
+                f"{current_user.name} mencionou você em \"{card.title}\": {trecho}"
+            ),
             card_id=card_id,
             board_id=board_id,
         ))
@@ -394,7 +429,11 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
             db.add(Notification(
                 user_id=m.user_id,
                 type="card_comment",
-                message=f"{current_user.name} comentou em \"{card.title}\": {trecho}",
+                message=(
+                    f"{current_user.name} enviou uma imagem em \"{card.title}\""
+                    if so_imagem else
+                    f"{current_user.name} comentou em \"{card.title}\": {trecho}"
+                ),
                 card_id=card_id,
                 board_id=board_id,
             ))
@@ -402,7 +441,7 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
     result = await db.execute(
         select(CardComment).where(CardComment.id == comment.id).options(selectinload(CardComment.author))
     )
-    return _comment_to_dict(result.scalar_one())
+    return _comment_to_dict(result.scalar_one(), await _anexos_do_comentario(comment.id, db))
 
 
 async def _get_comment_or_404(comment_id: int, card_id: int, db: AsyncSession) -> CardComment:
