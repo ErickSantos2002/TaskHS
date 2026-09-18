@@ -362,6 +362,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     setMembers(card.members);
     setComments(card.comments);
     setChecklists(card.checklists ?? []);
+    // Card trocou com o modal aberto (deep-link do sino/busca troca selectedCard
+    // sem desmontar). Sem isto, o print colado no card A subiria para o card B ao
+    // clicar em Enviar, virando anexo do card errado — e os objectURL de A nunca
+    // seriam revogados, porque o cleanup deles só roda no unmount.
+    setImagensComentario(prev => { prev.forEach(i => URL.revokeObjectURL(i.url)); return []; });
   }, [card.id]);
 
   useEffect(() => { setAttachments(card.attachments ?? []); }, [card.id]);
@@ -1811,7 +1816,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                         {!c.body && (c.attachments ?? []).length === 0 && (
                           <p className="text-xs text-slate-500 italic">imagem removida</p>
                         )}
-                        {c.edited_at && originaisAbertos.has(c.id) && c.original_body != null && (
+                        {c.edited_at && originaisAbertos.has(c.id) && c.original_body && (
                           <div className="mt-1 border-l-2 border-border pl-2">
                             <p className="text-[10px] text-slate-500 mb-0.5">Versão original:</p>
                             <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap"><CorpoComentario texto={c.original_body} /></p>
