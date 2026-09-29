@@ -2829,9 +2829,10 @@ export function BoardPage() {
   }
 
   /** Move o card para outra lista, do modal (o drag tem caminho próprio, em
-   *  onDragEnd). Entra no FIM da lista de destino — um clique não tem como
-   *  dizer "entre o terceiro e o quarto", e é o mesmo destino de arrastar para
-   *  a área vazia da coluna.
+   *  onDragEnd). Entra no TOPO da lista de destino — um clique não tem como
+   *  dizer "entre o terceiro e o quarto", e o time pediu o topo para o card
+   *  recém-movido ficar à vista. Mesma conta do drag para o topo (metade da
+   *  posição do primeiro).
    *
    *  Só mexe no estado depois que o PATCH volta: sem update otimista não há
    *  rollback para escrever, e o custo é uma ida ao servidor com o menu
@@ -2839,8 +2840,7 @@ export function BoardPage() {
   async function moverCardParaLista(cardId: number, origemListId: number, destListId: number) {
     if (destListId === origemListId) return;
     const destino = cardsByList[destListId] ?? [];
-    const ultima = destino[destino.length - 1];
-    const novaPosicao = ultima ? ultima.position + 65536 : 65536;
+    const novaPosicao = destino.length ? Math.min(...destino.map(c => c.position)) / 2 : 65536;
 
     await api.patch(`/lists/${origemListId}/cards/${cardId}`, { list_id: destListId, position: novaPosicao });
 
