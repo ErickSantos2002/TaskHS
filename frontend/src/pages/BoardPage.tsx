@@ -2131,6 +2131,22 @@ function AddCardForm({ listId, onAdded, onCancel }: { listId: number; onAdded: (
   );
 }
 
+// ── Upsert idempotente ─────────────────────────────────────────
+// Todo card/lista que entra no estado passa por aqui — tanto o eco do SSE
+// quanto a resposta do POST de quem criou. Os dois chegam em ordem qualquer
+// (o SSE costuma ganhar), então inserir "no fim" sem olhar o id duplicava o
+// item na tela até o F5.
+function upsertCard(prev: Record<number, Card[]>, card: Card): Record<number, Card[]> {
+  const next: Record<number, Card[]> = {};
+  for (const [lid, cards] of Object.entries(prev)) next[Number(lid)] = cards.filter(c => c.id !== card.id);
+  next[card.list_id] = [...(next[card.list_id] ?? []), card].sort((a, b) => a.position - b.position);
+  return next;
+}
+
+function upsertList(prev: BoardList[], lst: BoardList): BoardList[] {
+  return [...prev.filter(l => l.id !== lst.id), lst].sort((a, b) => a.position - b.position);
+}
+
 // ── AddListForm ────────────────────────────────────────────────
 
 function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number; position: number; onAdded: (l: BoardList) => void; onCancel: () => void }) {
@@ -2699,15 +2715,7 @@ export function BoardPage() {
         });
         return;
       }
-      setCardsByList(prev => {
-        const next: Record<number, Card[]> = {};
-        for (const [lid, cards] of Object.entries(prev)) {
-          next[Number(lid)] = cards.filter(c => c.id !== card.id);
-        }
-        const bucket = next[card.list_id] ?? [];
-        next[card.list_id] = [...bucket, card].sort((a, b) => a.position - b.position);
-        return next;
-      });
+      setCardsByList(prev => upsertCard(prev, card));
       setSelectedCard(sc => (sc && sc.id === card.id ? card : sc));
     } else if (evt.type === "card" && evt.action === "delete") {
       setCardsByList(prev => {
@@ -2724,10 +2732,7 @@ export function BoardPage() {
         setCardsByList(prev => { const { [lst.id]: _drop, ...rest } = prev; return rest; });
         return;
       }
-      setLists(prev => {
-        const rest = prev.filter(l => l.id !== lst.id);
-        return [...rest, lst].sort((a, b) => a.position - b.position);
-      });
+      setLists(prev => upsertList(prev, lst));
       setCardsByList(prev => (prev[lst.id] ? prev : { ...prev, [lst.id]: [] }));
     } else if (evt.type === "list" && evt.action === "delete") {
       setLists(prev => prev.filter(l => l.id !== evt.id));
@@ -2882,7 +2887,7 @@ export function BoardPage() {
     if (!name) return;
     try {
       const label = await api.post<BoardLabel>(`/boards/${boardId}/labels`, { name, color: newLabelColor });
-      setBoardLabels(prev => [...prev, label]);
+      setBoardLabels(prev => (prev.some(l => l.id === label.id) ? prev : [...prev, label]));
       setNewLabelName("");
       setNewLabelColor("#0ea5e9");
     } catch {}
@@ -2928,10 +2933,7 @@ export function BoardPage() {
     try {
       const restored = await api.post<Card>(`/lists/${card.list_id}/cards/${card.id}/restore`, {});
       setArchivedCards(prev => prev.filter(c => c.id !== card.id));
-      setCardsByList(prev => ({
-        ...prev,
-        [restored.list_id]: [...(prev[restored.list_id] ?? []), restored],
-      }));
+      setCardsByList(prev => upsertCard(prev, restored));
     } catch {}
   }
 
@@ -2941,10 +2943,7 @@ export function BoardPage() {
   async function handleRestoreFromModal(card: Card) {
     try {
       const restored = await api.post<Card>(`/lists/${card.list_id}/cards/${card.id}/restore`, {});
-      setCardsByList(prev => ({
-        ...prev,
-        [restored.list_id]: [...(prev[restored.list_id] ?? []).filter(c => c.id !== restored.id), restored],
-      }));
+      setCardsByList(prev => upsertCard(prev, restored));
       setSelectedCard(restored);
     } catch {}
   }
@@ -2960,7 +2959,7 @@ export function BoardPage() {
     try {
       const restored = await api.post<BoardList>(`/boards/${boardId}/lists/${lst.id}/restore`, {});
       setArchivedLists(prev => prev.filter(l => l.id !== lst.id));
-      setLists(prev => [...prev, restored]);
+      setLists(prev => upsertList(prev, restored));
       const cards = await api.get<Card[]>(`/lists/${restored.id}/cards`);
       setCardsByList(prev => ({ ...prev, [restored.id]: cards }));
     } catch {}
@@ -3057,10 +3056,7 @@ export function BoardPage() {
   }
 
   function handleCardCopy(newCard: Card) {
-    setCardsByList(prev => ({
-      ...prev,
-      [newCard.list_id]: [...(prev[newCard.list_id] ?? []), newCard],
-    }));
+    setCardsByList(prev => upsertCard(prev, newCard));
   }
 
   function handleListDelete(listId: number) {
@@ -3354,7 +3350,7 @@ export function BoardPage() {
                     canMoveLeft={idx > 0}
                     canMoveRight={idx < lists.length - 1}
                     onMoveList={dir => handleMoveList(list, dir)}
-                    onCardAdded={card => setCardsByList(prev => ({ ...prev, [list.id]: [...(prev[list.id] ?? []), card] }))}
+                    onCardAdded={card => setCardsByList(prev => upsertCard(prev, card))}
                     onCardClick={setSelectedCard}
                     onListUpdate={handleListUpdate}
                     onListDelete={handleListDelete}
@@ -3365,7 +3361,7 @@ export function BoardPage() {
                   <AddListForm
                     boardId={boardId}
                     position={lists.length}
-                    onAdded={list => { setLists(p => [...p, list]); setCardsByList(p => ({ ...p, [list.id]: [] })); setAddingList(false); }}
+                    onAdded={list => { setLists(p => upsertList(p, list)); setCardsByList(p => (p[list.id] ? p : { ...p, [list.id]: [] })); setAddingList(false); }}
                     onCancel={() => setAddingList(false)}
                   />
                 ) : (
