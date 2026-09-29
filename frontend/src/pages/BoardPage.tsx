@@ -2774,20 +2774,28 @@ export function BoardPage() {
   // Com &list=<id>, também abre card ARQUIVADO: ele não está em cardsByList (o
   // /snapshot filtra archived), então busca o card avulso — o endpoint por
   // list_id continua trancado, list_id forjado dá 403, não 200.
+  //
+  // Abre UMA vez por link (deepLinkAberto). Antes o efeito dependia de
+  // selectedCard e reabria o card ao fechar: fecharCard zera o card na hora,
+  // mas o React Router tira o ?card= da URL dentro de um startTransition, um
+  // render depois — nesse meio-tempo o efeito via o ?card= e reabria, e a
+  // pessoa tinha de fechar duas vezes.
+  const deepLinkAberto = useRef<string | null>(null);
   useEffect(() => {
     const cardId = Number(searchParams.get("card"));
-    if (!cardId) return;
-    if (selectedCard?.id === cardId) return;
-    const alvo = Object.values(cardsByList).flat().find(c => c.id === cardId);
-    if (alvo) { setSelectedCard(alvo); return; }
+    if (!cardId) { deepLinkAberto.current = null; return; }
     const listId = Number(searchParams.get("list"));
+    const chave = `${cardId}:${listId}`;
+    if (deepLinkAberto.current === chave) return;
+    const alvo = Object.values(cardsByList).flat().find(c => c.id === cardId);
+    if (alvo) { deepLinkAberto.current = chave; setSelectedCard(alvo); return; }
     if (!listId) return;
     let cancelado = false;
     api.get<Card>(`/lists/${listId}/cards/${cardId}`)
-      .then(c => { if (!cancelado) setSelectedCard(c); })
+      .then(c => { if (!cancelado) { deepLinkAberto.current = chave; setSelectedCard(c); } })
       .catch(() => {});
     return () => { cancelado = true; };
-  }, [searchParams, cardsByList, selectedCard?.id]);
+  }, [searchParams, cardsByList]);
 
   function fecharCard() {
     setSelectedCard(null);

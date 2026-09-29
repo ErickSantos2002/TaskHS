@@ -18,6 +18,7 @@ export const CHANGELOG: ChangelogVersion[] = [
     date: "2026-09-29",
     changes: [
       { kind: "correcao", text: "Criar uma lista ou um card fazia ele aparecer duas vezes na tela — só sumia a cópia depois de apertar F5. Era só visual (nunca foi criado em dobro de verdade), e agora aparece uma vez só. O mesmo valia para copiar card, restaurar card ou lista arquivada e criar etiqueta." },
+      { kind: "correcao", text: "Card aberto pela busca ou pelos Logs às vezes precisava ser fechado duas vezes: no primeiro clique no X ele fechava e abria de novo sozinho. Agora fecha de primeira." },
     ],
   },
   {
