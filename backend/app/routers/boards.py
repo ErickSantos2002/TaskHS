@@ -549,11 +549,13 @@ _TRELLO_COLORS = {
 def _trello_color(c: str | None) -> str:
     return _TRELLO_COLORS.get(c or "", "#64748b")
 
-def _parse_due(d: str | None) -> str | None:
+def _parse_due(d: str | None) -> _date | None:
     if not d:
         return None
     try:
-        return _dt.fromisoformat(d.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+        # A coluna ``due_date`` é DATE. ``strftime`` devolve uma string, que o
+        # asyncpg não aceita como valor de DATE; entregue o objeto date nativo.
+        return _dt.fromisoformat(d.replace("Z", "+00:00")).date()
     except Exception:
         return None
 

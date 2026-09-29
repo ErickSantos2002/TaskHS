@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.3.1",
+    date: "2026-09-29",
+    changes: [
+      { kind: "correcao", text: "Importar do Trello um quadro com cartões que tinham data de entrega podia falhar no meio. Agora as datas de entrega vêm junto com o cartão e a importação vai até o fim." },
+    ],
+  },
+  {
     version: "2.3.0",
     date: "2026-09-18",
     changes: [
