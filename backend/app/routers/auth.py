@@ -156,7 +156,6 @@ async def delete_my_avatar(db: AsyncSession = Depends(get_db), current_user: Use
     return current_user
 
 
-
 @router.get("/users", response_model=list[UserOut])
 async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(User).order_by(User.name))
@@ -228,8 +227,10 @@ async def admin_delete_user(user_id: int, db: AsyncSession = Depends(get_db), cu
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if user.role == Role.administrador and current_user.role != Role.administrador:
         raise HTTPException(status_code=403, detail="Apenas administradores podem excluir administradores")
+    nome_avatar = user.avatar
     await db.delete(user)
     await db.commit()
+    _apaga_avatar(nome_avatar)
 
 
 class SsoExchangeIn(BaseModel):

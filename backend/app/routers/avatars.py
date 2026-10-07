@@ -27,4 +27,4 @@ async def get_avatar(nome: str):
     caminho = os.path.join(AVATAR_DIR, nome)
     if not os.path.isfile(caminho):
         raise HTTPException(status_code=404, detail="Foto não encontrada")
-    return FileResponse(caminho, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse(caminho, headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
