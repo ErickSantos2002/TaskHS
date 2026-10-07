@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.6.0",
+    date: "2026-10-07",
+    changes: [
+      { kind: "melhoria", text: "Ao escolher a foto de perfil, agora dá para ajustar como ela vai ficar antes de salvar: arraste para posicionar e use o zoom (pelo controle ou pela rodinha do mouse). Antes o sistema cortava o meio da foto sozinho, e em foto em pé às vezes a cabeça ficava de fora." },
+    ],
+  },
+  {
     version: "2.5.0",
     date: "2026-10-07",
     changes: [
