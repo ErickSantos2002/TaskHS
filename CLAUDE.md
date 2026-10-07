@@ -46,7 +46,7 @@ Health: `curl http://localhost:8000/api/health`. Login conhecido: `healthsafetyt
   - Gestão de membros (`add_member`/`remove_member`) e `update_board`/`delete_board` exigem **dono ou elevado**. Rotas admin usam `get_admin_user`/`get_elevated_user`. Delete de anexo exige autor/admin; delete de lembrete, o dono.
   - O router `integration` fica fora disso — usa `X-API-Key` e não tem usuário.
   - A integração grava os dados de etapa em `Card.obs1..obs6` (não mais na descrição); a exibição desses campos como chips acima da descrição é ligada por quadro via `Board.integration_enabled` + `Board.obs_labels` (nomes das obs), configurados no drawer do quadro (dono/admin).
-- **`GET /api/auth/users` é elevado-only** (devolve papel, e-mail, `is_active` — dados de gestão). Para **seletor de pessoas**, use **`GET /api/auth/users/basic`** (`{id, name, initials}`, qualquer autenticado). Usar o `/auth/users` num seletor quebra a tela para os membros comuns — já aconteceu.
+- **`GET /api/auth/users` é elevado-only** (devolve papel, e-mail, `is_active` — dados de gestão). Para **seletor de pessoas**, use **`GET /api/auth/users/basic`** (`{id, name, initials, avatar_url}`, qualquer autenticado). Usar o `/auth/users` num seletor quebra a tela para os membros comuns — já aconteceu.
 
 ## Segredos: NUNCA em arquivo versionado (OBRIGATÓRIO)
 
@@ -93,7 +93,8 @@ reparou porque parecia "só um teste".
 SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`; auth JWT Bearer (`get_current_user` em [dependencies.py](backend/app/dependencies.py)); bcrypt + HS256 em [core/security.py](backend/app/core/security.py). Config em `.env` via pydantic-settings ([config.py](backend/app/core/config.py): `DATABASE_URL`, `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `UPLOAD_DIR`, `CORS_ORIGINS`).
 
 **Routers (prefixos aninhados, todos sob `/api`):**
-- `auth` → `/api/auth` (register, login, me, CRUD de usuários admin)
+- `auth` → `/api/auth` (register, login, me, CRUD de usuários admin; **perfil próprio**: `PATCH /me` `{name}` recalcula as iniciais, `POST`/`DELETE /me/avatar` com campo multipart `file`)
+- `avatars` → `/api/avatars/{nome}` — foto de perfil **sem auth** (ver Fotos de perfil)
 - `boards` → `/api/boards` (inclui `/import` SSE, `/stats` e os membros do quadro: `GET`/`POST /{id}/members`, `DELETE /{id}/members/{user_id}`). `GET /api/boards` lista **todos** os quadros da empresa, cada um com `can_open`, `owner_name` e `members` (schema `BoardListOut`; os membros aí são enxutos — `BoardMemberBriefOut`, sem e-mail, porque a listagem é visível a todo mundo). `GET /api/boards/{id}` devolve o `BoardOut` puro. `/stats` conta os quadros que a pessoa **pode abrir** (mesmo critério de `can_open`): elevado (admin/coordenador) conta a empresa toda, membro comum conta os seus. (Até 2026-08-20 contava só as membresias — mudou porque o painel do admin ficava sempre em "1 quadro" mesmo com acesso a tudo.)
 - `lists` → `/api/boards/{board_id}/lists`
 - `cards` → `/api/lists/{list_id}/cards` (comentários, membros, labels, checklists)
@@ -108,6 +109,8 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 **Ordenação fracionária:** `Card.position` é `float` (default 65536); drag & drop = `PATCH` no card mudando `position` (e `list_id` ao trocar de lista). `List.position` é `int`.
 
 **Serialização de cards é manual:** `_card_to_dict` em [routers/cards.py](backend/app/routers/cards.py) achata labels/members/comments/attachments/checklists; endpoints usam `selectinload` (`_card_options()`). No JSON, label usa a chave **`label`** (não `name`); anexo expõe `is_image`.
+
+**Fotos de perfil (v2.5.0):** coluna `users.avatar` (nome do arquivo) → arquivo em `UPLOAD_DIR/avatars/<uuid>.<ext>`, servido **sem autenticação** em `GET /api/avatars/{nome}`. A segurança vem do nome: UUID não adivinhável, sem listagem, regex validada antes de tocar no disco. Cache imutável, porque trocar a foto gera nome novo. `User.avatar_url` devolve `"/avatars/<nome>"` **relativo ao `API_BASE`**, e o front monta a URL com `avatarSrc()` ([lib/api.ts](frontend/src/lib/api.ts)). **Toda serialização de usuário que leva `initials` precisa levar `avatar_url`**, senão o `<Avatar>` ([components/Avatar.tsx](frontend/src/components/Avatar.tsx)) cai nas iniciais. O recorte (arrastar + zoom, `react-easy-crop`) e a redução para 256×256 WebP acontecem no navegador ([ProfileModal.tsx](frontend/src/components/ProfileModal.tsx)/[AvatarCropper.tsx](frontend/src/components/AvatarCropper.tsx)); o backend valida tipo (jpeg/png/webp) e tamanho (2 MB). ⚠️ O `mimetypes` do Python 3.12 no container **não conhece `.webp`**: `FileResponse` sem `media_type` explícito sai como `text/plain`, e com `nosniff` parte dos navegadores esconde a imagem (bug da v2.6.1).
 
 **Anexos:** arquivos em disco em `UPLOAD_DIR` (default `/app/uploads`, volume `taskhs-uploads`), nome no disco = UUID; nome original no banco. Download é por endpoint autenticado (`FileResponse`), não estático. `CardAttachment` tem `stored_name`/`content_type`/`size`/`uploaded_by`; anexos antigos do Trello têm `url` (externa) e o download redireciona.
 

@@ -1,7 +1,7 @@
 # Perfil do usuário (nome e foto) — design
 
 **Data:** 2026-10-07
-**Status:** aprovado no brainstorming, aguardando revisão do Erick
+**Status:** entregue — v2.5.0 (merge a47322f); ajuste de enquadramento na v2.6.0 (927c2ed), que substituiu o recorte automático do centro; correção do Content-Type na v2.6.1 (576c2ca)
 
 ## Problema
 
