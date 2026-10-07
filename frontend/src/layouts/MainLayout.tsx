@@ -8,6 +8,7 @@ import { APP_VERSION } from "../data/changelog";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { GlobalSearch } from "../components/GlobalSearch";
 import { Avatar } from "../components/Avatar";
+import { ProfileModal } from "../components/ProfileModal";
 
 interface AppNotification {
   id: number;
@@ -63,6 +64,14 @@ function IconMoon() {
     </svg>
   );
 }
+function IconUser() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+}
+
 function IconBell() {
   return (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -111,6 +120,23 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showUserMenu) return;
+    function onClickOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowUserMenu(false); }
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showUserMenu]);
 
   const unread = notifications.filter(n => !n.read).length;
 
@@ -277,15 +303,6 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           <div className="flex items-center gap-1">
-            {/* Theme toggle */}
-            <button
-              className="rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-slate-100 transition-colors duration-200"
-              onClick={toggleTheme}
-              title={dark ? "Modo claro" : "Modo escuro"}
-            >
-              {dark ? <IconSun /> : <IconMoon />}
-            </button>
-
             {/* Bell */}
             <div className="relative" ref={bellRef}>
               <button
@@ -335,21 +352,31 @@ export function MainLayout({ children }: MainLayoutProps) {
             </div>
 
             {/* User */}
-            <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
-              <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+            <div className="relative ml-2 pl-2 border-l border-border" ref={userMenuRef}>
+              <button
+                onClick={() => setShowUserMenu(v => !v)}
+                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-background-elevated transition-colors duration-200"
+              >
                 <Avatar user={user ?? { name: "", initials: "?" }} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center text-white text-xs font-bold shadow-sm" />
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-semibold text-slate-100 leading-tight">{user?.name ?? ""}</p>
                   <p className="text-xs text-slate-500 leading-tight">{user?.role === "administrador" ? "Administrador" : user?.role === "coordenador" ? "Coordenador" : "Membro"}</p>
                 </div>
-              </div>
-              <button
-                onClick={handleLogout}
-                title="Sair"
-                className="rounded-lg p-2 text-slate-400 hover:bg-background-elevated hover:text-danger-400 transition-colors duration-200"
-              >
-                <IconLogout />
               </button>
+              {showUserMenu && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-background-surface border border-border shadow-2xl z-50 py-1.5">
+                  <button onClick={() => { setShowUserMenu(false); setShowProfile(true); }} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-200 hover:bg-background-elevated">
+                    <IconUser /> Meu perfil
+                  </button>
+                  <button onClick={toggleTheme} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-200 hover:bg-background-elevated">
+                    {dark ? <IconSun /> : <IconMoon />} {dark ? "Modo claro" : "Modo escuro"}
+                  </button>
+                  <div className="my-1.5 border-t border-border" />
+                  <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-200 hover:bg-background-elevated hover:text-danger-400">
+                    <IconLogout /> Sair
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -359,6 +386,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           {children}
         </main>
       </div>
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   );

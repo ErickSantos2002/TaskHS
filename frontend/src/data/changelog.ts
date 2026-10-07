@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.5.0",
+    date: "2026-10-07",
+    changes: [
+      { kind: "novidade", text: "Meu perfil: clicando no seu nome, no canto superior direito, abre um menu com \"Meu perfil\". Lá dá para mudar o seu nome e colocar uma foto. A foto aparece no lugar das iniciais em todo o sistema — nos cards, nos comentários e na lista de membros." },
+      { kind: "melhoria", text: "O botão de modo claro/escuro e o de sair foram para dentro desse mesmo menu do seu nome." },
+    ],
+  },
+  {
     version: "2.4.1",
     date: "2026-09-29",
     changes: [

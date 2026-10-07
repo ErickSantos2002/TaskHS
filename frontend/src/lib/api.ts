@@ -50,9 +50,9 @@ export const api = {
   get:  <T>(path: string)                => request<T>(path),
   patch:<T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   del:  <T>(path: string)                => request<T>(path, { method: "DELETE" }),
-  upload: async <T>(path: string, files: File[]): Promise<T> => {
+  upload: async <T>(path: string, files: File[], field = "files"): Promise<T> => {
     const fd = new FormData();
-    for (const f of files) fd.append("files", f);
+    for (const f of files) fd.append(field, f);
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { ...authHeaders() }, body: fd });
     if (res.status === 401) {
       onUnauthorized();
