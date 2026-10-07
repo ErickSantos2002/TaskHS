@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.6.1",
+    date: "2026-10-07",
+    changes: [
+      { kind: "correcao", text: "Foto de perfil que não aparecia para algumas pessoas: em alguns navegadores a foto ficava só nas iniciais, mesmo depois de atualizar a página. Agora ela aparece para todo mundo." },
+    ],
+  },
+  {
     version: "2.6.0",
     date: "2026-10-07",
     changes: [
