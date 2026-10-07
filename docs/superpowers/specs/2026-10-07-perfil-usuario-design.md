@@ -67,8 +67,8 @@ conta própria.
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(64);`
   (aplicada sozinha no boot por `app/migrations.py`).
 - `User.avatar: Mapped[str | None]` e property `User.avatar_url` →
-  `f"{API_PREFIX}/avatars/{avatar}"` relativo (`/api/avatars/<nome>`) ou `None`.
-  O front monta a URL absoluta a partir de `API_BASE` (ver Frontend).
+  `"/avatars/<nome>"` (relativo ao `API_BASE` do front, que já termina em
+  `/api`) ou `None`. O front monta `${API_BASE}${avatar_url}`.
 
 ### Schemas
 
@@ -109,9 +109,8 @@ Aceitável — troca de foto é rara.
 - **`types/index.ts` e `AuthContext`:** `avatar_url?: string | null` no tipo do
   usuário e nos tipos de membro/autor. `AuthContext` ganha `updateUser(user)`
   que atualiza o estado e o `localStorage` (`taskhs-user`).
-- **`lib/api.ts`:** helper `avatarSrc(url)` que prefixa a origem do `API_BASE`
-  (o backend devolve `/api/avatars/...`; em produção o front está em outro
-  domínio).
+- **`lib/api.ts`:** helper `avatarSrc(url)` → `${API_BASE}${url}` (em produção
+  o front está em outro domínio; funciona com qualquer `VITE_API_URL`).
 - **`components/Avatar.tsx`:** `<Avatar user={{name, initials, avatar_url}}
   className=... />` — `<img>` redondo se houver foto (fallback para iniciais em
   `onError`), senão o círculo com iniciais. Tamanho e estilo do círculo vêm de
