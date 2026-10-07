@@ -1,5 +1,10 @@
 export const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
+/** URL absoluta da foto de perfil. O backend devolve avatar_url relativo ao API_BASE. */
+export function avatarSrc(url: string): string {
+  return `${API_BASE}${url}`;
+}
+
 /** Erro de API que preserva o status HTTP — sem isto não dá para distinguir
  *  "não é membro" (403) de qualquer outra falha. */
 export class ApiError extends Error {

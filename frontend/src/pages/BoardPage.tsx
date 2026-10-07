@@ -15,6 +15,7 @@ import { cn } from "../lib/utils";
 import { api, ApiError } from "../lib/api";
 import { useBoardStream } from "../hooks/useBoardStream";
 import { BoardIcon } from "../components/BoardIcon";
+import { Avatar } from "../components/Avatar";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { carregarComRetry } from "../lib/carregarComRetry";
 // Com retry: o visualizador é buscado no clique, e uma requisição que falha
@@ -1267,9 +1268,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               <div className="flex flex-wrap items-center gap-2">
                 {members.map(m => (
                   <div key={m.id} className="flex items-center gap-1.5 pl-1 pr-1 py-1 rounded-full bg-background-elevated border border-border">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0">
-                      <span className="text-[9px] font-bold text-white leading-none">{m.initials}</span>
-                    </div>
+                    <Avatar user={m} className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0" textClassName="text-[9px] font-bold text-white leading-none" />
                     <span className="text-xs text-slate-300 pr-0.5">{m.name}</span>
                     <button onClick={() => handleRemoveMember(m.id)} className="w-4 h-4 rounded-full flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors">
                       <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1289,9 +1288,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                         <p className="text-xs text-slate-500 p-3 text-center">{allUsers.length === 0 ? "Carregando…" : "Todos já adicionados"}</p>
                       ) : availableUsers.map(u => (
                         <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-background-elevated transition-colors text-left">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-white leading-none">{u.initials}</span>
-                          </div>
+                          <Avatar user={u} className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0" textClassName="text-[10px] font-bold text-white leading-none" />
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-slate-200 truncate">{u.name}</p>
                           </div>
@@ -1713,9 +1710,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       onClick={() => inserirMencao(u)}
                       className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-background-elevated transition-colors text-left"
                     >
-                      <div className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0">
-                        {u.initials}
-                      </div>
+                      <Avatar user={u} className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300 shrink-0" />
                       <span className="text-xs text-slate-200 truncate">{u.name}</span>
                     </button>
                   ))}
@@ -1755,9 +1750,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                   order_by garantido). */}
               {[...comments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(c => (
                 <div key={c.id} className="flex gap-2.5 group/coment">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-[9px] font-bold text-white leading-none">{c.author.initials}</span>
-                  </div>
+                  <Avatar user={c.author} className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0 mt-0.5" textClassName="text-[9px] font-bold text-white leading-none" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 mb-1">
                       <span className="text-xs font-semibold text-slate-200">{c.author.name}</span>
@@ -2042,9 +2035,7 @@ function CardContentBase({ card, isDragging = false, isDone = false, onToggleDon
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: p.dot }} title={p.label} />
           {card.members[0] && (
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0">
-              <span className="text-[8px] font-bold text-white leading-none">{card.members[0].initials}</span>
-            </div>
+            <Avatar user={card.members[0]} className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center shrink-0" textClassName="text-[8px] font-bold text-white leading-none" />
           )}
         </div>
       </div>
@@ -3551,9 +3542,7 @@ export function BoardPage() {
                         const ehDono = m.board_role === "owner";
                         return (
                           <div key={m.id} className="flex items-center gap-2.5 rounded-lg bg-background-elevated px-3 py-2">
-                            <div className="w-7 h-7 rounded-full bg-background-surface border border-border flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0">
-                              {m.initials}
-                            </div>
+                            <Avatar user={m} className="w-7 h-7 rounded-full bg-background-surface border border-border flex items-center justify-center text-[10px] font-bold text-slate-300 shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium text-slate-200 truncate">{m.name}</p>
                               <p className="text-[10px] text-slate-500 truncate">{m.email}</p>

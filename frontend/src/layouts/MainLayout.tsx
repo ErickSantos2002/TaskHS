@@ -7,6 +7,7 @@ import logo from "../assets/logo.png";
 import { APP_VERSION } from "../data/changelog";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { GlobalSearch } from "../components/GlobalSearch";
+import { Avatar } from "../components/Avatar";
 
 interface AppNotification {
   id: number;
@@ -336,9 +337,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             {/* User */}
             <div className="flex items-center gap-1 ml-2 pl-2 border-l border-border">
               <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                  {user?.initials ?? "?"}
-                </div>
+                <Avatar user={user ?? { name: "", initials: "?" }} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-700 flex items-center justify-center text-white text-xs font-bold shadow-sm" />
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-semibold text-slate-100 leading-tight">{user?.name ?? ""}</p>
                   <p className="text-xs text-slate-500 leading-tight">{user?.role === "administrador" ? "Administrador" : user?.role === "coordenador" ? "Coordenador" : "Membro"}</p>

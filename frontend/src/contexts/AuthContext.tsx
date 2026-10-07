@@ -6,6 +6,8 @@ export interface User {
   name: string;
   email: string;
   initials: string;
+  /** Relativo ao API_BASE ("/avatars/<nome>"); null = sem foto, mostra iniciais. */
+  avatar_url?: string | null;
   is_admin: boolean;
   role: "administrador" | "coordenador" | "membro";
 }

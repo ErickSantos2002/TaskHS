@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { Avatar } from "../components/Avatar";
 import type { User } from "../types";
 
 type Role = "administrador" | "coordenador" | "membro";
@@ -237,9 +238,7 @@ export function UsersPage() {
                 <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-background-elevated transition-colors">
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                        <span className="text-xs font-bold text-primary">{u.initials}</span>
-                      </div>
+                      <Avatar user={u} className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0" textClassName="text-xs font-bold text-primary" />
                       <div>
                         <p className="font-semibold text-slate-800 dark:text-slate-100">{u.name}</p>
                         {u.id === me?.id && <span className="text-[10px] text-primary font-medium">você</span>}
