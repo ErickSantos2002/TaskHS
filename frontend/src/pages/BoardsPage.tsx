@@ -4,6 +4,7 @@ import { cn } from "../lib/utils";
 import { api, API_BASE } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { BoardIcon } from "../components/BoardIcon";
+import { Avatar } from "../components/Avatar";
 import type { BoardListItem, UserBasic } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -74,12 +75,8 @@ function MemberAvatars({ members }: { members: UserBasic[] }) {
   return (
     <div className="flex items-center -space-x-1.5">
       {visiveis.map(m => (
-        <div
-          key={m.id}
-          title={m.name}
-          className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300"
-        >
-          {m.initials}
+        <div key={m.id} title={m.name}>
+          <Avatar user={m} className="w-6 h-6 rounded-full bg-background-elevated border border-border flex items-center justify-center text-[9px] font-bold text-slate-300" />
         </div>
       ))}
       {resto > 0 && (

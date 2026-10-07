@@ -5,6 +5,8 @@ export interface User {
   name: string;
   email: string;
   initials: string;
+  /** Relativo ao API_BASE ("/avatars/<nome>"); null = sem foto, mostra iniciais. */
+  avatar_url?: string | null;
   is_admin: boolean;
   role: "administrador" | "coordenador" | "membro";
   created_at: string;
@@ -29,6 +31,8 @@ export interface UserBasic {
   id: number;
   name: string;
   initials: string;
+  /** Relativo ao API_BASE ("/avatars/<nome>"); null = sem foto, mostra iniciais. */
+  avatar_url?: string | null;
 }
 
 /** Membro de GET /boards/{id}/members — tem e-mail e papel no quadro, porque

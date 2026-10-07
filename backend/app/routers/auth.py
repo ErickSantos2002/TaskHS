@@ -1,10 +1,13 @@
 import asyncio
 import logging
+import os
 import secrets
+import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -17,6 +20,7 @@ from app.services import microsoft_auth
 from app.dependencies import get_current_user
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
+from app.routers.avatars import AVATAR_DIR
 
 logger = logging.getLogger("audit")
 
@@ -83,6 +87,75 @@ async def me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+def iniciais_do_nome(nome: str) -> str:
+    """'Erick Santos' -> 'ES'; 'Erick' -> 'E'. Primeiro + último nome."""
+    partes = nome.split()
+    if len(partes) == 1:
+        return partes[0][0].upper()
+    return (partes[0][0] + partes[-1][0]).upper()
+
+
+class ProfileUpdate(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(body: ProfileUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    current_user.name = body.name
+    current_user.initials = iniciais_do_nome(body.name)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+AVATAR_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+AVATAR_MAX = 2 * 1024 * 1024
+
+
+def _apaga_avatar(nome: str | None) -> None:
+    """Apaga o arquivo antigo. Falha aqui não pode desfazer a troca já gravada."""
+    if not nome:
+        return
+    try:
+        os.remove(os.path.join(AVATAR_DIR, nome))
+    except OSError:
+        logger.warning("não consegui apagar o avatar antigo %s", nome)
+
+
+@router.post("/me/avatar", response_model=UserOut)
+async def upload_my_avatar(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ext = AVATAR_TYPES.get(file.content_type or "")
+    if ext is None:
+        raise HTTPException(status_code=400, detail="Formato não aceito. Use JPG, PNG ou WEBP.")
+    conteudo = await file.read(AVATAR_MAX + 1)
+    if len(conteudo) > AVATAR_MAX:
+        raise HTTPException(status_code=413, detail="Foto grande demais (máximo 2 MB).")
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+    novo = f"{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(AVATAR_DIR, novo), "wb") as out:
+        out.write(conteudo)
+    antigo = current_user.avatar
+    current_user.avatar = novo
+    try:
+        await db.commit()
+    except Exception:
+        _apaga_avatar(novo)  # sem órfão no disco se o banco recusar
+        raise
+    _apaga_avatar(antigo)    # só depois do commit
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.delete("/me/avatar", response_model=UserOut)
+async def delete_my_avatar(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    antigo = current_user.avatar
+    current_user.avatar = None
+    await db.commit()
+    _apaga_avatar(antigo)
+    await db.refresh(current_user)
+    return current_user
+
+
 @router.get("/users", response_model=list[UserOut])
 async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     result = await db.execute(select(User).order_by(User.name))
@@ -99,6 +172,7 @@ class UserBasicOut(BaseModel):
     id: int
     name: str
     initials: str
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -153,8 +227,10 @@ async def admin_delete_user(user_id: int, db: AsyncSession = Depends(get_db), cu
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if user.role == Role.administrador and current_user.role != Role.administrador:
         raise HTTPException(status_code=403, detail="Apenas administradores podem excluir administradores")
+    nome_avatar = user.avatar
     await db.delete(user)
     await db.commit()
+    _apaga_avatar(nome_avatar)
 
 
 class SsoExchangeIn(BaseModel):

@@ -1,5 +1,10 @@
 export const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
+/** URL absoluta da foto de perfil. O backend devolve avatar_url relativo ao API_BASE. */
+export function avatarSrc(url: string): string {
+  return `${API_BASE}${url}`;
+}
+
 /** Erro de API que preserva o status HTTP — sem isto não dá para distinguir
  *  "não é membro" (403) de qualquer outra falha. */
 export class ApiError extends Error {
@@ -45,9 +50,9 @@ export const api = {
   get:  <T>(path: string)                => request<T>(path),
   patch:<T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   del:  <T>(path: string)                => request<T>(path, { method: "DELETE" }),
-  upload: async <T>(path: string, files: File[]): Promise<T> => {
+  upload: async <T>(path: string, files: File[], field = "files"): Promise<T> => {
     const fd = new FormData();
-    for (const f of files) fd.append("files", f);
+    for (const f of files) fd.append(field, f);
     const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { ...authHeaders() }, body: fd });
     if (res.status === 401) {
       onUnauthorized();

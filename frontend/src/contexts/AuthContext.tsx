@@ -6,6 +6,8 @@ export interface User {
   name: string;
   email: string;
   initials: string;
+  /** Relativo ao API_BASE ("/avatars/<nome>"); null = sem foto, mostra iniciais. */
+  avatar_url?: string | null;
   is_admin: boolean;
   role: "administrador" | "coordenador" | "membro";
 }
@@ -15,6 +17,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   loginWithToken: (token: string, user: User) => void;
   logout: () => void;
+  updateUser: (u: User) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -59,7 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, login, loginWithToken, logout }}>{children}</AuthContext.Provider>;
+  const updateUser = useCallback((u: User) => {
+    localStorage.setItem("taskhs-user", JSON.stringify(u));
+    setUser(u);
+  }, []);
+
+  return <AuthContext.Provider value={{ user, login, loginWithToken, logout, updateUser }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

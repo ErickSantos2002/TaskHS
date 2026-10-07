@@ -56,7 +56,7 @@ def _board_list_item(board: Board, user: User) -> dict:
         "can_open": user.is_elevated or user.id in ids_membros,
         "owner_name": board.owner.name,
         "members": [
-            {"id": m.user.id, "name": m.user.name, "initials": m.user.initials}
+            {"id": m.user.id, "name": m.user.name, "initials": m.user.initials, "avatar_url": m.user.avatar_url}
             for m in sorted(board.members, key=lambda m: m.user.name)
         ],
     }
@@ -86,6 +86,7 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
         "owner_name": current_user.name,
         "members": [{
             "id": current_user.id, "name": current_user.name, "initials": current_user.initials,
+            "avatar_url": current_user.avatar_url,
         }],
     }
 
@@ -462,6 +463,7 @@ async def list_members(board_id: int, db: AsyncSession = Depends(get_db), curren
     )
     return [
         {"id": u.id, "name": u.name, "email": u.email, "initials": u.initials,
+         "avatar_url": u.avatar_url,
          "board_role": bm.role, "assigned_cards": n}
         for bm, u, n in q.all()
     ]
