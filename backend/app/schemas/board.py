@@ -97,6 +97,7 @@ class BoardMemberOut(BaseModel):
     name: str
     email: str
     initials: str
+    avatar_url: str | None = None
     board_role: BoardRole
     assigned_cards: int
 
@@ -111,6 +112,7 @@ class BoardMemberBriefOut(BaseModel):
     id: int
     name: str
     initials: str
+    avatar_url: str | None = None
 
 
 class BoardListOut(BoardOut):

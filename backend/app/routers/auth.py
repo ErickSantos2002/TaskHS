@@ -99,6 +99,7 @@ class UserBasicOut(BaseModel):
     id: int
     name: str
     initials: str
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}
 

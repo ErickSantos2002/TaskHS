@@ -19,6 +19,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     initials: Mapped[str] = mapped_column(String(4))
+    avatar: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[Role] = mapped_column(SAEnum(Role, native_enum=False, length=20), default=Role.membro)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -30,6 +31,11 @@ class User(Base):
     @property
     def is_elevated(self) -> bool:
         return self.role in (Role.administrador, Role.coordenador)
+
+    @property
+    def avatar_url(self) -> str | None:
+        # Relativo ao API_BASE do front (que já termina em /api).
+        return f"/avatars/{self.avatar}" if self.avatar else None
 
     boards: Mapped[list["Board"]] = relationship("Board", back_populates="owner", foreign_keys="Board.owner_id")
     board_memberships: Mapped[list["BoardMember"]] = relationship("BoardMember", back_populates="user")

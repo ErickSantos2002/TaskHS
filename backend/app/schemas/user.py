@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     name: str
     email: str
     initials: str
+    avatar_url: str | None = None
     is_active: bool
     role: Role
     is_admin: bool
