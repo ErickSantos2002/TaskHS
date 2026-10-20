@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete as sql_delete, text
+from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
@@ -10,7 +10,7 @@ from app.models.card import Card, CardAttachment, CardComment, CardMember, CardL
 from app.models.board import BoardLabel, BoardMember
 from app.models.list import List
 from app.models.notification import Notification
-from app.models.reminder import Reminder, ReminderSent
+from app.models.reminder import Reminder
 from app.models.user import User
 from app.schemas.card import (
     CardCreate, CardUpdate, CardOut, CommentCreate, CommentUpdate, CommentOut,
@@ -124,8 +124,11 @@ def _card_to_dict(card: Card) -> dict:
 
 
 async def _get_card_or_404(card_id: int, list_id: int, db: AsyncSession) -> Card:
+    # Card na lixeira e inexistente aqui (lista e quadro mortos ja barram no gate
+    # do router). Restaurar e apagar de vez moram em routers/trash.py.
     result = await db.execute(
-        select(Card).where(Card.id == card_id, Card.list_id == list_id).options(*_card_options())
+        select(Card).where(Card.id == card_id, Card.list_id == list_id, Card.deleted_at.is_(None))
+        .options(*_card_options())
     )
     card = result.scalar_one_or_none()
     if not card:
@@ -147,7 +150,8 @@ async def create_card(list_id: int, body: CardCreate, db: AsyncSession = Depends
 @router.get("", response_model=list[CardOut])
 async def get_cards(list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(
-        select(Card).where(Card.list_id == list_id, Card.archived == False).order_by(Card.position).options(*_card_options())
+        select(Card).where(Card.list_id == list_id, Card.archived == False, Card.deleted_at.is_(None))
+        .order_by(Card.position).options(*_card_options())
     )
     return [_card_to_dict(c) for c in result.scalars().all()]
 
@@ -159,12 +163,7 @@ async def get_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db
 
 @router.patch("/{card_id}", response_model=CardOut)
 async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(
-        select(Card).where(Card.id == card_id, Card.list_id == list_id).options(*_card_options())
-    )
-    card = result.scalar_one_or_none()
-    if not card:
-        raise HTTPException(status_code=404, detail="Card não encontrado")
+    card = await _get_card_or_404(card_id, list_id, db)
     data = body.model_dump(exclude_none=True)
     # O destino vem no CORPO: a tranca do router so validou o list_id da URL.
     # Sem isto, um membro do quadro A move um card para o quadro B — e dispara as
@@ -246,12 +245,14 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
 
 @router.delete("/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Manda o card pra lixeira (v2.7.0) — nao apaga nada.
+
+    Notificacoes, lembretes e reminder_sent ficam: sem eles o card nao voltaria
+    inteiro. O loop de lembretes ignora card morto. Apagar de vez e so pelo
+    administrador, em routers/trash.py."""
     card = await _get_card_or_404(card_id, list_id, db)
-    # tabelas que referenciam o card sem cascade no ORM
-    await db.execute(sql_delete(Notification).where(Notification.card_id == card_id))
-    await db.execute(sql_delete(Reminder).where(Reminder.card_id == card_id))
-    await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id == card_id))
-    await db.delete(card)
+    card.deleted_at = datetime.now(timezone.utc)
+    card.deleted_by = current_user.id
     await db.commit()
 
 
@@ -329,12 +330,7 @@ async def archive_card(list_id: int, card_id: int, db: AsyncSession = Depends(ge
 
 @router.post("/{card_id}/restore", response_model=CardOut)
 async def restore_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(
-        select(Card).where(Card.id == card_id, Card.list_id == list_id).options(*_card_options())
-    )
-    card = result.scalar_one_or_none()
-    if not card:
-        raise HTTPException(status_code=404, detail="Card não encontrado")
+    card = await _get_card_or_404(card_id, list_id, db)
     card.archived = False
     await db.commit()
     return _card_to_dict(card)

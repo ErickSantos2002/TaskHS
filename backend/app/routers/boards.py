@@ -2,7 +2,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, delete as sql_delete
+from sqlalchemy import select, func, and_
 from sqlalchemy.exc import IntegrityError
 from datetime import date as _date
 from sqlalchemy.orm import selectinload
@@ -11,9 +11,7 @@ from app.models.board import Board, BoardMember, BoardRole, BoardLabel
 from app.models.list import List
 from app.models.card import Card, CardMember, CardLabel, CardComment, CardAttachment, Checklist, ChecklistItem
 from app.models.user import User
-from app.models.notification import Notification
-from app.models.reminder import Reminder, ReminderSent
-from app.models.automation import Automation
+from app.models.reminder import Reminder
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut
@@ -22,7 +20,7 @@ from app.dependencies import get_current_user, require_board_access_by_board_id,
 from app.routers.auth import get_elevated_user
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
-from datetime import datetime as _dt
+from datetime import datetime as _dt, timezone as _tz
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
 from app import realtime
@@ -31,7 +29,7 @@ router = APIRouter(prefix="/boards", tags=["boards"])
 
 
 async def _get_board_or_404(board_id: int, db: AsyncSession) -> Board:
-    result = await db.execute(select(Board).where(Board.id == board_id))
+    result = await db.execute(select(Board).where(Board.id == board_id, Board.deleted_at.is_(None)))
     board = result.scalar_one_or_none()
     if not board:
         raise HTTPException(status_code=404, detail="Board não encontrado")
@@ -101,6 +99,7 @@ async def list_boards(db: AsyncSession = Depends(get_db), current_user: User = D
             selectinload(Board.members).selectinload(BoardMember.user),
             selectinload(Board.owner),
         )
+        .where(Board.deleted_at.is_(None))
         .order_by(Board.created_at.desc())
     )
     return [_board_list_item(b, current_user) for b in result.scalars().all()]
@@ -113,10 +112,11 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
     # só os seus. Antes contava só as membresias, o que deixava o painel do admin
     # sempre em "1 quadro" mesmo com acesso à empresa toda.
     if current_user.is_elevated:
-        board_ids = (await db.execute(select(Board.id))).scalars().all()
+        board_ids = (await db.execute(select(Board.id).where(Board.deleted_at.is_(None)))).scalars().all()
     else:
         board_ids = (await db.execute(
-            select(Board.id).join(BoardMember, BoardMember.board_id == Board.id).where(BoardMember.user_id == current_user.id)
+            select(Board.id).join(BoardMember, BoardMember.board_id == Board.id)
+            .where(BoardMember.user_id == current_user.id, Board.deleted_at.is_(None))
         )).scalars().all()
     boards_count = len(board_ids)
 
@@ -124,7 +124,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
         return {"boards": 0, "cards_total": 0, "cards_overdue": 0, "cards_due_today": 0, "cards_completed": 0}
 
     list_ids_q = await db.execute(
-        select(List.id).where(List.board_id.in_(board_ids), List.archived == False)
+        select(List.id).where(List.board_id.in_(board_ids), List.archived == False, List.deleted_at.is_(None))
     )
     list_ids = list_ids_q.scalars().all()
 
@@ -132,7 +132,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
         return {"boards": boards_count, "cards_total": 0, "cards_overdue": 0, "cards_due_today": 0, "cards_completed": 0}
 
     today = _date.today()
-    base = and_(Card.list_id.in_(list_ids), Card.archived == False)
+    base = and_(Card.list_id.in_(list_ids), Card.archived == False, Card.deleted_at.is_(None))
 
     total     = (await db.execute(select(func.count(Card.id)).where(base))).scalar_one()
     overdue   = (await db.execute(select(func.count(Card.id)).where(base, Card.due_date != None, Card.due_date < today, Card.due_date_completed == False))).scalar_one()
@@ -297,7 +297,8 @@ async def board_snapshot(board_id: int,
                          db: AsyncSession = Depends(get_db)):
     board = await _get_board_or_404(board_id, db)
     lists = (await db.execute(
-        select(List).where(List.board_id == board_id, List.archived == False).order_by(List.position)
+        select(List).where(List.board_id == board_id, List.archived == False, List.deleted_at.is_(None))
+        .order_by(List.position)
     )).scalars().all()
     labels = (await db.execute(
         select(BoardLabel).where(BoardLabel.board_id == board_id).order_by(BoardLabel.id)
@@ -305,7 +306,7 @@ async def board_snapshot(board_id: int,
     cards_by_list: dict[int, list] = {}
     for l in lists:
         res = await db.execute(
-            select(Card).where(Card.list_id == l.id, Card.archived == False)
+            select(Card).where(Card.list_id == l.id, Card.archived == False, Card.deleted_at.is_(None))
             .order_by(Card.position).options(*_card_options())
         )
         # CardOut.model_validate NO DICT achatado do _card_to_dict — NÃO no card cru:
@@ -383,17 +384,11 @@ async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), curren
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode excluir o board")
-    # limpa tabelas que referenciam cards/board sem cascade no ORM
-    list_ids = (await db.execute(select(List.id).where(List.board_id == board_id))).scalars().all()
-    if list_ids:
-        card_ids = (await db.execute(select(Card.id).where(Card.list_id.in_(list_ids)))).scalars().all()
-        if card_ids:
-            await db.execute(sql_delete(Reminder).where(Reminder.card_id.in_(card_ids)))
-            await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id.in_(card_ids)))
-            await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
-    await db.execute(sql_delete(Notification).where(Notification.board_id == board_id))
-    await db.execute(sql_delete(Automation).where(Automation.board_id == board_id))
-    await db.delete(board)
+    # Lixeira (v2.7.0): marca SO o quadro. Listas, cards, lembretes, automacoes
+    # ficam intactos e somem por tabela; um administrador restaura ou apaga de vez
+    # em /api/trash/boards (routers/trash.py).
+    board.deleted_at = _dt.now(_tz.utc)
+    board.deleted_by = current_user.id
     await db.commit()
     realtime.publish_reload(board_id)
 
@@ -403,12 +398,12 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
     await _get_board_or_404(board_id, db)
 
     lists_result = await db.execute(
-        select(List).where(List.board_id == board_id, List.archived == True)
+        select(List).where(List.board_id == board_id, List.archived == True, List.deleted_at.is_(None))
     )
     archived_lists = lists_result.scalars().all()
 
     list_ids_result = await db.execute(
-        select(List.id).where(List.board_id == board_id)
+        select(List.id).where(List.board_id == board_id, List.deleted_at.is_(None))
     )
     all_list_ids = [row for row in list_ids_result.scalars().all()]
 
@@ -417,7 +412,7 @@ async def get_archived(board_id: int, db: AsyncSession = Depends(get_db), curren
     # etiqueta dava lazy-load em sessão async -> MissingGreenlet -> 500.
     cards_result = await db.execute(
         select(Card)
-        .where(Card.list_id.in_(all_list_ids), Card.archived == True)
+        .where(Card.list_id.in_(all_list_ids), Card.archived == True, Card.deleted_at.is_(None))
         .options(*_card_options())
     )
     archived_cards = cards_result.scalars().all()
@@ -449,7 +444,7 @@ async def list_members(board_id: int, db: AsyncSession = Depends(get_db), curren
         select(CardMember.user_id.label("user_id"), func.count(CardMember.id).label("n"))
         .join(Card, Card.id == CardMember.card_id)
         .join(List, List.id == Card.list_id)
-        .where(List.board_id == board_id)
+        .where(List.board_id == board_id, List.deleted_at.is_(None), Card.deleted_at.is_(None))
         .group_by(CardMember.user_id)
         .subquery()
     )

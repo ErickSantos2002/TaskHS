@@ -137,6 +137,8 @@ async def search(
         select(Card, ListModel.title, ListModel.archived, Board.id, Board.title, Board.color)
         .join(ListModel, ListModel.id == Card.list_id)
         .join(Board, Board.id == ListModel.board_id)
+        # Lixeira: card, lista ou quadro excluido nao aparece na busca.
+        .where(Card.deleted_at.is_(None), ListModel.deleted_at.is_(None), Board.deleted_at.is_(None))
     )
 
     # Todas as palavras, em qualquer ordem, em qualquer um dos campos.

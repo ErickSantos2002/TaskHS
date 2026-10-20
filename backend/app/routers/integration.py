@@ -1,14 +1,14 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app.dependencies import require_integration_key
 from app.models.list import List
-from app.models.board import BoardMember, BoardLabel
+from app.models.board import Board, BoardMember, BoardLabel
 from app.models.card import Card, CardMember, CardLabel, Priority
-from app.models.notification import Notification
-from app.models.reminder import Reminder, ReminderSent
+from app.models.reminder import Reminder
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
 from app.routers.cards import _card_options, _card_to_dict
 from app.schemas.card import CardOut
@@ -28,8 +28,13 @@ async def _get_list_or_404(db: AsyncSession, list_id: int) -> List:
     mostra CARDS arquivados). Aceitar o id devolveria 200 e a OS sumiria — o mesmo
     silencio que esta funcao existe para acabar.
     """
+    # Lista na lixeira (ou de quadro na lixeira) conta como inexistente, pelo
+    # mesmo motivo da arquivada.
     lst = (await db.execute(
-        select(List).where(List.id == list_id, List.archived == False)
+        select(List).join(Board, Board.id == List.board_id).where(
+            List.id == list_id, List.archived == False,
+            List.deleted_at.is_(None), Board.deleted_at.is_(None),
+        )
     )).scalar_one_or_none()
     if lst is None:
         raise HTTPException(status_code=404, detail="Lista não encontrada")
@@ -52,11 +57,28 @@ async def _top_position(db: AsyncSession, list_id: int) -> float:
     return (first or 0.0) - 65536.0
 
 
+async def _card_is_alive(db: AsyncSession, card: Card) -> bool:
+    """Card, a lista dele e o quadro fora da lixeira."""
+    if card.deleted_at is not None:
+        return False
+    q = await db.execute(
+        select(List.id).join(Board, Board.id == List.board_id).where(
+            List.id == card.list_id, List.deleted_at.is_(None), Board.deleted_at.is_(None),
+        ).limit(1)
+    )
+    return q.scalars().first() is not None
+
+
 async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "List", db: AsyncSession) -> None:
     """Aplica os campos do upsert num card que ja existe.
 
     Compartilhada pelo update normal e pela recuperacao do IntegrityError.
+
+    Card que nao esta vivo (ele, a lista ou o quadro na lixeira) recebe os dados
+    mas NUNCA o movimento: trocar o list_id para uma lista viva o ressuscitaria
+    por tabela, desfazendo a exclusao feita por uma pessoa a cada sincronizacao.
     """
+    allow_move = await _card_is_alive(db, card)
     card.title = body.title
     if "description" in sent:
         card.description = body.description
@@ -72,7 +94,7 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
         if key in sent:
             setattr(card, key, getattr(body, key))
 
-    if card.list_id != lst.id:
+    if allow_move and card.list_id != lst.id:
         quadro_origem = (await db.execute(
             select(List.board_id).where(List.id == card.list_id)
         )).scalar_one_or_none()
@@ -174,9 +196,9 @@ async def delete_external_card(body: IntegrationCardRef, db: AsyncSession = Depe
     )).scalar_one_or_none()
     if card is None:
         raise HTTPException(status_code=404, detail="Card não encontrado")
-    cid = card.id
-    await db.execute(sql_delete(Notification).where(Notification.card_id == cid))
-    await db.execute(sql_delete(Reminder).where(Reminder.card_id == cid))
-    await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id == cid))
-    await db.delete(card)
-    await db.commit()
+    # Lixeira (v2.7.0): a integracao tambem so manda pra lixeira. Ja estando la,
+    # nao mexe (preserva quem excluiu e quando).
+    if card.deleted_at is None:
+        card.deleted_at = datetime.now(timezone.utc)
+        card.deleted_by = None
+        await db.commit()

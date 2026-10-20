@@ -27,7 +27,7 @@ def _require_owner_or_admin(board: Board, user: User) -> None:
 
 async def _validate_list_in_board(list_id: int, board_id: int, db: AsyncSession) -> None:
     lst = (await db.execute(
-        select(List).where(List.id == list_id, List.board_id == board_id)
+        select(List).where(List.id == list_id, List.board_id == board_id, List.deleted_at.is_(None))
     )).scalar_one_or_none()
     if not lst:
         raise HTTPException(status_code=400, detail="Lista não pertence a este board")

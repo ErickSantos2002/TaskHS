@@ -63,7 +63,9 @@ def attachment_to_dict(a: CardAttachment) -> dict:
 
 
 async def _get_card_or_404(card_id: int, list_id: int, db: AsyncSession) -> Card:
-    result = await db.execute(select(Card).where(Card.id == card_id, Card.list_id == list_id))
+    result = await db.execute(
+        select(Card).where(Card.id == card_id, Card.list_id == list_id, Card.deleted_at.is_(None))
+    )
     card = result.scalar_one_or_none()
     if not card:
         raise HTTPException(status_code=404, detail="Card não encontrado")
