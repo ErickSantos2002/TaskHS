@@ -6,7 +6,7 @@ import { cn } from "../lib/utils";
 import { Pagination } from "../components/Pagination";
 import type { AuditLog, User } from "../types";
 
-const ACTIONS = ["criar", "editar", "mover", "excluir", "login", "login_falhou", "acesso_negado"];
+const ACTIONS = ["criar", "editar", "mover", "lixeira", "restaurar", "excluir", "login", "login_falhou", "acesso_negado"];
 const ENTITIES = [
   "quadro", "lista", "card", "etiqueta_quadro", "etiqueta_card", "membro_quadro", "membro_card",
   "comentario", "checklist", "item_checklist", "anexo", "lembrete", "automacao", "usuario", "sessao",
@@ -17,6 +17,8 @@ const ACTION_CLASS: Record<string, string> = {
   editar: "bg-sky-500/15 text-sky-400",
   mover: "bg-violet-500/15 text-violet-400",
   excluir: "bg-red-500/15 text-red-400",
+  lixeira: "bg-orange-500/15 text-orange-400",
+  restaurar: "bg-teal-500/15 text-teal-400",
   login: "bg-slate-500/15 text-slate-400",
   login_falhou: "bg-amber-500/15 text-amber-400",
   acesso_negado: "bg-red-500/15 text-red-400",
@@ -182,8 +184,8 @@ export function LogsPage() {
 
                   {/* Atalhos: não mostra link para a entidade que a própria linha excluiu (não existe mais). */}
                   {(() => {
-                    const mostraQuadro = !!l.board_id && !(l.action === "excluir" && l.entity_type === "quadro");
-                    const mostraCard = !!l.card_id && !!l.board_id && !(l.action === "excluir" && l.entity_type === "card");
+                    const mostraQuadro = !!l.board_id && !((l.action === "excluir" || l.action === "lixeira") && l.entity_type === "quadro");
+                    const mostraCard = !!l.card_id && !!l.board_id && !((l.action === "excluir" || l.action === "lixeira") && l.entity_type === "card");
                     if (!mostraQuadro && !mostraCard) return null;
                     const chip = "inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 font-semibold hover:bg-primary/20 transition-colors";
                     return (

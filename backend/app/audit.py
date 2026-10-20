@@ -93,6 +93,16 @@ SENSITIVE = {"password_hash"}
 IGNORED_FIELDS = {"created_at", "updated_at"}
 VERB = {"criar": "criou", "editar": "editou", "excluir": "excluiu", "mover": "moveu"}
 
+# Lixeira (v2.7.0): mover pra lixeira / restaurar sao UPDATEs de deleted_at, mas
+# no log viram acoes proprias — "editou o card" esconderia que ele sumiu.
+_LIXEIRA_TYPES = (Card, List, Board)
+
+
+def _resumo_lixeira(action, artigo_substantivo, titulo):
+    if action == "lixeira":
+        return f'moveu {artigo_substantivo} "{titulo}" para a lixeira'
+    return f'restaurou {artigo_substantivo} "{titulo}" da lixeira'
+
 
 def _json_safe(v):
     if isinstance(v, Enum):
@@ -159,17 +169,25 @@ def _describe(session, obj, action, changes):
 
     if t is Board:
         board_id, label = obj.id, obj.title
-        summary = f'{verb} o quadro "{obj.title}"'
+        if action in ("lixeira", "restaurar"):
+            summary = _resumo_lixeira(action, "o quadro", obj.title)
+        else:
+            summary = f'{verb} o quadro "{obj.title}"'
 
     elif t is List:
         board_id, label = obj.board_id, obj.title
-        summary = f'{verb} a lista "{obj.title}"'
+        if action in ("lixeira", "restaurar"):
+            summary = _resumo_lixeira(action, "a lista", obj.title)
+        else:
+            summary = f'{verb} a lista "{obj.title}"'
 
     elif t is Card:
         card_id, label = obj.id, obj.title
         lst = session.get(List, obj.list_id)
         board_id = lst.board_id if lst else None
-        if action == "mover":
+        if action in ("lixeira", "restaurar"):
+            summary = _resumo_lixeira(action, "o card", obj.title)
+        elif action == "mover":
             de = (changes.get("list_id") or {}).get("de")
             para = (changes.get("list_id") or {}).get("para")
             l_de = session.get(List, de) if de else None
@@ -309,7 +327,9 @@ def _audit_before_flush(session, flush_context, instances):
             continue
         if type(obj) is CardAttachment and set(changes) <= {"comment_id"}:
             continue  # anexo so ganhou dono (o comentario); o "anexou" ja foi registrado
-        if type(obj) is Card:
+        if type(obj) in _LIXEIRA_TYPES and "deleted_at" in changes:
+            action = "lixeira" if changes["deleted_at"].get("para") is not None else "restaurar"
+        elif type(obj) is Card:
             if set(changes) <= {"position"}:
                 continue  # só reordenou dentro da lista → não audita
             action = "mover" if "list_id" in changes else "editar"
