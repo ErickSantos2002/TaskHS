@@ -17,6 +17,7 @@ import { useBoardStream } from "../hooks/useBoardStream";
 import { BoardIcon } from "../components/BoardIcon";
 import { Avatar } from "../components/Avatar";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { BoardTrashPanel, ILixeira } from "../components/Lixeira";
 import { carregarComRetry } from "../lib/carregarComRetry";
 // Com retry: o visualizador é buscado no clique, e uma requisição que falha
 // (rede oscilando, deploy reiniciando o container) não pode virar erro fatal.
@@ -1132,7 +1133,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
                   {menuVista === "excluir" && (
                     <div className="p-3 space-y-2.5">
-                      <p className="text-xs text-slate-300">Excluir este card? Esta ação <span className="font-semibold text-slate-200">não pode ser desfeita</span>.</p>
+                      <p className="text-xs text-slate-300">Excluir este card? Ele vai para a <span className="font-semibold text-slate-200">Lixeira</span> do quadro, de onde qualquer membro pode restaurar.</p>
                       <div className="flex gap-2">
                         <button onClick={() => setMenuVista("raiz")} className="text-xs px-3 py-1.5 rounded-lg border border-border text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
                         <button onClick={handleDeleteCard} disabled={deleting} className="flex-1 text-xs py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold">
@@ -2349,7 +2350,7 @@ function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canM
                   </button>
                   {confirmDelete ? (
                     <div className="px-3 py-2.5 border-t border-border space-y-2">
-                      <p className="text-xs text-slate-400">Excluir lista e todos os cards?</p>
+                      <p className="text-xs text-slate-400">Excluir a lista? Ela e os cards dela vão para a Lixeira do quadro.</p>
                       <div className="flex gap-1.5">
                         <button onClick={() => setConfirmDelete(false)} className="flex-1 py-1 text-xs rounded-lg border border-border text-slate-400 hover:bg-background-elevated transition-colors">Não</button>
                         <button onClick={handleDelete} disabled={deleting} className="flex-1 py-1 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition-colors font-semibold">
@@ -2584,6 +2585,7 @@ export function BoardPage() {
   const [newLabelColor, setNewLabelColor] = useState("#0ea5e9");
   const [editingLabel, setEditingLabel] = useState<BoardLabel | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [archivedCards, setArchivedCards] = useState<(Card & { list_title: string })[]>([]);
   const [archivedLists, setArchivedLists] = useState<BoardList[]>([]);
   const [archivedTab, setArchivedTab] = useState<"cards" | "lists">("cards");
@@ -2651,15 +2653,27 @@ export function BoardPage() {
   }
 
   const resync = useCallback(async () => {
-    const snap = await api.get<{
-      board: Board; lists: BoardList[]; labels: BoardLabel[];
-      cards_by_list: Record<number, Card[]>;
-    }>(`/boards/${boardId}/snapshot`);
+    let snap;
+    try {
+      snap = await api.get<{
+        board: Board; lists: BoardList[]; labels: BoardLabel[];
+        cards_by_list: Record<number, Card[]>;
+      }>(`/boards/${boardId}/snapshot`);
+    } catch (e) {
+      // 404 = o quadro foi para a lixeira (inclusive por outra pessoa com ele
+      // aberto: o reload chega pelo SSE e cai aqui). Volta para a lista de
+      // quadros em vez de deixar a tela em branco.
+      if (e instanceof ApiError && e.status === 404) {
+        navigate("/boards", { replace: true });
+        return;
+      }
+      throw e;
+    }
     setBoard(snap.board);
     setLists(snap.lists);
     setBoardLabels(snap.labels);
     setCardsByList(snap.cards_by_list);
-  }, [boardId]);
+  }, [boardId, navigate]);
 
   // Alterna "concluído" COMPARTILHADO: é um campo do card, então PATCH normal —
   // que já dispara o SSE e atualiza todo mundo ao vivo. Otimista (atualiza o
@@ -3266,6 +3280,13 @@ export function BoardPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                   Arquivados
                 </button>
+                <button
+                  onClick={() => setShowTrash(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                  title="Cards e listas excluídos"
+                >
+                  <ILixeira />Lixeira
+                </button>
                 {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={openEditBoard}
@@ -3620,7 +3641,7 @@ export function BoardPage() {
               <p className="text-xs font-semibold text-slate-400 mb-3">Zona de perigo</p>
               {confirmDeleteBoard ? (
                 <div className="space-y-2">
-                  <p className="text-xs text-slate-400">Tem certeza? Todas as listas e cards serão excluídos permanentemente.</p>
+                  <p className="text-xs text-slate-400">Tem certeza? O quadro some para todos e vai para a Lixeira de quadros — só um administrador pode restaurar.</p>
                   <div className="flex gap-2">
                     <button onClick={() => setConfirmDeleteBoard(false)} className="flex-1 py-2 rounded-lg border border-border text-xs font-medium text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
                     <button onClick={handleDeleteBoard} disabled={deletingBoard} className="flex-1 py-2 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors">
@@ -3720,6 +3741,15 @@ export function BoardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showTrash && (
+        <BoardTrashPanel
+          boardId={boardId}
+          isAdmin={currentUser?.role === "administrador"}
+          onClose={() => setShowTrash(false)}
+          onChanged={() => { resync().catch(() => {}); }}
+        />
       )}
 
       {/* Archived Panel */}
