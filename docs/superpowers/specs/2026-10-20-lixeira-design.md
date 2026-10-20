@@ -1,7 +1,8 @@
 # Lixeira (exclusão reversível de cards, listas e quadros) — design
 
-**Data:** 2026-10-20 · **Status:** rascunho, escrito sem revisão do Erick (ele saiu e pediu
-spec + plano + execução autônoma; revisar ao voltar).
+**Data:** 2026-10-20 · **Status:** implementado na branch `feat/lixeira` (v2.7.0), escrito e
+executado sem revisão do Erick (ele saiu e pediu spec + plano + execução autônoma) — aguarda
+revisão dele antes do merge.
 
 ## Por quê
 
