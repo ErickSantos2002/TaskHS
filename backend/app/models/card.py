@@ -37,6 +37,10 @@ class Card(Base):
     # não por usuário. Ver migration 010. (A versão anterior era por usuário.)
     done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Lixeira (v2.7.0, migration 013): NULL = vivo. Card vivo exige tambem lista e
+    # quadro vivos — a lixeira nao propaga para os filhos.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     external_source: Mapped[str | None] = mapped_column(String(50))
     external_id: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

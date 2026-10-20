@@ -24,6 +24,7 @@ class ListOut(BaseModel):
     color: str
     position: int
     archived: bool = False
+    deleted_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

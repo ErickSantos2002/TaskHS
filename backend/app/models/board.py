@@ -27,6 +27,9 @@ class Board(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     integration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     obs_labels: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    # Lixeira (migration 013). NULL = vivo.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     owner: Mapped["User"] = relationship("User", back_populates="boards", foreign_keys=[owner_id])
     members: Mapped[list["BoardMember"]] = relationship("BoardMember", back_populates="board", cascade="all, delete-orphan")

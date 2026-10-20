@@ -104,6 +104,7 @@ def _card_to_dict(card: Card) -> dict:
         "due_date_completed": card.due_date_completed,
         "done": card.done,
         "archived": card.archived,
+        "deleted_at": card.deleted_at,
         "external_source": card.external_source,
         "external_id": card.external_id,
         "created_at": card.created_at,

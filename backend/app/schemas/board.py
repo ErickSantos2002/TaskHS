@@ -78,6 +78,7 @@ class BoardOut(BaseModel):
     created_at: datetime
     integration_enabled: bool
     obs_labels: list[str]
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
