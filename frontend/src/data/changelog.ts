@@ -14,6 +14,15 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.7.0",
+    date: "2026-10-20",
+    changes: [
+      { kind: "novidade", text: "Lixeira: excluir um card ou uma lista não apaga mais nada. O item vai para a Lixeira do quadro (botão ao lado de Arquivados), e qualquer membro pode restaurá-lo. O card volta inteiro: comentários, checklists, anexos, etiquetas e membros." },
+      { kind: "novidade", text: "Quadro excluído também vai para uma lixeira, que só administradores veem na página de Quadros. De lá dá para restaurar o quadro com tudo dentro." },
+      { kind: "melhoria", text: "Só administradores podem apagar de vez um item que está na lixeira, e sempre com confirmação. A lixeira nunca se esvazia sozinha." },
+    ],
+  },
+  {
     version: "2.6.1",
     date: "2026-10-07",
     changes: [

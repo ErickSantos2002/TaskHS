@@ -8,7 +8,7 @@ from app.models.reminder import Reminder, ReminderSent
 from app.models.card import Card, CardMember
 from app.models.list import List
 from app.models.notification import Notification
-from app.models.board import BoardMember
+from app.models.board import Board, BoardMember
 
 logger = logging.getLogger("reminders")
 
@@ -20,6 +20,18 @@ def _fmt(d) -> str:
 async def _board_id_for_card(db, list_id: int) -> int | None:
     res = await db.execute(select(List.board_id).where(List.id == list_id))
     return res.scalar_one_or_none()
+
+
+async def _card_vivo(db, card: Card) -> bool:
+    """Card, lista e quadro fora da lixeira (a lixeira nao propaga para os filhos)."""
+    if card.deleted_at is not None:
+        return False
+    q = await db.execute(
+        select(List.id).join(Board, Board.id == List.board_id).where(
+            List.id == card.list_id, List.deleted_at.is_(None), Board.deleted_at.is_(None),
+        ).limit(1)
+    )
+    return q.scalars().first() is not None
 
 
 async def _eh_membro_do_quadro(db, board_id: int | None, user_id: int) -> bool:
@@ -54,7 +66,9 @@ async def run_reminder_cycle() -> None:
         )).scalars().all()
         for r in due:
             card = (await db.execute(select(Card).where(Card.id == r.card_id))).scalar_one_or_none()
-            if card is not None:
+            # Card na lixeira: consome sem notificar, como o lembrete de quem saiu do
+            # quadro (ver o fired=True abaixo). A linha do lembrete continua existindo.
+            if card is not None and await _card_vivo(db, card):
                 board_id = await _board_id_for_card(db, card.list_id)
                 if await _eh_membro_do_quadro(db, board_id, r.user_id):
                     db.add(Notification(
@@ -69,7 +83,11 @@ async def run_reminder_cycle() -> None:
 
         # --- automatic due-date reminders ---
         cards = (await db.execute(
-            select(Card).where(
+            select(Card)
+            .join(List, List.id == Card.list_id)
+            .join(Board, Board.id == List.board_id)
+            .where(
+                Card.deleted_at.is_(None), List.deleted_at.is_(None), Board.deleted_at.is_(None),
                 Card.archived == False,
                 Card.due_date_completed == False,
                 Card.due_date != None,

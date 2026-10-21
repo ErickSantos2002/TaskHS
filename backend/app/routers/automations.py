@@ -27,7 +27,7 @@ def _require_owner_or_admin(board: Board, user: User) -> None:
 
 async def _validate_list_in_board(list_id: int, board_id: int, db: AsyncSession) -> None:
     lst = (await db.execute(
-        select(List).where(List.id == list_id, List.board_id == board_id)
+        select(List).where(List.id == list_id, List.board_id == board_id, List.deleted_at.is_(None))
     )).scalar_one_or_none()
     if not lst:
         raise HTTPException(status_code=400, detail="Lista não pertence a este board")
@@ -37,7 +37,13 @@ async def _validate_list_in_board(list_id: int, board_id: int, db: AsyncSession)
 async def list_automations(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     await _get_board_or_404(board_id, db)
     rows = (await db.execute(
-        select(Automation).where(Automation.board_id == board_id).order_by(Automation.id)
+        select(Automation)
+        .outerjoin(List, List.id == Automation.trigger_list_id)
+        # Gatilho numa lista na lixeira: a regra some junto com a lista (nao
+        # dispara — nenhum card entra em lista morta) e volta quando ela volta.
+        # Listada, apontaria para uma lista que a tela nao conhece e nao salvaria.
+        .where(Automation.board_id == board_id, List.deleted_at.is_(None))
+        .order_by(Automation.id)
     )).scalars().all()
     return rows
 

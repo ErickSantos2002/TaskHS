@@ -105,6 +105,7 @@ class CardOut(BaseModel):
     due_date_completed: bool = False
     done: bool = False
     archived: bool = False
+    deleted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     labels: list[LabelOut] = []

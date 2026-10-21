@@ -60,6 +60,10 @@ async def _serialize(board_id: int, kind: str, entity_id: int, action: str) -> d
             card = res.scalar_one_or_none()
             if card is None:
                 return None
+            if card.deleted_at is not None:
+                # Ir pra lixeira e um UPDATE (chega aqui como upsert). Sem isto o
+                # card reapareceria ao vivo na tela de quem esta com o quadro aberto.
+                return {"type": "card", "action": "delete", "id": entity_id, "board_id": board_id}
             return {"type": "card", "action": "upsert", "board_id": board_id,
                     "card": jsonable_encoder(CardOut.model_validate(_card_to_dict(card)).model_dump())}
         if kind == "list":
@@ -67,6 +71,8 @@ async def _serialize(board_id: int, kind: str, entity_id: int, action: str) -> d
             lst = await db.get(List, entity_id)
             if lst is None:
                 return None
+            if lst.deleted_at is not None:
+                return {"type": "list", "action": "delete", "id": entity_id, "board_id": board_id}
             return {"type": "list", "action": "upsert", "board_id": board_id,
                     "list": jsonable_encoder(ListOut.model_validate(lst).model_dump())}
         if kind == "board":

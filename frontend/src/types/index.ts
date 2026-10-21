@@ -206,3 +206,38 @@ export interface SearchResult {
   snippet: string;
   matched_field: "titulo" | "descricao" | "obs" | "comentario";
 }
+
+// Lixeira (v2.7.0) — espelha routers/trash.py. deleted_by_name nunca vem nulo:
+// o backend troca por "integração ou usuário removido".
+export interface TrashCard {
+  id: number;
+  title: string;
+  list_id: number;
+  list_title: string;
+  deleted_at: string;
+  deleted_by_name: string;
+  comments: number;
+  attachments: number;
+  checklists: number;
+}
+
+export interface TrashList {
+  id: number;
+  title: string;
+  color: string;
+  deleted_at: string;
+  deleted_by_name: string;
+  cards: number;
+}
+
+export interface TrashBoard {
+  id: number;
+  title: string;
+  color: string;
+  icon: string | null;
+  owner_name: string;
+  deleted_at: string;
+  deleted_by_name: string;
+  lists: number;
+  cards: number;
+}

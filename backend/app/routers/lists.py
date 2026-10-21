@@ -1,16 +1,13 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete as sql_delete
+from sqlalchemy import select
 from app.database import get_db
 from app.models.list import List
-from app.models.card import Card
 from app.models.user import User
 from app.schemas.list import ListCreate, ListUpdate, ListOut
 from app.dependencies import get_current_user, require_board_access_by_board_id
 from app.routers.auth import get_elevated_user
-from app.models.automation import Automation
-from app.models.reminder import Reminder, ReminderSent
-from app.models.notification import Notification
 from app import realtime
 
 router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"],
@@ -18,7 +15,9 @@ router = APIRouter(prefix="/boards/{board_id}/lists", tags=["lists"],
 
 
 async def _get_list_or_404(list_id: int, board_id: int, db: AsyncSession) -> List:
-    result = await db.execute(select(List).where(List.id == list_id, List.board_id == board_id))
+    result = await db.execute(
+        select(List).where(List.id == list_id, List.board_id == board_id, List.deleted_at.is_(None))
+    )
     lst = result.scalar_one_or_none()
     if not lst:
         raise HTTPException(status_code=404, detail="Lista não encontrada")
@@ -36,7 +35,7 @@ async def create_list(board_id: int, body: ListCreate, db: AsyncSession = Depend
 
 @router.get("", response_model=list[ListOut])
 async def get_lists(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(List).where(List.board_id == board_id, List.archived == False).order_by(List.position))
+    result = await db.execute(select(List).where(List.board_id == board_id, List.archived == False, List.deleted_at.is_(None)).order_by(List.position))
     return result.scalars().all()
 
 
@@ -52,17 +51,12 @@ async def update_list(board_id: int, list_id: int, body: ListUpdate, db: AsyncSe
 
 @router.delete("/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
+    """Manda a lista pra lixeira (v2.7.0). Marca SO a lista: os cards dela somem
+    por tabela e voltam juntos ao restaurar. Automacoes do gatilho ficam (nenhum
+    card entra em lista morta, entao nao disparam). Apagar de vez: routers/trash.py."""
     lst = await _get_list_or_404(list_id, board_id, db)
-    await db.execute(sql_delete(Automation).where(Automation.trigger_list_id == list_id))
-    # Reminder/ReminderSent/Notification apontam para card_id mas nao tem cascade no ORM
-    # nem no banco (as FKs para cards sao NO ACTION), entao apagar a lista com um card
-    # que tenha lembrete estourava FK -> 500. Mesmo padrao do delete_board.
-    card_ids = (await db.execute(select(Card.id).where(Card.list_id == list_id))).scalars().all()
-    if card_ids:
-        await db.execute(sql_delete(Reminder).where(Reminder.card_id.in_(card_ids)))
-        await db.execute(sql_delete(ReminderSent).where(ReminderSent.card_id.in_(card_ids)))
-        await db.execute(sql_delete(Notification).where(Notification.card_id.in_(card_ids)))
-    await db.delete(lst)
+    lst.deleted_at = datetime.now(timezone.utc)
+    lst.deleted_by = current_user.id
     await db.commit()
     realtime.publish_reload(board_id)
 
@@ -78,10 +72,7 @@ async def archive_list(board_id: int, list_id: int, db: AsyncSession = Depends(g
 
 @router.post("/{list_id}/restore", response_model=ListOut)
 async def restore_list(board_id: int, list_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
-    result = await db.execute(select(List).where(List.id == list_id, List.board_id == board_id))
-    lst = result.scalar_one_or_none()
-    if not lst:
-        raise HTTPException(status_code=404, detail="Lista não encontrada")
+    lst = await _get_list_or_404(list_id, board_id, db)
     lst.archived = False
     await db.commit()
     await db.refresh(lst)

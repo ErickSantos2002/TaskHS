@@ -14,6 +14,9 @@ class List(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     color: Mapped[str] = mapped_column(String(7), default="#64748b")
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Lixeira (migration 013). NULL = viva.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     board: Mapped["Board"] = relationship("Board", back_populates="lists")

@@ -5,6 +5,7 @@ import { api, API_BASE } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { BoardIcon } from "../components/BoardIcon";
 import { Avatar } from "../components/Avatar";
+import { BoardsTrashPanel, ILixeira } from "../components/Lixeira";
 import type { BoardListItem, UserBasic } from "../types";
 
 // ── Icons ─────────────────────────────────────────────────────
@@ -511,6 +512,8 @@ export function BoardsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isElevated = user?.role === "administrador" || user?.role === "coordenador";
+  const isAdmin = user?.role === "administrador";
+  const [showTrash, setShowTrash] = useState(false);
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -627,9 +630,19 @@ export function BoardsPage() {
                 {search && ` encontrado${sorted.length !== 1 ? "s" : ""}`}
               </p>
             </div>
-            {/* Importar e Novo Board: só administrador/coordenador (membro não cria/importa quadro). */}
+            {/* Importar e Novo Board: só administrador/coordenador (membro não cria/importa quadro).
+                Lixeira de quadros: só administrador (é quem restaura e apaga de vez). */}
             {isElevated && (
               <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowTrash(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
+                    title="Quadros excluídos"
+                  >
+                    <ILixeira />Lixeira
+                  </button>
+                )}
                 <button
                   onClick={() => setShowImport(true)}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -765,6 +778,12 @@ export function BoardsPage() {
       </div>
 
       {showModal && <CreateBoardModal onClose={() => setShowModal(false)} onCreated={handleCreated} />}
+      {showTrash && (
+        <BoardsTrashPanel
+          onClose={() => setShowTrash(false)}
+          onRestored={() => { api.get<BoardListItem[]>("/boards").then(setBoards).catch(() => {}); }}
+        />
+      )}
       {showImport && (
         <ImportModal
           onClose={() => setShowImport(false)}

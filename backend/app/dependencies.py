@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
-from app.models.board import BoardMember
+from app.models.board import Board, BoardMember
 from app.models.list import List as ListModel
 from app.audit_context import set_actor_identity
 
@@ -37,6 +37,29 @@ async def require_integration_key(
     set_actor_identity("integracao", None, "integração", None)
 
 
+async def board_is_alive(board_id: int, db: AsyncSession) -> bool:
+    """Quadro existe e nao esta na lixeira."""
+    q = await db.execute(
+        select(Board.id).where(Board.id == board_id, Board.deleted_at.is_(None)).limit(1)
+    )
+    return q.scalars().first() is not None
+
+
+async def list_is_alive(list_id: int, db: AsyncSession) -> bool:
+    """Lista existe, nao esta na lixeira e o quadro dela tambem nao.
+
+    A lixeira nao propaga para os filhos (excluir o quadro marca so o quadro),
+    entao "viva" tem que olhar os dois niveis.
+    """
+    q = await db.execute(
+        select(ListModel.id)
+        .join(Board, Board.id == ListModel.board_id)
+        .where(ListModel.id == list_id, ListModel.deleted_at.is_(None), Board.deleted_at.is_(None))
+        .limit(1)
+    )
+    return q.scalars().first() is not None
+
+
 async def require_board_access_by_board_id(
     board_id: int,
     current_user: User = Depends(get_current_user),
@@ -48,20 +71,26 @@ async def require_board_access_by_board_id(
     produto registrada na spec: coordenador é o papel de qualidade e ver todos
     os fluxos internos é a função dele.
     """
-    if current_user.is_elevated:
-        return current_user
-    q = await db.execute(
-        select(BoardMember.id).where(
-            BoardMember.board_id == board_id,
-            BoardMember.user_id == current_user.id,
-        ).limit(1)
-    )
-    if q.scalars().first() is None:
-        raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+    if not current_user.is_elevated:
+        q = await db.execute(
+            select(BoardMember.id).where(
+                BoardMember.board_id == board_id,
+                BoardMember.user_id == current_user.id,
+            ).limit(1)
+        )
+        if q.scalars().first() is None:
+            raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+    # Acesso ANTES de existencia (403 antes de 404). Quadro na lixeira e
+    # inexistente para tudo que passa por aqui; a lixeira de quadros e do admin
+    # e mora em /api/trash, fora desta tranca.
+    if not await board_is_alive(board_id, db):
+        raise HTTPException(status_code=404, detail="Board não encontrado")
     return current_user
 
 
 async def user_can_access_board(board_id: int, user: User, db: AsyncSession) -> bool:
+    if not await board_is_alive(board_id, db):
+        return False
     if user.is_elevated:
         return True
     q = await db.execute(
@@ -99,6 +128,11 @@ async def assert_board_access_by_list_id(list_id: int, user: User, db: AsyncSess
     """
     if not await user_can_access_list(list_id, user, db):
         raise HTTPException(status_code=403, detail="Você não é membro deste quadro")
+    # Depois do 403, de proposito. Vale para elevado tambem (que passa direto
+    # acima sem a lista nem precisar existir): lista na lixeira, ou de quadro na
+    # lixeira, nao recebe card movido/copiado nem aceita operacao nenhuma.
+    if not await list_is_alive(list_id, db):
+        raise HTTPException(status_code=404, detail="Lista não encontrada")
 
 
 async def require_board_access_by_list_id(
