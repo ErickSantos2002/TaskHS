@@ -121,7 +121,7 @@ se a lista mudou, **move** o card. Tudo numa única transação.
 |---|---|:---:|---|
 | `source` | string | ✅ | Sistema de origem, ex.: `"gestorhs"`. |
 | `external_id` | string | ✅ | Id da entidade no sistema externo. Aceita qualquer string. |
-| `list_id` | int | ✅ | Id da lista onde o card deve ficar; o quadro é deduzido dela. A lista **tem que existir** e não estar arquivada — senão `404`. |
+| `list_id` | int | ✅ | Id da lista onde o card deve ficar; o quadro é deduzido dela. A lista **tem que existir** e não estar arquivada nem na lixeira (nem o quadro dela) — senão `404`. |
 | `title` | string | ✅ | Título do card. |
 | `description` | string \| null | — | Descrição (texto livre). A integração não escreve mais aqui — campo livre do usuário (ver §4.5). |
 | `due_date` | string (`YYYY-MM-DD`) \| null | — | Data de entrega. |
@@ -192,7 +192,20 @@ curl -X DELETE "$BASE/integration/cards" \
 ```
 
 **Resposta `204 No Content`** (sucesso) ou **`404`** se não houver card com esse par.
-Ao remover, o TaskHS limpa também as notificações e lembretes ligados ao card.
+
+**Desde a v2.7.0 o card vai para a Lixeira do quadro, não é apagado.** Comentários,
+anexos, lembretes etc. ficam guardados, e um membro pode restaurá-lo pela tela. O
+DELETE é idempotente: repetir com um card que já está na lixeira devolve `204`.
+
+**Upsert de um card que está na lixeira:**
+- se foi a **própria integração** que o excluiu (este `DELETE`), o upsert o **traz de
+  volta** — o mesmo efeito que antes, quando o DELETE apagava a linha e o POST seguinte
+  recriava o card;
+- se foi **uma pessoa** que o excluiu pela tela, o upsert atualiza os dados mas o card
+  **continua na lixeira** (a resposta traz `deleted_at` preenchido). A decisão de quem
+  excluiu prevalece sobre a sincronização.
+- O mesmo vale para card cuja **lista ou quadro** foi para a lixeira: recebe os dados,
+  mas não é movido para fora dela.
 
 ### 3.3 Códigos de status
 
@@ -373,5 +386,5 @@ Onde plugar no GestorHS: na criação da OS e na transição de fase
 | Upsert | `POST /integration/cards` → `200` |
 | Remover | `DELETE /integration/cards` → `204` / `404` |
 | Identidade do card | `(source, external_id)` |
-| Lista (e quadro) | por **`list_id`**; a lista tem que existir e não estar arquivada (senão `404`) |
+| Lista (e quadro) | por **`list_id`**; a lista tem que existir e não estar arquivada nem na lixeira (senão `404`) |
 | Idempotente | sim — reenviar o estado completo é seguro |

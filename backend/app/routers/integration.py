@@ -12,6 +12,7 @@ from app.models.reminder import Reminder
 from app.schemas.integration import IntegrationCardIn, IntegrationCardRef
 from app.routers.cards import _card_options, _card_to_dict
 from app.schemas.card import CardOut
+from app.models.audit import AuditLog
 from app.audit_context import set_actor_identity
 
 router = APIRouter(prefix="/integration", tags=["integration"], dependencies=[Depends(require_integration_key)])
@@ -69,6 +70,21 @@ async def _card_is_alive(db: AsyncSession, card: Card) -> bool:
     return q.scalars().first() is not None
 
 
+async def _lixeira_pela_integracao(db: AsyncSession, card_id: int) -> bool:
+    """O ultimo movimento de lixeira deste card foi feito pela PROPRIA integracao?
+
+    Sai do audit_log porque deleted_by nulo nao distingue "integracao" de
+    "usuario apagado" (FK com ON DELETE SET NULL).
+    """
+    ultimo = (await db.execute(
+        select(AuditLog.action, AuditLog.actor_type).where(
+            AuditLog.card_id == card_id, AuditLog.entity_type == "card",
+            AuditLog.action.in_(("lixeira", "restaurar")),
+        ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(1)
+    )).first()
+    return ultimo is not None and ultimo.action == "lixeira" and ultimo.actor_type == "integracao"
+
+
 async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "List", db: AsyncSession) -> None:
     """Aplica os campos do upsert num card que ja existe.
 
@@ -78,6 +94,13 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
     mas NUNCA o movimento: trocar o list_id para uma lista viva o ressuscitaria
     por tabela, desfazendo a exclusao feita por uma pessoa a cada sincronizacao.
     """
+    # Excluido pela propria integracao (DELETE /integration/cards) e reenviado:
+    # o sistema de origem "desexcluiu", entao volta. Antes da lixeira o DELETE
+    # apagava a linha e o upsert seguinte criava um card visivel — isto mantem
+    # esse contrato. Excluido por uma PESSOA continua na lixeira.
+    if card.deleted_at is not None and await _lixeira_pela_integracao(db, card.id):
+        card.deleted_at = None
+        card.deleted_by = None
     allow_move = await _card_is_alive(db, card)
     card.title = body.title
     if "description" in sent:
