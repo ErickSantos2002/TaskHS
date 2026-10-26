@@ -182,6 +182,19 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
         select(List.board_id).where(List.id == card.list_id)
     )).scalar_one_or_none()
 
+    # Mover para OUTRO quadro sem posicao (menu "Mover para…"): a tela nao tem os
+    # cards de la para fazer a conta, entao o topo e calculado aqui — mesma regra
+    # do mover dentro do quadro (metade da posicao do primeiro).
+    if (quadro_destino is not None and quadro_destino != quadro_origem
+            and "position" not in data):
+        primeira = (await db.execute(
+            select(func.min(Card.position)).where(
+                Card.list_id == data["list_id"],
+                Card.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        data["position"] = primeira / 2 if primeira is not None else 65536
+
     old_list_id = card.list_id
     for k, v in data.items():
         setattr(card, k, v)
@@ -220,18 +233,31 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
 
         # Mesma logica para as etiquetas: BoardLabel e do quadro, nao do card. Sem
         # isto o card levaria pro quadro B uma etiqueta com nome/cor do quadro A —
-        # exatamente o que o add_label bloqueia na entrada.
-        etiquetas_do_destino = (
-            select(BoardLabel.id).where(BoardLabel.board_id == quadro_destino)
-        )
-        etiquetas_fora = (await db.execute(
-            select(CardLabel).where(
-                CardLabel.card_id == card.id,
-                CardLabel.label_id.notin_(etiquetas_do_destino),
-            )
+        # exatamente o que o add_label bloqueia na entrada. Antes de descartar,
+        # troca pela etiqueta de MESMO NOME do destino (sem diferenciar maiuscula);
+        # sem par, cai — criar etiqueta e papel da Qualidade, nao do mover.
+        etiquetas_destino = (await db.execute(
+            select(BoardLabel).where(BoardLabel.board_id == quadro_destino)
         )).scalars().all()
-        for cl in etiquetas_fora:
+        por_nome = {}
+        for bl in etiquetas_destino:
+            por_nome.setdefault(bl.name.strip().lower(), bl.id)
+        ids_destino = {bl.id for bl in etiquetas_destino}
+
+        etiquetas_card = (await db.execute(
+            select(CardLabel, BoardLabel.name)
+            .join(BoardLabel, BoardLabel.id == CardLabel.label_id)
+            .where(CardLabel.card_id == card.id)
+        )).all()
+        ja_tem = {cl.label_id for cl, _ in etiquetas_card if cl.label_id in ids_destino}
+        for cl, nome in etiquetas_card:
+            if cl.label_id in ids_destino:
+                continue
+            par = por_nome.get(nome.strip().lower())
             await db.delete(cl)
+            if par is not None and par not in ja_tem:
+                db.add(CardLabel(card_id=card.id, label_id=par))
+                ja_tem.add(par)
 
     if old_list_id != new_list_id:
         await run_card_moved_automations(db, card, old_list_id, new_list_id)

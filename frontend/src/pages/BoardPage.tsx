@@ -23,7 +23,7 @@ import { carregarComRetry } from "../lib/carregarComRetry";
 // (rede oscilando, deploy reiniciando o container) não pode virar erro fatal.
 const PdfViewer = lazy(() => carregarComRetry(() => import("../components/PdfViewer")));
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
-import type { Board, BoardList, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
+import type { Board, BoardList, BoardListItem, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
 
 // Imagem no comentário: só imagem, e menos tipos que o bloco Anexos (que aceita
 // PDF/XML/planilha). Decisão de produto, ver spec 2026-09-18.
@@ -287,6 +287,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [menuAberto, setMenuAberto] = useState(false);
   const [menuVista, setMenuVista] = useState<"raiz" | "mover" | "arquivar" | "excluir">("raiz");
   const [movendo, setMovendo] = useState<number | null>(null);
+  // Mover para outro quadro: os quadros vêm sob demanda (só ao abrir "Mover
+  // para…") e as listas de lá ao trocar o seletor. null = ainda carregando.
+  const [quadrosMover, setQuadrosMover] = useState<BoardListItem[] | null>(null);
+  const [quadroMoverId, setQuadroMoverId] = useState<number>(boardId);
+  const [listasOutroQuadro, setListasOutroQuadro] = useState<BoardList[] | null>(null);
   const [arquivando, setArquivando] = useState(false);
   const [erroAcao, setErroAcao] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
@@ -552,11 +557,39 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     setErroAcao("");
   }
 
+  // Quadros para o seletor do "Mover para…": só os que a pessoa abre, carregados
+  // uma vez por modal, na primeira vez que o submenu aparece.
+  useEffect(() => {
+    if (menuVista !== "mover" || quadrosMover !== null) return;
+    api.get<BoardListItem[]>("/boards")
+      .then(bs => setQuadrosMover(bs.filter(b => b.can_open)))
+      .catch(() => setQuadrosMover([]));
+  }, [menuVista, quadrosMover]);
+
+  useEffect(() => {
+    if (quadroMoverId === boardId) { setListasOutroQuadro(null); return; }
+    let vivo = true;
+    setListasOutroQuadro(null);
+    api.get<BoardList[]>(`/boards/${quadroMoverId}/lists`)
+      .then(ls => { if (vivo) setListasOutroQuadro(ls); })
+      .catch(() => { if (vivo) { setListasOutroQuadro([]); setErroAcao("Não foi possível carregar as listas desse quadro."); } });
+    return () => { vivo = false; };
+  }, [quadroMoverId, boardId]);
+
   async function handleMoverParaLista(destino: BoardList) {
     if (destino.id === card.list_id || movendo !== null) return;
     setErroAcao("");
     setMovendo(destino.id);
     try {
+      if (destino.board_id !== boardId) {
+        // Outro quadro: o servidor põe no topo da lista de lá, troca as
+        // etiquetas pelas de mesmo nome e tira quem não é membro de lá. Daqui
+        // o card só some — o quadro atual não tem mais nada a mostrar dele.
+        await api.patch(`/lists/${card.list_id}/cards/${card.id}`, { list_id: destino.id });
+        onCardDelete(card.id);
+        onClose();
+        return;
+      }
       await onCardMove(destino.id);
       setMenuAberto(false);
       setMenuVista("raiz");
@@ -1094,8 +1127,30 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                         </button>
                         <span className="text-xs font-semibold text-slate-300">Mover para</span>
                       </div>
+                      <div className="px-3 py-2 border-b border-border">
+                        <select
+                          value={quadroMoverId}
+                          onChange={e => setQuadroMoverId(Number(e.target.value))}
+                          disabled={movendo !== null}
+                          aria-label="Quadro de destino"
+                          className="w-full text-xs bg-background rounded-md border border-border px-2 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        >
+                          {(quadrosMover ?? []).some(b => b.id === boardId) ? null : (
+                            <option value={boardId}>Quadro atual</option>
+                          )}
+                          {(quadrosMover ?? []).map(b => (
+                            <option key={b.id} value={b.id}>{b.id === boardId ? `${b.title} (atual)` : b.title}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="max-h-64 overflow-y-auto">
-                        {lists.map(l => {
+                        {quadroMoverId !== boardId && listasOutroQuadro === null && (
+                          <p className="px-3 py-2.5 text-xs text-slate-500">Carregando listas…</p>
+                        )}
+                        {quadroMoverId !== boardId && listasOutroQuadro?.length === 0 && (
+                          <p className="px-3 py-2.5 text-xs text-slate-500">Esse quadro não tem listas.</p>
+                        )}
+                        {(quadroMoverId === boardId ? lists : (listasOutroQuadro ?? [])).map(l => {
                           const atual = l.id === card.list_id;
                           return (
                             <button
