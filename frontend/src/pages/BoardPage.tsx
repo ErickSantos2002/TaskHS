@@ -232,7 +232,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardMovedToBoard, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -243,6 +243,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   obsLabels: string[];
   onClose: () => void;
   onCardMove: (destListId: number) => Promise<void>;
+  onCardMovedToBoard: (destBoardId: number, destListId: number) => void;
   onCardUpdate: (updated: Partial<Card> & { id: number }) => void;
   onCardDelete: (cardId: number) => void;
   onCardCopy: (newCard: Card) => void;
@@ -583,11 +584,10 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
     try {
       if (destino.board_id !== boardId) {
         // Outro quadro: o servidor põe no topo da lista de lá, troca as
-        // etiquetas pelas de mesmo nome e tira quem não é membro de lá. Daqui
-        // o card só some — o quadro atual não tem mais nada a mostrar dele.
+        // etiquetas pelas de mesmo nome e tira quem não é membro de lá. A tela
+        // vai junto — ficar no quadro de onde o card sumiu confundia o time.
         await api.patch(`/lists/${card.list_id}/cards/${card.id}`, { list_id: destino.id });
-        onCardDelete(card.id);
-        onClose();
+        onCardMovedToBoard(destino.board_id, destino.id);
         return;
       }
       await onCardMove(destino.id);
@@ -3465,6 +3465,7 @@ export function BoardPage() {
           obsLabels={board?.obs_labels ?? []}
           onClose={fecharCard}
           onCardMove={destListId => moverCardParaLista(selectedCard.id, selectedCard.list_id, destListId)}
+          onCardMovedToBoard={(destBoardId, destListId) => navigate(`/boards/${destBoardId}?card=${selectedCard.id}&list=${destListId}`)}
           onCardUpdate={handleCardUpdate}
           onCardDelete={handleCardDelete}
           onCardCopy={handleCardCopy}

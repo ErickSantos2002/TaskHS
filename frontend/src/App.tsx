@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -11,6 +11,14 @@ import { BoardsPage } from "./pages/BoardsPage";
 import { BoardPage } from "./pages/BoardPage";
 import { UsersPage } from "./pages/UsersPage";
 import { LogsPage } from "./pages/LogsPage";
+
+/** Um BoardPage por quadro: ir de /boards/1 para /boards/2 (mover card para
+ *  outro quadro, link de notificação) remonta a página do zero, em vez de
+ *  arrastar estado do quadro anterior (cards, modais, filtros) para o novo. */
+function BoardPagePorQuadro() {
+  const { id } = useParams<{ id: string }>();
+  return <BoardPage key={id} />;
+}
 
 /** Boundary do conteúdo, com a volta ao início feita POR DENTRO do app.
  *
@@ -46,7 +54,7 @@ function App() {
                       <Route index element={<DashboardPage />} />
                       <Route path="dashboard" element={<DashboardPage />} />
                       <Route path="boards" element={<BoardsPage />} />
-                      <Route path="boards/:id" element={<BoardPage />} />
+                      <Route path="boards/:id" element={<BoardPagePorQuadro />} />
                       <Route path="usuarios" element={<UsersPage />} />
                       <Route path="logs" element={<LogsPage />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

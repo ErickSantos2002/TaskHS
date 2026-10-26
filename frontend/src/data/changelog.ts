@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.8.1",
+    date: "2026-10-26",
+    changes: [
+      { kind: "correcao", text: "Ao mover um card para outro quadro, a tela agora vai junto: abre o quadro de destino já com o card aberto, em vez de ficar no quadro de onde ele saiu." },
+    ],
+  },
+  {
     version: "2.8.0",
     date: "2026-10-26",
     changes: [
