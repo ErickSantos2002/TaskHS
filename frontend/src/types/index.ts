@@ -66,7 +66,17 @@ export interface BoardList {
   position: number;
   archived: boolean;
   is_done: boolean;
+  /** Setor da lista (travados por setor do Dashboard); null = sem setor. */
+  setor_id: number | null;
   created_at: string;
+}
+
+export interface Setor {
+  id: number;
+  nome: string;
+  ativo: boolean;
+  /** Listas vivas marcadas com o setor. */
+  listas: number;
 }
 
 export interface Label {
