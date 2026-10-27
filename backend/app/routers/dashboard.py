@@ -13,6 +13,12 @@ Rankings (v2.11.0): "movimentar" é MOVER o card de lista, feito por uma pessoa
 integração fica de fora. Os rankings de "mais cards" são a foto de agora; os de
 movimento dependem do período (dias corridos, no horário de Brasília).
 
+Travados por setor (v2.12.0): segunda régua, por lista — card há mais de 24 h
+úteis (`LIMITE_HORAS_LISTA`) na lista atual (`Card.list_entered_at`), numa lista
+com setor (`List.setor_id`) e fora das listas de concluído. Somado por setor,
+para a Qualidade ver onde o processo trava. Ver spec
+2026-10-27-travados-por-setor-design.md.
+
 Fora dos chokepoints da lixeira: toda query aqui filtra `deleted_at IS NULL` em
 card, lista e quadro à mão.
 """
@@ -24,11 +30,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, user_can_access_board
-from app.horas_uteis import horas_uteis, LIMITE_HORAS, TZ_BR
+from app.horas_uteis import horas_uteis, LIMITE_HORAS, LIMITE_HORAS_LISTA, TZ_BR
 from app.models.audit import AuditLog
 from app.models.board import Board, BoardMember
 from app.models.card import Card, CardMember
 from app.models.list import List
+from app.models.setor import Setor
 from app.models.user import User
 from app.schemas.dashboard import DashboardOut
 
@@ -77,7 +84,7 @@ async def get_dashboard(
 
     lista_viva = (List.deleted_at.is_(None), List.board_id.in_(board_ids))
     listas = (await db.execute(
-        select(List.id, List.title, List.is_done)
+        select(List.id, List.title, List.is_done, List.setor_id)
         .join(Board, Board.id == List.board_id)
         .where(*lista_viva, Board.deleted_at.is_(None), List.archived == False)
         .order_by(List.board_id, List.position)
@@ -85,8 +92,8 @@ async def get_dashboard(
 
     ativos = (await db.execute(
         select(
-            Card.id, Card.title, Card.list_id, Card.created_at,
-            List.title, List.is_done, Board.id, Board.title,
+            Card.id, Card.title, Card.list_id, Card.created_at, Card.list_entered_at,
+            List.title, List.is_done, List.setor_id, Board.id, Board.title,
         )
         .join(List, List.id == Card.list_id)
         .join(Board, Board.id == List.board_id)
@@ -113,9 +120,10 @@ async def get_dashboard(
     cards_por_quadro: dict[int, int] = {}
     nome_quadro: dict[int, str] = {}
     atrasados = []
+    travados_setor = []
     em_concluido = 0
-    for (card_id, title, list_id, created_at,
-         list_title, list_done, b_id, b_title) in ativos:
+    for (card_id, title, list_id, created_at, entrou_na_lista,
+         list_title, list_done, setor_id, b_id, b_title) in ativos:
         total_por_lista[list_id] = total_por_lista.get(list_id, 0) + 1
         cards_por_quadro[b_id] = cards_por_quadro.get(b_id, 0) + 1
         nome_quadro[b_id] = b_title
@@ -130,6 +138,26 @@ async def get_dashboard(
                 "board_title": b_title, "list_title": list_title, "title": title,
                 "created_at": created_at, "horas_uteis": round(horas, 1),
             })
+        if setor_id is not None:
+            horas_lista = horas_uteis(entrou_na_lista, agora)
+            if horas_lista > LIMITE_HORAS_LISTA:
+                travados_setor.append({
+                    "card_id": card_id, "list_id": list_id, "board_id": b_id,
+                    "board_title": b_title, "list_title": list_title, "title": title,
+                    "setor_id": setor_id, "list_entered_at": entrou_na_lista,
+                    "horas_uteis": round(horas_lista, 1),
+                })
+    travados_setor.sort(key=lambda t: -t["horas_uteis"])
+
+    # Setores do recorte: os que têm ao menos uma lista contável (ativa e fora
+    # de concluído) — assim "Financeiro 0" aparece, e setor sem lista aqui não.
+    setores_no_recorte = {setor for _, _, done, setor in listas if setor is not None and not done}
+    nome_setor = dict((await db.execute(
+        select(Setor.id, Setor.nome).where(Setor.id.in_(setores_no_recorte))
+    )).all()) if setores_no_recorte else {}
+    travados_por_setor = dict.fromkeys(nome_setor, 0)
+    for t in travados_setor:
+        travados_por_setor[t["setor_id"]] = travados_por_setor.get(t["setor_id"], 0) + 1
 
     # ── Movimentos no período: dias corridos inteiros, terminando hoje ──
     hoje = agora.date()
@@ -214,7 +242,12 @@ async def get_dashboard(
         "listas": [] if board_id is None else [
             {"id": l_id, "title": l_title, "is_done": l_done,
              "total": total_por_lista.get(l_id, 0), "atrasados": atrasados_por_lista.get(l_id, 0)}
-            for l_id, l_title, l_done in listas
+            for l_id, l_title, l_done, _ in listas
         ],
         "atrasados": atrasados,
+        "travados_por_setor": sorted(
+            ({"setor_id": i, "nome": nome_setor.get(i, ""), "total": n} for i, n in travados_por_setor.items()),
+            key=lambda x: (-x["total"], x["nome"]),
+        ),
+        "travados_setor": travados_setor,
     }

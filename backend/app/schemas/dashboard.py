@@ -31,6 +31,25 @@ class DashboardAtrasado(BaseModel):
     horas_uteis: float
 
 
+class TravadoPorSetor(BaseModel):
+    setor_id: int
+    nome: str
+    total: int
+
+
+class DashboardTravado(BaseModel):
+    """Uma linha do modal de setor: card há mais de 24 h úteis na mesma lista."""
+    card_id: int
+    list_id: int
+    board_id: int
+    board_title: str
+    list_title: str
+    title: str
+    setor_id: int
+    list_entered_at: datetime
+    horas_uteis: float
+
+
 class MovimentoDia(BaseModel):
     dia: date
     total: int
@@ -63,3 +82,6 @@ class DashboardOut(BaseModel):
     quadros_com_mais_cards: list[RankingQuadro]
     pessoas_que_mais_movimentam: list[RankingPessoa]
     pessoas_com_mais_cards: list[RankingPessoa]
+    # Régua por lista: card parado mais de 24 h úteis numa lista com setor.
+    travados_por_setor: list[TravadoPorSetor]
+    travados_setor: list[DashboardTravado]
