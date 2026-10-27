@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 
 
@@ -6,8 +6,6 @@ class DashboardKpis(BaseModel):
     cards_ativos: int
     listas: int
     arquivados: int
-    prazo_vencido: int
-    vencem_hoje: int
     em_concluido: int
     atrasados: int
 
@@ -33,8 +31,35 @@ class DashboardAtrasado(BaseModel):
     horas_uteis: float
 
 
+class MovimentoDia(BaseModel):
+    dia: date
+    total: int
+
+
+class RankingQuadro(BaseModel):
+    id: int
+    nome: str
+    color: str | None
+    total: int
+
+
+class RankingPessoa(BaseModel):
+    id: int
+    nome: str
+    initials: str
+    avatar_url: str | None
+    total: int
+
+
 class DashboardOut(BaseModel):
     board_id: int | None
+    periodo: int
     kpis: DashboardKpis
     listas: list[DashboardLista]
     atrasados: list[DashboardAtrasado]
+    # Movimento = card mudado de lista por uma pessoa (audit_log "mover").
+    movimentos_por_dia: list[MovimentoDia]
+    quadros_mais_movimentados: list[RankingQuadro]
+    quadros_com_mais_cards: list[RankingQuadro]
+    pessoas_que_mais_movimentam: list[RankingPessoa]
+    pessoas_com_mais_cards: list[RankingPessoa]
