@@ -16,6 +16,8 @@ class List(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # Lista "de concluido" (migration 014): card aqui sai do alerta de 72 h do Dashboard.
     is_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    # Setor da lista (migration 016): soma dos "travados por setor" do Dashboard.
+    setor_id: Mapped[int | None] = mapped_column(ForeignKey("setores.id", ondelete="SET NULL"), nullable=True)
     # Lixeira (migration 013). NULL = viva.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

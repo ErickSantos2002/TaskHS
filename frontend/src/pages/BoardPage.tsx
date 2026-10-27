@@ -23,7 +23,7 @@ import { carregarComRetry } from "../lib/carregarComRetry";
 // (rede oscilando, deploy reiniciando o container) não pode virar erro fatal.
 const PdfViewer = lazy(() => carregarComRetry(() => import("../components/PdfViewer")));
 import { BOARD_ICON_NAMES } from "../lib/boardIcons";
-import type { Board, BoardList, BoardListItem, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic } from "../types";
+import type { Board, BoardList, BoardListItem, Card, Comment, Activity, ActivityPage, Priority, Label, BoardLabel, Checklist, ChecklistItem, Attachment, Reminder, Automation, BoardMemberOut, UserBasic, Setor } from "../types";
 
 // Imagem no comentário: só imagem, e menos tipos que o bloco Anexos (que aceita
 // PDF/XML/planilha). Decisão de produto, ver spec 2026-09-18.
@@ -2681,6 +2681,11 @@ export function BoardPage() {
   const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
   const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [editDoneListIds, setEditDoneListIds] = useState<Set<number>>(new Set());
+  // Setor de cada lista (travados por setor do Dashboard). Os setores vêm com
+  // os inativos (?todos=1) só para mostrar o atual de uma lista; o seletor
+  // oferece os ativos.
+  const [editSetorPorLista, setEditSetorPorLista] = useState<Map<number, number | null>>(new Map());
+  const [setoresDisponiveis, setSetoresDisponiveis] = useState<Setor[]>([]);
   const [erroSalvarBoard, setErroSalvarBoard] = useState<string | null>(null);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
@@ -2850,6 +2855,7 @@ export function BoardPage() {
     setConfirmandoRemocao(null);
     // Os dois juntos de propósito: com só um deles, a tela ofereceria adicionar
     // quem já é membro — e o backend recusaria com 409.
+    api.get<Setor[]>("/setores?todos=1").then(setSetoresDisponiveis).catch(() => setSetoresDisponiveis([]));
     Promise.all([
       api.get<BoardMemberOut[]>(`/boards/${boardId}/members`),
       api.get<UserBasic[]>("/auth/users/basic"),
@@ -3083,6 +3089,7 @@ export function BoardPage() {
     setEditIntegrationEnabled(board.integration_enabled);
     setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setEditDoneListIds(new Set(lists.filter(l => l.is_done).map(l => l.id)));
+    setEditSetorPorLista(new Map(lists.map(l => [l.id, l.setor_id ?? null])));
     setErroSalvarBoard(null);
     setConfirmDeleteBoard(false);
     // Não depender só do efeito de carregamento: zera erro e a lista de membros
@@ -3122,6 +3129,22 @@ export function BoardPage() {
         } catch {
           // O PATCH acima já gravou nome/cor/etc.; só as listas de concluído falharam.
           setErroSalvarBoard("Não foi possível salvar as listas de concluído. Tente de novo.");
+          return;
+        }
+      }
+      // Só as listas cujo setor mudou: o endpoint não mexe nas que não recebe.
+      const setoresMudados = Object.fromEntries(
+        ativas
+          .filter(l => editSetorPorLista.has(l.id) && (editSetorPorLista.get(l.id) ?? null) !== (l.setor_id ?? null))
+          .map(l => [l.id, editSetorPorLista.get(l.id) ?? null]),
+      );
+      if (Object.keys(setoresMudados).length > 0) {
+        try {
+          const atualizadas = await api.put<BoardList[]>(`/boards/${boardId}/list-setores`, { setores: setoresMudados });
+          const setor = new Map(atualizadas.map(l => [l.id, l.setor_id]));
+          setLists(prev => prev.map(l => ({ ...l, setor_id: setor.has(l.id) ? setor.get(l.id)! : l.setor_id })));
+        } catch {
+          setErroSalvarBoard("Não foi possível salvar os setores das listas. Tente de novo.");
           return;
         }
       }
@@ -3684,26 +3707,47 @@ export function BoardPage() {
               </div>
               <div className="space-y-2 pt-3 border-t border-border">
                 <div>
-                  <p className="text-xs font-semibold text-slate-400">Listas de concluído</p>
+                  <p className="text-xs font-semibold text-slate-400">Listas: concluído e setor</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Cards nessas listas não entram no alerta de 72 h do Dashboard.
+                    Marque as listas de concluído: os cards nelas não entram nos alertas do Dashboard.
+                    O setor soma no Dashboard os cards parados há mais de 24 h úteis na lista.
                   </p>
                 </div>
-                {lists.filter(l => !l.archived).map(l => (
-                  <label key={l.id} className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={editDoneListIds.has(l.id)}
-                      onChange={e => setEditDoneListIds(prev => {
-                        const prox = new Set(prev);
-                        if (e.target.checked) prox.add(l.id); else prox.delete(l.id);
-                        return prox;
-                      })}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm text-slate-300 truncate">{l.title}</span>
-                  </label>
-                ))}
+                {lists.filter(l => !l.archived).map(l => {
+                  const atual = editSetorPorLista.get(l.id) ?? null;
+                  const opcoes = setoresDisponiveis.filter(st => st.ativo || st.id === atual);
+                  return (
+                    <div key={l.id} className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none flex-1 min-w-0" title="Lista de concluído">
+                        <input
+                          type="checkbox"
+                          checked={editDoneListIds.has(l.id)}
+                          onChange={e => setEditDoneListIds(prev => {
+                            const prox = new Set(prev);
+                            if (e.target.checked) prox.add(l.id); else prox.delete(l.id);
+                            return prox;
+                          })}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm text-slate-300 truncate">{l.title}</span>
+                      </label>
+                      <select
+                        value={atual ?? ""}
+                        onChange={e => {
+                          const v = e.target.value ? Number(e.target.value) : null;
+                          setEditSetorPorLista(prev => new Map(prev).set(l.id, v));
+                        }}
+                        aria-label={`Setor da lista ${l.title}`}
+                        className="text-xs bg-background-elevated rounded-lg border border-border px-2 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 w-36 shrink-0"
+                      >
+                        <option value="">— sem setor —</option>
+                        {opcoes.map(st => (
+                          <option key={st.id} value={st.id}>{st.nome}{st.ativo ? "" : " (inativo)"}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
               <button
                 onClick={handleSaveBoard}

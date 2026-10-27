@@ -14,6 +14,15 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.12.0",
+    date: "2026-10-27",
+    changes: [
+      { kind: "novidade", text: "Dashboard: travados por setor. Mostra quantos cards de cada setor (Financeiro, Laboratório, Expedição…) estão parados há mais de 24 h úteis na mesma lista, somando todos os quadros. Clique no setor para ver os cards." },
+      { kind: "novidade", text: "Cada lista pode ter um setor, escolhido no drawer do quadro junto com as listas de concluído. As listas existentes já vieram preenchidas pelo nome. Confira e corrija o que estiver errado." },
+      { kind: "novidade", text: "Tela de Setores (administrador): criar, renomear e desativar setores." },
+    ],
+  },
+  {
     version: "2.11.0",
     date: "2026-10-27",
     changes: [

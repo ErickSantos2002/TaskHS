@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { DashboardAtrasado } from "../types";
+// Linha do modal: serve ao alerta de 72 h (desde a criação) e aos travados por
+// setor (desde a entrada na lista) — `desde` é a data que a régua conta.
+export interface CardParado {
+  card_id: number;
+  list_id: number;
+  board_id: number;
+  board_title: string;
+  list_title: string;
+  title: string;
+  desde: string;
+  horas_uteis: number;
+}
 
 // "4d 6h" em dias úteis de 24 h; abaixo de um dia, só as horas.
 function formatTempoUtil(horas: number): string {
@@ -10,7 +21,7 @@ function formatTempoUtil(horas: number): string {
   return resto ? `${dias}d ${resto}h` : `${dias}d`;
 }
 
-function formatCriado(iso: string): string {
+function formatData(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
   });
@@ -18,10 +29,14 @@ function formatCriado(iso: string): string {
 
 const selectCls = "text-xs bg-background-elevated rounded-lg border border-border px-2 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 max-w-[12rem]";
 
-export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
-  atrasados: DashboardAtrasado[];
+export function AtrasadosModal({ atrasados, mostrarQuadro, onClose, titulo, descricao, rotuloDesde, vazio }: {
+  atrasados: CardParado[];
   mostrarQuadro: boolean;
   onClose: () => void;
+  titulo: string;
+  descricao: string;
+  rotuloDesde: string;
+  vazio: string;
 }) {
   const navigate = useNavigate();
   const [quadro, setQuadro] = useState("");
@@ -44,7 +59,7 @@ export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
     ).entries()],
     [atrasados, quadro],
   );
-  // O backend já manda do mais antigo para o mais novo.
+  // O backend já manda do mais parado para o menos.
   const visiveis = atrasados.filter(a =>
     (!quadro || String(a.board_id) === quadro) && (!lista || String(a.list_id) === lista),
   );
@@ -60,12 +75,8 @@ export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
       >
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-border px-6 py-5">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-100">
-              {atrasados.length} {atrasados.length === 1 ? "card há" : "cards há"} mais de 72 h úteis
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Contando só dias de semana, desde a criação do card. Cards em listas de concluído ficam de fora.
-            </p>
+            <h2 className="text-lg font-extrabold text-slate-100">{titulo}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{descricao}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {mostrarQuadro && (
@@ -86,7 +97,7 @@ export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
 
         <div className="max-h-[calc(100vh-16rem)] overflow-auto px-6 py-4">
           {visiveis.length === 0 ? (
-            <p className="text-sm text-slate-500 py-8 text-center">Nenhum card passou de 72 h úteis.</p>
+            <p className="text-sm text-slate-500 py-8 text-center">{vazio}</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -94,7 +105,7 @@ export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
                   <th className="pb-2 pr-3 font-semibold">Card</th>
                   {mostrarQuadro && <th className="pb-2 pr-3 font-semibold">Quadro</th>}
                   <th className="pb-2 pr-3 font-semibold">Lista atual</th>
-                  <th className="pb-2 pr-3 font-semibold whitespace-nowrap">Criado em</th>
+                  <th className="pb-2 pr-3 font-semibold whitespace-nowrap">{rotuloDesde}</th>
                   <th className="pb-2 pr-3 font-semibold whitespace-nowrap">Tempo útil</th>
                   <th className="pb-2" />
                 </tr>
@@ -105,7 +116,7 @@ export function AtrasadosModal({ atrasados, mostrarQuadro, onClose }: {
                     <td className="py-2 pr-3 text-slate-200 max-w-xs truncate" title={a.title}>{a.title}</td>
                     {mostrarQuadro && <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">{a.board_title}</td>}
                     <td className="py-2 pr-3 text-slate-400 max-w-[14rem] truncate" title={a.list_title}>{a.list_title}</td>
-                    <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">{formatCriado(a.created_at)}</td>
+                    <td className="py-2 pr-3 text-slate-400 whitespace-nowrap">{formatData(a.desde)}</td>
                     <td className="py-2 pr-3 font-semibold text-red-400 whitespace-nowrap">{formatTempoUtil(a.horas_uteis)}</td>
                     <td className="py-2 text-right">
                       <button

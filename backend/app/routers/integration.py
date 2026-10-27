@@ -110,6 +110,9 @@ async def _apply_updates(card: Card, body: IntegrationCardIn, sent: dict, lst: "
     if "priority" in sent and body.priority is not None:
         card.priority = body.priority
     if "archived" in sent and body.archived is not None:
+        if card.archived and not body.archived:
+            # Desarquivar zera o relógio da lista (travados por setor).
+            card.list_entered_at = datetime.now(timezone.utc)
         card.archived = body.archived
 
     for n in range(1, 7):

@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.board import Board, BoardMember, BoardLabel
 from app.models.list import List
+from app.models.setor import Setor
 from app.models.card import Card, CardLabel, CardMember, CardComment, CardAttachment
 from app.models.notification import Notification
 from app.models.reminder import Reminder, ReminderSent
@@ -8,7 +9,7 @@ from app.models.automation import Automation
 from app.models.audit import AuditLog
 
 __all__ = [
-    "User", "Board", "BoardMember", "BoardLabel", "List",
+    "User", "Board", "BoardMember", "BoardLabel", "List", "Setor",
     "Card", "CardLabel", "CardMember", "CardComment", "CardAttachment",
     "Notification",
     "Reminder", "ReminderSent",

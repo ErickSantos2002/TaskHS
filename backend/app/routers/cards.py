@@ -359,6 +359,10 @@ async def archive_card(list_id: int, card_id: int, db: AsyncSession = Depends(ge
 @router.post("/{card_id}/restore", response_model=CardOut)
 async def restore_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
+    if card.archived:
+        # Volta do arquivo com o relógio zerado: senão um card que passou meses
+        # arquivado já apareceria "travado" no Dashboard.
+        card.list_entered_at = datetime.now(timezone.utc)
     card.archived = False
     await db.commit()
     return _card_to_dict(card)

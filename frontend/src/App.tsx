@@ -11,6 +11,7 @@ import { BoardsPage } from "./pages/BoardsPage";
 import { BoardPage } from "./pages/BoardPage";
 import { UsersPage } from "./pages/UsersPage";
 import { LogsPage } from "./pages/LogsPage";
+import { SetoresPage } from "./pages/SetoresPage";
 
 /** Um BoardPage por quadro: ir de /boards/1 para /boards/2 (mover card para
  *  outro quadro, link de notificação) remonta a página do zero, em vez de
@@ -56,6 +57,7 @@ function App() {
                       <Route path="boards" element={<BoardsPage />} />
                       <Route path="boards/:id" element={<BoardPagePorQuadro />} />
                       <Route path="usuarios" element={<UsersPage />} />
+                      <Route path="setores" element={<SetoresPage />} />
                       <Route path="logs" element={<LogsPage />} />
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>

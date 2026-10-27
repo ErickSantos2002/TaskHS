@@ -1,6 +1,7 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint, text
+from sqlalchemy import event, inspect, String, ForeignKey, Float, DateTime, Date, Text, Boolean, Enum as SAEnum, Integer, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm.base import NO_VALUE
 import enum
 from app.database import Base
 from typing import TYPE_CHECKING
@@ -45,6 +46,10 @@ class Card(Base):
     external_id: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    # Quando o card entrou na lista atual: o relógio da régua de 24 h úteis por
+    # lista do Dashboard (migration 016). Zerado pelo listener abaixo e ao
+    # desarquivar o card.
+    list_entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
 
     labels: Mapped[list["CardLabel"]] = relationship("CardLabel", back_populates="card", cascade="all, delete-orphan", uselist=True)
     members: Mapped[list["CardMember"]] = relationship("CardMember", back_populates="card", cascade="all, delete-orphan", uselist=True)
@@ -145,3 +150,15 @@ class ChecklistItem(Base):
     checked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     checklist: Mapped["Checklist"] = relationship("Checklist", back_populates="items")
+
+
+@event.listens_for(Card.list_id, "set")
+def _zera_relogio_da_lista(target: Card, value, oldvalue, initiator):
+    """Todo caminho que troca o card de lista zera o relógio — tela, cópia,
+    integração. Card novo (sem identidade) fica com o default da coluna. Card
+    já gravado com o atributo expirado chega com oldvalue = NO_VALUE: aí zera
+    também, porque carregar o valor antigo aqui faria I/O fora do async."""
+    if value == oldvalue:
+        return
+    if oldvalue is not NO_VALUE or inspect(target).has_identity:
+        target.list_entered_at = datetime.now(timezone.utc)
