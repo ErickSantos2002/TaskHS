@@ -383,14 +383,21 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
 async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Define quais listas do quadro são "de concluído" (alerta de 72 h do Dashboard).
 
-    Substitui o conjunto inteiro: lista viva fora de `list_ids` volta a contar.
+    Substitui o conjunto inteiro: lista ativa fora de `list_ids` volta a contar.
     Mesmo critério de `update_board` — é configuração do quadro, não do card.
+
+    Só mexe em lista ativa (viva e não arquivada), que é o que o drawer mostra:
+    se incluísse as arquivadas, todo "Salvar" do drawer desmarcaria a lista de
+    concluído que alguém arquivou, e ao desarquivar os cards dela voltariam ao
+    alerta de 72 h.
     """
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
     listas = (await db.execute(
-        select(List).where(List.board_id == board_id, List.deleted_at.is_(None)).order_by(List.position)
+        select(List)
+        .where(List.board_id == board_id, List.deleted_at.is_(None), List.archived == False)
+        .order_by(List.position)
     )).scalars().all()
     marcar = set(body.list_ids)
     if not marcar <= {l.id for l in listas}:

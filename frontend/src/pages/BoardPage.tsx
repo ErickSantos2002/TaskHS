@@ -2654,6 +2654,7 @@ export function BoardPage() {
   const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
   const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [editDoneListIds, setEditDoneListIds] = useState<Set<number>>(new Set());
+  const [erroSalvarBoard, setErroSalvarBoard] = useState<string | null>(null);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
   const [deletingBoard, setDeletingBoard] = useState(false);
@@ -3050,6 +3051,7 @@ export function BoardPage() {
     setEditIntegrationEnabled(board.integration_enabled);
     setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setEditDoneListIds(new Set(lists.filter(l => l.is_done).map(l => l.id)));
+    setErroSalvarBoard(null);
     setConfirmDeleteBoard(false);
     // Não depender só do efeito de carregamento: zera erro e a lista de membros
     // (que pode ser de OUTRO quadro, com e-mails) antes mesmo do refetch rodar.
@@ -3064,6 +3066,7 @@ export function BoardPage() {
   async function handleSaveBoard() {
     if (!editBoardTitle.trim()) return;
     setSavingBoard(true);
+    setErroSalvarBoard(null);
     try {
       const updated = await api.patch<Board>(`/boards/${boardId}`, {
         title: editBoardTitle.trim(),
@@ -3074,13 +3077,26 @@ export function BoardPage() {
         obs_labels: editObsLabels.map(s => s.trim()),
       });
       setBoard(updated);
-      const atualizadas = await api.put<BoardList[]>(`/boards/${boardId}/done-lists`, {
-        list_ids: [...editDoneListIds],
-      });
-      const concluida = new Map(atualizadas.map(l => [l.id, l.is_done]));
-      setLists(prev => prev.map(l => ({ ...l, is_done: concluida.get(l.id) ?? l.is_done })));
+      // Só as listas que ainda estão na tela: uma marcada que foi para a lixeira
+      // com o drawer aberto (outra aba, SSE) faria o backend recusar com 400.
+      const ativas = lists.filter(l => !l.archived);
+      const marcadas = ativas.filter(l => editDoneListIds.has(l.id)).map(l => l.id);
+      const mudou = ativas.some(l => l.is_done !== editDoneListIds.has(l.id));
+      if (mudou) {
+        try {
+          const atualizadas = await api.put<BoardList[]>(`/boards/${boardId}/done-lists`, { list_ids: marcadas });
+          const concluida = new Map(atualizadas.map(l => [l.id, l.is_done]));
+          setLists(prev => prev.map(l => ({ ...l, is_done: concluida.get(l.id) ?? l.is_done })));
+        } catch {
+          // O PATCH acima já gravou nome/cor/etc.; só as listas de concluído falharam.
+          setErroSalvarBoard("Não foi possível salvar as listas de concluído. Tente de novo.");
+          return;
+        }
+      }
       setShowEditBoard(false);
-    } catch {} finally {
+    } catch {
+      setErroSalvarBoard("Não foi possível salvar as alterações. Tente de novo.");
+    } finally {
       setSavingBoard(false);
     }
   }
@@ -3622,6 +3638,9 @@ export function BoardPage() {
               >
                 {savingBoard ? "Salvando…" : "Salvar alterações"}
               </button>
+              {erroSalvarBoard && (
+                <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{erroSalvarBoard}</p>
+              )}
 
               {/* ── Membros do quadro ── */}
               <div className="pt-4 border-t border-border space-y-3">
