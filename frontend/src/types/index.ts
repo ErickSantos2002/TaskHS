@@ -23,6 +23,8 @@ export interface Board {
   created_at: string;
   integration_enabled: boolean;
   obs_labels: string[];
+  /** Arquivado (v2.10.0): fora da vitrine e do Dashboard, abre só para leitura. */
+  archived_at: string | null;
 }
 
 /** Pessoa vista pelos seletores e pelos avatares da listagem.

@@ -232,7 +232,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardMovedToBoard, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardMovedToBoard, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone, readOnly = false }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -240,6 +240,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   boardLabels: BoardLabel[];
   currentUser: { id: number; is_admin: boolean; role: "administrador" | "coordenador" | "membro" } | null;
   integrationEnabled: boolean;
+  /** Quadro arquivado: o modal só mostra (o backend recusa escrita com 409). */
+  readOnly?: boolean;
   obsLabels: string[];
   onClose: () => void;
   onCardMove: (destListId: number) => Promise<void>;
@@ -436,6 +438,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => () => { imagensPendentesRef.current.forEach(i => URL.revokeObjectURL(i.url)); }, []);
 
   async function handleUpload(files: FileList | null) {
+    if (readOnly) return;
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
@@ -1038,6 +1041,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
         {/* Header */}
         <div className="flex items-start gap-3 px-6 pt-4 pb-4 border-b border-border shrink-0">
           <div className="flex-1 min-w-0">
+            <fieldset disabled={readOnly} className="contents [&_button:disabled]:opacity-40 [&_button:disabled]:cursor-not-allowed">
             <p className="text-xs text-slate-500 mb-1.5">
               em lista <span className="font-semibold text-slate-400">{listTitle}</span>
             </p>
@@ -1075,11 +1079,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </span>
               {isDone ? "Concluído" : "Marcar como concluído"}
             </button>
+            </fieldset>
           </div>
           <div className="flex items-center gap-1 shrink-0 mt-1">
             {/* Menu de ações. Antes estas quatro ficavam soltas no rodapé da
                 coluna esquerda — "Arquivar card" era um link logo abaixo de
                 "Adicionar checklist", e gente arquivava sem querer. */}
+            {!readOnly && (
             <div className="relative" ref={menuRef}>
               <button
                 onClick={abrirMenu}
@@ -1202,6 +1208,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               )}
             </div>
+            )}
             <button onClick={onClose} aria-label="Fechar" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors">
               <IX />
             </button>
@@ -1213,6 +1220,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
           {/* LEFT: main content */}
           <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+            {/* Quadro arquivado: editores desligados em bloco, mas os Anexos ficam
+                fora do fieldset — ver/baixar tem que continuar funcionando. */}
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
 
             {/* Priority + Due date */}
             <div className="flex flex-wrap gap-6">
@@ -1484,6 +1494,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               );
             })}
 
+            </fieldset>
+
             {/* Anexos */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -1493,9 +1505,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                   </svg>
                   <p className="text-sm font-semibold text-slate-300">Anexos {attachments.length > 0 && <span className="font-normal text-slate-500">({attachments.length})</span>}</p>
                 </div>
+                {!readOnly && (
                 <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Ou arraste um arquivo para o cartão" className="text-xs text-slate-500 hover:text-primary transition-colors disabled:opacity-50">
                   {uploading ? "Enviando…" : "+ Adicionar"}
                 </button>
+                )}
               </div>
               <input
                 ref={fileRef} type="file" multiple hidden
@@ -1542,7 +1556,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       <button onClick={() => handleDownload(a)} title="Baixar" className="p-1.5 rounded text-slate-500 hover:text-primary hover:bg-background transition-colors">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       </button>
-                      {canDelete(a) && (
+                      {canDelete(a) && !readOnly && (
                         <button onClick={() => handleDeleteAttachment(a)} title="Excluir" className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -1553,6 +1567,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               )}
             </div>
 
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
             {/* Lembretes */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -1657,6 +1672,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               </div>
             )}
+            </fieldset>
           </div>
 
 
@@ -1687,7 +1703,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             </div>
 
             {abaCard === "comentarios" && <>
-            {/* Comment input */}
+            {/* Comment input — some no quadro arquivado */}
+            {!readOnly && (
             <div
               className="shrink-0 mb-4 relative"
               onDragEnter={e => { if (Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.stopPropagation(); } }}
@@ -1795,6 +1812,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 )}
               </div>
             </div>
+            )}
 
             {/* Comments list */}
             <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
@@ -2620,9 +2638,12 @@ export function BoardPage() {
   // (criar/renomear/cor/arquivar/excluir lista, gerenciar etiquetas) — só no conteúdo dos
   // cards. A trava real é no backend (get_elevated_user); aqui é só esconder os botões.
   const isElevated = currentUser?.role === "administrador" || currentUser?.role === "coordenador";
+  const isAdmin = currentUser?.role === "administrador";
   const boardId = Number(id);
 
   const [board, setBoard] = useState<Board | null>(null);
+  // Arquivado (v2.10.0): abre, mas só leitura — o backend recusa escrita com 409.
+  const readOnly = !!board?.archived_at;
   const [lists, setLists] = useState<BoardList[]>([]);
   const [cardsByList, setCardsByList] = useState<Record<number, Card[]>>({});
   const [loading, setLoading] = useState(true);
@@ -2657,6 +2678,9 @@ export function BoardPage() {
   const [erroSalvarBoard, setErroSalvarBoard] = useState<string | null>(null);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
+  const [confirmArquivar, setConfirmArquivar] = useState(false);
+  const [mudandoArquivo, setMudandoArquivo] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
   const [deletingBoard, setDeletingBoard] = useState(false);
   const [boardMembers, setBoardMembers] = useState<BoardMemberOut[]>([]);
   const [todosUsuarios, setTodosUsuarios] = useState<UserBasic[]>([]);
@@ -2667,6 +2691,8 @@ export function BoardPage() {
   const [confirmandoRemocao, setConfirmandoRemocao] = useState<BoardMemberOut | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  // Quadro arquivado: sem sensor nenhum = não arrasta nada.
+  const semSensores = useSensors();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollDrag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
@@ -3101,6 +3127,23 @@ export function BoardPage() {
     }
   }
 
+  // Arquivar/desarquivar: só administrador (o backend confere de novo). O SSE
+  // manda reload para quem mais estiver com o quadro aberto.
+  async function definirArquivado(arquivar: boolean) {
+    setMudandoArquivo(true);
+    setErroArquivo(null);
+    try {
+      const atualizado = await api.post<Board>(`/boards/${boardId}/${arquivar ? "archive" : "unarchive"}`, {});
+      setBoard(atualizado);
+      setConfirmArquivar(false);
+      setShowEditBoard(false);
+    } catch {
+      setErroArquivo(`Não foi possível ${arquivar ? "arquivar" : "desarquivar"} o quadro. Tente de novo.`);
+    } finally {
+      setMudandoArquivo(false);
+    }
+  }
+
   async function handleDeleteBoard() {
     setDeletingBoard(true);
     try {
@@ -3299,7 +3342,7 @@ export function BoardPage() {
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
+    <DndContext sensors={readOnly ? semSensores : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
       <div className="flex flex-col flex-1 min-h-0">
 
         {/* Topbar */}
@@ -3420,6 +3463,24 @@ export function BoardPage() {
           </div>
         </div>
 
+        {readOnly && board.archived_at && (
+          <div className="mx-4 md:mx-6 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5">
+            <p className="text-sm text-amber-200">
+              <span className="font-semibold">Quadro arquivado</span> em {new Date(board.archived_at).toLocaleDateString("pt-BR")} — somente leitura.
+              {erroArquivo && <span className="block text-xs text-red-300 mt-0.5">{erroArquivo}</span>}
+            </p>
+            {isAdmin && (
+              <button
+                onClick={() => definirArquivado(false)}
+                disabled={mudandoArquivo}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-500/50 text-amber-200 hover:bg-amber-500/15 disabled:opacity-50 transition-colors"
+              >
+                {mudandoArquivo ? "Desarquivando…" : "Desarquivar"}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Board canvas */}
         <div className="flex-1 overflow-hidden px-4 md:px-6 pb-4 md:pb-6">
           <div
@@ -3438,6 +3499,9 @@ export function BoardPage() {
               {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
                   O botão/form de "Adicionar lista" tem self-start, então continua curto. */}
               <div className="inline-flex gap-3 h-full p-3 items-stretch">
+                {/* Arquivado: desliga todo botão das colunas (adicionar, menus,
+                    concluir); abrir o card é clique em div e continua valendo. */}
+                <fieldset disabled={readOnly} className="contents [&_button:disabled]:opacity-40 [&_button:disabled]:cursor-not-allowed">
                 {lists.map((list, idx) => (
                   <KanbanColumn
                     key={list.id}
@@ -3470,6 +3534,7 @@ export function BoardPage() {
                     <IPlus />Adicionar lista
                   </button>
                 ))}
+                </fieldset>
               </div>
             </div>
           </div>
@@ -3495,6 +3560,7 @@ export function BoardPage() {
           onRestore={handleRestoreFromModal}
           isDone={selectedCard.done}
           onToggleDone={() => toggleDone(selectedCard)}
+          readOnly={readOnly}
         />
       )}
 
@@ -3511,6 +3577,7 @@ export function BoardPage() {
               <button onClick={() => setShowEditBoard(false)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <fieldset disabled={readOnly} className="min-w-0 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-400">Nome do board</label>
                 <input
@@ -3741,9 +3808,43 @@ export function BoardPage() {
                   </>
                 )}
               </div>
+              </fieldset>
             </div>
             <div className="border-t border-border p-5 shrink-0">
               <p className="text-xs font-semibold text-slate-400 mb-3">Zona de perigo</p>
+              {/* Arquivar: só administrador. Tira o quadro de vista e dos números,
+                  sem excluir — fica em "Quadros arquivados", só leitura. */}
+              {isAdmin && (
+                confirmArquivar ? (
+                  <div className="space-y-2 mb-3">
+                    <p className="text-xs text-slate-400">Arquivar? O quadro sai da lista, do Dashboard e da busca, e passa a abrir só para leitura em "Quadros arquivados". Dá para desarquivar depois.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setConfirmArquivar(false)} className="flex-1 py-2 rounded-lg border border-border text-xs font-medium text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
+                      <button onClick={() => definirArquivado(true)} disabled={mudandoArquivo} className="flex-1 py-2 rounded-lg bg-amber-500 text-slate-900 text-xs font-semibold hover:bg-amber-400 disabled:opacity-50 transition-colors">
+                        {mudandoArquivo ? "Arquivando…" : "Confirmar arquivamento"}
+                      </button>
+                    </div>
+                  </div>
+                ) : readOnly ? (
+                  <button
+                    onClick={() => definirArquivado(false)}
+                    disabled={mudandoArquivo}
+                    className="w-full mb-3 py-2.5 rounded-lg border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-amber-500/10 disabled:opacity-50 transition-colors"
+                  >
+                    Desarquivar quadro
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmArquivar(true)}
+                    className="w-full mb-3 py-2.5 rounded-lg border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-amber-500/10 transition-colors"
+                  >
+                    Arquivar quadro
+                  </button>
+                )
+              )}
+              {isAdmin && erroArquivo && (
+                <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2 mb-3">{erroArquivo}</p>
+              )}
               {confirmDeleteBoard ? (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-400">Tem certeza? O quadro some para todos e vai para a Lixeira de quadros — só um administrador pode restaurar.</p>
