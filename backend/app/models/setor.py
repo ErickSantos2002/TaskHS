@@ -17,4 +17,6 @@ class Setor(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(80))
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # server_default: em banco novo o create_all cria a tabela antes da 016, e o
+    # INSERT dos setores iniciais da migration não manda created_at.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("now()"))
