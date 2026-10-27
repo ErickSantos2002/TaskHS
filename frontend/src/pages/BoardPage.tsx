@@ -968,6 +968,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   async function handleToggleItem(clId: number, item: ChecklistItem) {
+    if (readOnly) return;  // o item é um div clicável: o fieldset não o desliga
     try {
       const updatedItem = await api.patch<ChecklistItem>(`/lists/${card.list_id}/cards/${card.id}/checklists/${clId}/items/${item.id}`, { checked: !item.checked });
       const updated = checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.map(i => i.id === item.id ? updatedItem : i) } : cl);
@@ -1276,7 +1277,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </div>
             </div>
 
-            {/* Observações de integração */}
+            </fieldset>
+            {/* Observações de integração — fora do fieldset: só leitura, e é
+                justamente o dado que se quer consultar num quadro arquivado. */}
             {integrationEnabled && obsLabels.some(n => n.trim()) && (
               <div className="flex flex-wrap gap-2">
                 {obsLabels.map((name, i) => {
@@ -1304,6 +1307,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </div>
             )}
 
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
             {/* Description */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -2121,7 +2125,7 @@ const CardContent = memo(CardContentBase);
 
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone: (card: Card) => void }) {
+function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone?: (card: Card) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
@@ -2135,7 +2139,7 @@ function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCar
       </div>
       {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
       <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
-        <CardContent card={card} isDone={card.done} onToggleDone={() => onToggleDone(card)} />
+        <CardContent card={card} isDone={card.done} onToggleDone={onToggleDone ? () => onToggleDone(card) : undefined} />
       </button>
     </div>
   );
@@ -2251,11 +2255,13 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
-  onToggleDone: (card: Card) => void;
+  /** Quadro arquivado: sem adicionar card, sem menu/renomear lista, sem concluir. */
+  readOnly?: boolean;
+  onToggleDone?: (card: Card) => void;
   canMoveLeft: boolean;
   canMoveRight: boolean;
   onMoveList: (dir: "left" | "right") => void;
@@ -2467,7 +2473,7 @@ function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canM
       )}
 
       {/* Add card button — always visible at bottom */}
-      {!addingCard && (
+      {!addingCard && !readOnly && (
         <button
           onClick={() => setAddingCard(true)}
           className="flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-all duration-150 shrink-0 border-t border-white/5"
@@ -3386,7 +3392,8 @@ export function BoardPage() {
                 </div>
                 {/* Gerenciar etiquetas (criar/editar/excluir): só elevado. Atribuir uma
                     etiqueta existente a um card segue livre (é no modal do card). */}
-                {isElevated && (
+                {/* Quadro arquivado: sem os painéis que só servem para mudar o quadro. */}
+                {isElevated && !readOnly && (
                   <button
                     onClick={() => setShowLabelManager(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3394,6 +3401,7 @@ export function BoardPage() {
                     <ITag />Etiquetas
                   </button>
                 )}
+                {!readOnly && <>
                 <button
                   onClick={() => { setShowArchived(true); setArchivedTab("cards"); fetchArchived(); }}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3408,6 +3416,7 @@ export function BoardPage() {
                 >
                   <ILixeira />Lixeira
                 </button>
+                </>}
                 {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={openEditBoard}
@@ -3417,7 +3426,7 @@ export function BoardPage() {
                     <IGear />Configurações
                   </button>
                 )}
-                {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
+                {!readOnly && (currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={() => setShowAutomations(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3428,7 +3437,7 @@ export function BoardPage() {
                   </button>
                 )}
                 {/* Nova Lista: só elevado (membro não cria lista). */}
-                {isElevated && (
+                {isElevated && !readOnly && (
                   <button
                     onClick={() => setAddingList(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
@@ -3499,16 +3508,15 @@ export function BoardPage() {
               {/* items-stretch: as listas ocupam toda a altura até o rodapé (altura fixa).
                   O botão/form de "Adicionar lista" tem self-start, então continua curto. */}
               <div className="inline-flex gap-3 h-full p-3 items-stretch">
-                {/* Arquivado: desliga todo botão das colunas (adicionar, menus,
-                    concluir); abrir o card é clique em div e continua valendo. */}
-                <fieldset disabled={readOnly} className="contents [&_button:disabled]:opacity-40 [&_button:disabled]:cursor-not-allowed">
                 {lists.map((list, idx) => (
                   <KanbanColumn
                     key={list.id}
                     list={list}
                     cards={filteredCards(list.id)}
-                    isElevated={isElevated}
-                    onToggleDone={toggleDone}
+                    // Arquivado: sem os controles de elevado (menu, renomear) nas colunas.
+                    isElevated={isElevated && !readOnly}
+                    readOnly={readOnly}
+                    onToggleDone={readOnly ? undefined : toggleDone}
                     canMoveLeft={idx > 0}
                     canMoveRight={idx < lists.length - 1}
                     onMoveList={dir => handleMoveList(list, dir)}
@@ -3519,7 +3527,7 @@ export function BoardPage() {
                   />
                 ))}
                 {/* Adicionar lista: só elevado (as listas são etapas do fluxo). */}
-                {isElevated && (addingList ? (
+                {isElevated && !readOnly && (addingList ? (
                   <AddListForm
                     boardId={boardId}
                     position={lists.length}
@@ -3534,7 +3542,6 @@ export function BoardPage() {
                     <IPlus />Adicionar lista
                   </button>
                 ))}
-                </fieldset>
               </div>
             </div>
           </div>
