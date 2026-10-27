@@ -148,8 +148,10 @@ async def search(
         .join(ListModel, ListModel.id == Card.list_id)
         .join(Board, Board.id == ListModel.board_id)
         .outerjoin(comentarios_agg, comentarios_agg.c.card_id == Card.id)
-        # Lixeira: card, lista ou quadro excluido nao aparece na busca.
-        .where(Card.deleted_at.is_(None), ListModel.deleted_at.is_(None), Board.deleted_at.is_(None))
+        # Lixeira: card, lista ou quadro excluido nao aparece na busca; quadro
+        # arquivado tambem nao (fica so na secao "Quadros arquivados").
+        .where(Card.deleted_at.is_(None), ListModel.deleted_at.is_(None), Board.deleted_at.is_(None),
+               Board.archived_at.is_(None))
     )
 
     # Todas as palavras, em qualquer ordem, em qualquer um dos campos.

@@ -16,7 +16,7 @@ from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut, DoneListsUpdate
 from app.routers.cards import _card_options, _card_to_dict
-from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
+from app.dependencies import get_current_user, require_board_access_by_board_id, require_board_view_by_board_id, user_can_access_board, assert_board_writable
 from app.routers.auth import get_elevated_user
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
@@ -51,6 +51,7 @@ def _board_list_item(board: Board, user: User) -> dict:
         "created_at": board.created_at,
         "integration_enabled": board.integration_enabled,
         "obs_labels": board.obs_labels,
+        "archived_at": board.archived_at,
         "can_open": user.is_elevated or user.id in ids_membros,
         "owner_name": board.owner.name,
         "members": [
@@ -89,18 +90,29 @@ async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), cu
     }
 
 
+def _listagem_de_quadros():
+    return select(Board).options(
+        selectinload(Board.members).selectinload(BoardMember.user),
+        selectinload(Board.owner),
+    ).where(Board.deleted_at.is_(None))
+
+
 @router.get("", response_model=list[BoardListOut])
 async def list_boards(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Todos os quadros da empresa. Quem não é membro recebe can_open=False e
-    não passa da tranca se tentar abrir — ver dependencies.py."""
+    """Todos os quadros ATIVOS da empresa. Quem não é membro recebe can_open=False e
+    não passa da tranca se tentar abrir — ver dependencies.py. Arquivados ficam
+    em /boards/archived."""
     result = await db.execute(
-        select(Board)
-        .options(
-            selectinload(Board.members).selectinload(BoardMember.user),
-            selectinload(Board.owner),
-        )
-        .where(Board.deleted_at.is_(None))
-        .order_by(Board.created_at.desc())
+        _listagem_de_quadros().where(Board.archived_at.is_(None)).order_by(Board.created_at.desc())
+    )
+    return [_board_list_item(b, current_user) for b in result.scalars().all()]
+
+
+@router.get("/archived", response_model=list[BoardListOut])
+async def list_archived_boards(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Quadros arquivados, mesma vitrine (can_open pela mesma regra)."""
+    result = await db.execute(
+        _listagem_de_quadros().where(Board.archived_at.is_not(None)).order_by(Board.archived_at.desc())
     )
     return [_board_list_item(b, current_user) for b in result.scalars().all()]
 
@@ -112,11 +124,13 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
     # só os seus. Antes contava só as membresias, o que deixava o painel do admin
     # sempre em "1 quadro" mesmo com acesso à empresa toda.
     if current_user.is_elevated:
-        board_ids = (await db.execute(select(Board.id).where(Board.deleted_at.is_(None)))).scalars().all()
+        board_ids = (await db.execute(
+            select(Board.id).where(Board.deleted_at.is_(None), Board.archived_at.is_(None))
+        )).scalars().all()
     else:
         board_ids = (await db.execute(
             select(Board.id).join(BoardMember, BoardMember.board_id == Board.id)
-            .where(BoardMember.user_id == current_user.id, Board.deleted_at.is_(None))
+            .where(BoardMember.user_id == current_user.id, Board.deleted_at.is_(None), Board.archived_at.is_(None))
         )).scalars().all()
     boards_count = len(board_ids)
 
@@ -324,7 +338,7 @@ async def board_snapshot(board_id: int,
 
 
 @router.post("/{board_id}/stream-ticket")
-async def stream_ticket(board_id: int, current_user: User = Depends(require_board_access_by_board_id)):
+async def stream_ticket(board_id: int, current_user: User = Depends(require_board_view_by_board_id)):
     return {"ticket": create_stream_ticket(current_user.email, board_id)}
 
 
@@ -367,6 +381,7 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     data = body.model_dump(exclude_none=True)
     # "Sem ícone" manda icon=null de propósito, e o exclude_none acima engoliria
     # isso — sem esta linha não haveria como LIMPAR o ícone, só trocar.
@@ -394,6 +409,7 @@ async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession 
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     listas = (await db.execute(
         select(List)
         .where(List.board_id == board_id, List.deleted_at.is_(None), List.archived == False)
@@ -406,6 +422,35 @@ async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession 
         lista.is_done = lista.id in marcar
     await db.commit()
     return listas
+
+
+async def _definir_arquivado(board_id: int, arquivar: bool, db: AsyncSession, user: User) -> Board:
+    # Só administrador: arquivar tira o quadro de vista da empresa toda.
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Apenas administrador pode arquivar quadros")
+    board = await _get_board_or_404(board_id, db)
+    if arquivar and board.archived_at is None:
+        board.archived_at = _dt.now(_tz.utc)
+        board.archived_by = user.id
+    elif not arquivar and board.archived_at is not None:
+        board.archived_at = None
+        board.archived_by = None
+    await db.commit()
+    await db.refresh(board)
+    # Quem está com o quadro aberto recarrega e passa a ver (ou não) a faixa.
+    realtime.publish_reload(board_id)
+    return board
+
+
+@router.post("/{board_id}/archive", response_model=BoardOut)
+async def archive_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Arquiva: some da vitrine, do Dashboard, da busca e dos lembretes; abre só para leitura."""
+    return await _definir_arquivado(board_id, True, db, current_user)
+
+
+@router.post("/{board_id}/unarchive", response_model=BoardOut)
+async def unarchive_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return await _definir_arquivado(board_id, False, db, current_user)
 
 
 @router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -498,6 +543,7 @@ async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Dep
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
 
     if body.role == BoardRole.owner:
         raise HTTPException(status_code=400, detail="O dono do quadro é definido na criação e não pode ser atribuído aqui")
@@ -526,6 +572,7 @@ async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     if user_id == board.owner_id:
         raise HTTPException(status_code=400, detail="O dono do quadro não pode ser removido")
 

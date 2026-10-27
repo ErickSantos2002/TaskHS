@@ -18,7 +18,7 @@ from app.schemas.card import (
     ActivityOut, ActivityPage,
 )
 from app.models.audit import AuditLog
-from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id
+from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id, assert_list_writable
 from app.automations import run_card_moved_automations
 from app.mentions import ids_mencionados, texto_para_notificacao
 # Reusa o serializador do router de anexos para o anexo ter UMA forma só no JSON.
@@ -171,6 +171,7 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
     quadro_destino = None
     if "list_id" in data and data["list_id"] != card.list_id:
         await assert_board_access_by_list_id(data["list_id"], current_user, db)
+        await assert_list_writable(data["list_id"], db)
         destino = (await db.execute(
             select(List).where(List.id == data["list_id"]).limit(1)
         )).scalar_one_or_none()
@@ -291,6 +292,7 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
     if target_list_id != list_id:
         # Mesmo buraco do update_card: destino no corpo, gate so na URL.
         await assert_board_access_by_list_id(target_list_id, current_user, db)
+        await assert_list_writable(target_list_id, db)
         destino = (await db.execute(
             select(List.id).where(List.id == target_list_id).limit(1)
         )).scalars().first()

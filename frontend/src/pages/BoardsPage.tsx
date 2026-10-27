@@ -519,6 +519,8 @@ export function BoardsPage() {
   const [showModal, setShowModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [verArquivados, setVerArquivados] = useState(false);
+  const [arquivados, setArquivados] = useState<BoardListItem[] | null>(null);
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("date-desc");
@@ -552,6 +554,14 @@ export function BoardsPage() {
       saveFavorites(next);
       return next;
     });
+  }
+
+  function alternarArquivados() {
+    // Busca só na primeira vez que abre: a seção é rara e começa fechada.
+    if (!verArquivados && arquivados === null) {
+      api.get<BoardListItem[]>("/boards/archived").then(setArquivados).catch(() => setArquivados([]));
+    }
+    setVerArquivados(v => !v);
   }
 
   function toggleView(v: "grid" | "list") {
@@ -773,6 +783,30 @@ export function BoardsPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── Quadros arquivados: fora da vitrine, abrem só para leitura ── */}
+        {!loading && (
+          <div className="mt-8 border-t border-border pt-4">
+            <button
+              onClick={alternarArquivados}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors"
+            >
+              <span className={cn("transition-transform", verArquivados ? "rotate-0" : "-rotate-90")}><IChevron /></span>
+              Quadros arquivados{arquivados !== null && ` (${arquivados.length})`}
+            </button>
+            {verArquivados && (
+              arquivados === null ? (
+                <div className="flex justify-center py-6"><ISpinner /></div>
+              ) : arquivados.length === 0 ? (
+                <p className="text-sm text-slate-500 mt-3">Nenhum quadro arquivado.</p>
+              ) : (
+                <div className={cn("mt-3 opacity-80", view === "grid" ? gridClass : listClass)}>
+                  {arquivados.map(renderBoard)}
+                </div>
+              )
+            )}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -60,12 +60,53 @@ async def list_is_alive(list_id: int, db: AsyncSession) -> bool:
     return q.scalars().first() is not None
 
 
+# Arquivado (v2.10.0): o quadro abre, mas só para leitura. Leitura = estes métodos.
+METODOS_DE_LEITURA = ("GET", "HEAD", "OPTIONS")
+QUADRO_ARQUIVADO = "Quadro arquivado: somente leitura"
+
+
+async def assert_board_writable(board_id: int, db: AsyncSession) -> None:
+    """409 se o quadro está arquivado. Chamar DEPOIS do 403 e do 404."""
+    q = await db.execute(
+        select(Board.id).where(Board.id == board_id, Board.archived_at.is_not(None)).limit(1)
+    )
+    if q.scalars().first() is not None:
+        raise HTTPException(status_code=409, detail=QUADRO_ARQUIVADO)
+
+
+async def assert_list_writable(list_id: int, db: AsyncSession) -> None:
+    """O mesmo, partindo da lista — vale também para destino no corpo (mover/copiar card)."""
+    q = await db.execute(
+        select(ListModel.id)
+        .join(Board, Board.id == ListModel.board_id)
+        .where(ListModel.id == list_id, Board.archived_at.is_not(None))
+        .limit(1)
+    )
+    if q.scalars().first() is not None:
+        raise HTTPException(status_code=409, detail=QUADRO_ARQUIVADO)
+
+
 async def require_board_access_by_board_id(
+    board_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Tranca dos routers cujo prefixo tem {board_id}. Escrita em quadro arquivado → 409."""
+    await require_board_view_by_board_id(board_id, current_user, db)
+    # Escrita em quadro arquivado: todo endpoint destes routers já nasce barrado.
+    if request.method not in METODOS_DE_LEITURA:
+        await assert_board_writable(board_id, db)
+    return current_user
+
+
+async def require_board_view_by_board_id(
     board_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Tranca dos routers cujo prefixo tem {board_id}.
+    """Só enxergar o quadro, mesmo arquivado — para POST que não altera nada
+    (o ticket do SSE: sem ele, a tela do quadro arquivado não conecta).
 
     Elevado (administrador/coordenador) entra em qualquer quadro — decisão de
     produto registrada na spec: coordenador é o papel de qualidade e ver todos
@@ -137,9 +178,12 @@ async def assert_board_access_by_list_id(list_id: int, user: User, db: AsyncSess
 
 async def require_board_access_by_list_id(
     list_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Tranca dos routers cujo prefixo tem {list_id}."""
     await assert_board_access_by_list_id(list_id, current_user, db)
+    if request.method not in METODOS_DE_LEITURA:
+        await assert_list_writable(list_id, db)
     return current_user

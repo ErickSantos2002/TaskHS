@@ -232,7 +232,7 @@ function ObsTexto({ texto }: { texto: string }) {
 
 // ── CardDetailModal ────────────────────────────────────────────
 
-function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardMovedToBoard, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone }: {
+function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, currentUser, integrationEnabled, obsLabels, onClose, onCardMove, onCardMovedToBoard, onCardUpdate, onCardDelete, onCardCopy, onRestore, isDone, onToggleDone, readOnly = false }: {
   card: Card;
   boardId: number;
   listTitle: string;
@@ -240,6 +240,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   boardLabels: BoardLabel[];
   currentUser: { id: number; is_admin: boolean; role: "administrador" | "coordenador" | "membro" } | null;
   integrationEnabled: boolean;
+  /** Quadro arquivado: o modal só mostra (o backend recusa escrita com 409). */
+  readOnly?: boolean;
   obsLabels: string[];
   onClose: () => void;
   onCardMove: (destListId: number) => Promise<void>;
@@ -436,6 +438,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   useEffect(() => () => { imagensPendentesRef.current.forEach(i => URL.revokeObjectURL(i.url)); }, []);
 
   async function handleUpload(files: FileList | null) {
+    if (readOnly) return;
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
@@ -965,6 +968,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   }
 
   async function handleToggleItem(clId: number, item: ChecklistItem) {
+    if (readOnly) return;  // o item é um div clicável: o fieldset não o desliga
     try {
       const updatedItem = await api.patch<ChecklistItem>(`/lists/${card.list_id}/cards/${card.id}/checklists/${clId}/items/${item.id}`, { checked: !item.checked });
       const updated = checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.map(i => i.id === item.id ? updatedItem : i) } : cl);
@@ -1038,6 +1042,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
         {/* Header */}
         <div className="flex items-start gap-3 px-6 pt-4 pb-4 border-b border-border shrink-0">
           <div className="flex-1 min-w-0">
+            <fieldset disabled={readOnly} className="contents [&_button:disabled]:opacity-40 [&_button:disabled]:cursor-not-allowed">
             <p className="text-xs text-slate-500 mb-1.5">
               em lista <span className="font-semibold text-slate-400">{listTitle}</span>
             </p>
@@ -1075,11 +1080,13 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </span>
               {isDone ? "Concluído" : "Marcar como concluído"}
             </button>
+            </fieldset>
           </div>
           <div className="flex items-center gap-1 shrink-0 mt-1">
             {/* Menu de ações. Antes estas quatro ficavam soltas no rodapé da
                 coluna esquerda — "Arquivar card" era um link logo abaixo de
                 "Adicionar checklist", e gente arquivava sem querer. */}
+            {!readOnly && (
             <div className="relative" ref={menuRef}>
               <button
                 onClick={abrirMenu}
@@ -1202,6 +1209,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               )}
             </div>
+            )}
             <button onClick={onClose} aria-label="Fechar" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-background-elevated transition-colors">
               <IX />
             </button>
@@ -1213,6 +1221,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
 
           {/* LEFT: main content */}
           <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+            {/* Quadro arquivado: editores desligados em bloco, mas os Anexos ficam
+                fora do fieldset — ver/baixar tem que continuar funcionando. */}
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
 
             {/* Priority + Due date */}
             <div className="flex flex-wrap gap-6">
@@ -1266,7 +1277,9 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </div>
             </div>
 
-            {/* Observações de integração */}
+            </fieldset>
+            {/* Observações de integração — fora do fieldset: só leitura, e é
+                justamente o dado que se quer consultar num quadro arquivado. */}
             {integrationEnabled && obsLabels.some(n => n.trim()) && (
               <div className="flex flex-wrap gap-2">
                 {obsLabels.map((name, i) => {
@@ -1294,6 +1307,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               </div>
             )}
 
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
             {/* Description */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -1484,6 +1498,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               );
             })}
 
+            </fieldset>
+
             {/* Anexos */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -1493,9 +1509,11 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                   </svg>
                   <p className="text-sm font-semibold text-slate-300">Anexos {attachments.length > 0 && <span className="font-normal text-slate-500">({attachments.length})</span>}</p>
                 </div>
+                {!readOnly && (
                 <button onClick={() => fileRef.current?.click()} disabled={uploading} title="Ou arraste um arquivo para o cartão" className="text-xs text-slate-500 hover:text-primary transition-colors disabled:opacity-50">
                   {uploading ? "Enviando…" : "+ Adicionar"}
                 </button>
+                )}
               </div>
               <input
                 ref={fileRef} type="file" multiple hidden
@@ -1542,7 +1560,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                       <button onClick={() => handleDownload(a)} title="Baixar" className="p-1.5 rounded text-slate-500 hover:text-primary hover:bg-background transition-colors">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       </button>
-                      {canDelete(a) && (
+                      {canDelete(a) && !readOnly && (
                         <button onClick={() => handleDeleteAttachment(a)} title="Excluir" className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -1553,6 +1571,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
               )}
             </div>
 
+            <fieldset disabled={readOnly} className="min-w-0 space-y-6">
             {/* Lembretes */}
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -1657,6 +1676,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 </div>
               </div>
             )}
+            </fieldset>
           </div>
 
 
@@ -1687,7 +1707,8 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
             </div>
 
             {abaCard === "comentarios" && <>
-            {/* Comment input */}
+            {/* Comment input — some no quadro arquivado */}
+            {!readOnly && (
             <div
               className="shrink-0 mb-4 relative"
               onDragEnter={e => { if (Array.from(e.dataTransfer.types).includes("Files")) { e.preventDefault(); e.stopPropagation(); } }}
@@ -1795,6 +1816,7 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 )}
               </div>
             </div>
+            )}
 
             {/* Comments list */}
             <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
@@ -2103,7 +2125,7 @@ const CardContent = memo(CardContentBase);
 
 // ── KanbanCard ─────────────────────────────────────────────────
 
-function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone: (card: Card) => void }) {
+function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCardClick: (card: Card) => void; onToggleDone?: (card: Card) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn("relative group/card", isDragging && "opacity-40")}>
@@ -2117,7 +2139,7 @@ function KanbanCardBase({ card, onCardClick, onToggleDone }: { card: Card; onCar
       </div>
       {/* data-pan-surface: arrastar em cima do card panora o quadro (o grip acima é quem move o card) */}
       <button type="button" data-pan-surface className="w-full text-left" onClick={() => onCardClick(card)}>
-        <CardContent card={card} isDone={card.done} onToggleDone={() => onToggleDone(card)} />
+        <CardContent card={card} isDone={card.done} onToggleDone={onToggleDone ? () => onToggleDone(card) : undefined} />
       </button>
     </div>
   );
@@ -2233,11 +2255,13 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
-function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
+function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
   isElevated: boolean;
-  onToggleDone: (card: Card) => void;
+  /** Quadro arquivado: sem adicionar card, sem menu/renomear lista, sem concluir. */
+  readOnly?: boolean;
+  onToggleDone?: (card: Card) => void;
   canMoveLeft: boolean;
   canMoveRight: boolean;
   onMoveList: (dir: "left" | "right") => void;
@@ -2449,7 +2473,7 @@ function KanbanColumn({ list, cards, isElevated, onToggleDone, canMoveLeft, canM
       )}
 
       {/* Add card button — always visible at bottom */}
-      {!addingCard && (
+      {!addingCard && !readOnly && (
         <button
           onClick={() => setAddingCard(true)}
           className="flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-all duration-150 shrink-0 border-t border-white/5"
@@ -2620,9 +2644,12 @@ export function BoardPage() {
   // (criar/renomear/cor/arquivar/excluir lista, gerenciar etiquetas) — só no conteúdo dos
   // cards. A trava real é no backend (get_elevated_user); aqui é só esconder os botões.
   const isElevated = currentUser?.role === "administrador" || currentUser?.role === "coordenador";
+  const isAdmin = currentUser?.role === "administrador";
   const boardId = Number(id);
 
   const [board, setBoard] = useState<Board | null>(null);
+  // Arquivado (v2.10.0): abre, mas só leitura — o backend recusa escrita com 409.
+  const readOnly = !!board?.archived_at;
   const [lists, setLists] = useState<BoardList[]>([]);
   const [cardsByList, setCardsByList] = useState<Record<number, Card[]>>({});
   const [loading, setLoading] = useState(true);
@@ -2657,6 +2684,9 @@ export function BoardPage() {
   const [erroSalvarBoard, setErroSalvarBoard] = useState<string | null>(null);
   const [savingBoard, setSavingBoard] = useState(false);
   const [confirmDeleteBoard, setConfirmDeleteBoard] = useState(false);
+  const [confirmArquivar, setConfirmArquivar] = useState(false);
+  const [mudandoArquivo, setMudandoArquivo] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
   const [deletingBoard, setDeletingBoard] = useState(false);
   const [boardMembers, setBoardMembers] = useState<BoardMemberOut[]>([]);
   const [todosUsuarios, setTodosUsuarios] = useState<UserBasic[]>([]);
@@ -2667,6 +2697,8 @@ export function BoardPage() {
   const [confirmandoRemocao, setConfirmandoRemocao] = useState<BoardMemberOut | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  // Quadro arquivado: sem sensor nenhum = não arrasta nada.
+  const semSensores = useSensors();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollDrag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
@@ -3101,6 +3133,23 @@ export function BoardPage() {
     }
   }
 
+  // Arquivar/desarquivar: só administrador (o backend confere de novo). O SSE
+  // manda reload para quem mais estiver com o quadro aberto.
+  async function definirArquivado(arquivar: boolean) {
+    setMudandoArquivo(true);
+    setErroArquivo(null);
+    try {
+      const atualizado = await api.post<Board>(`/boards/${boardId}/${arquivar ? "archive" : "unarchive"}`, {});
+      setBoard(atualizado);
+      setConfirmArquivar(false);
+      setShowEditBoard(false);
+    } catch {
+      setErroArquivo(`Não foi possível ${arquivar ? "arquivar" : "desarquivar"} o quadro. Tente de novo.`);
+    } finally {
+      setMudandoArquivo(false);
+    }
+  }
+
   async function handleDeleteBoard() {
     setDeletingBoard(true);
     try {
@@ -3299,7 +3348,7 @@ export function BoardPage() {
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
+    <DndContext sensors={readOnly ? semSensores : sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
       <div className="flex flex-col flex-1 min-h-0">
 
         {/* Topbar */}
@@ -3343,7 +3392,8 @@ export function BoardPage() {
                 </div>
                 {/* Gerenciar etiquetas (criar/editar/excluir): só elevado. Atribuir uma
                     etiqueta existente a um card segue livre (é no modal do card). */}
-                {isElevated && (
+                {/* Quadro arquivado: sem os painéis que só servem para mudar o quadro. */}
+                {isElevated && !readOnly && (
                   <button
                     onClick={() => setShowLabelManager(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3351,6 +3401,7 @@ export function BoardPage() {
                     <ITag />Etiquetas
                   </button>
                 )}
+                {!readOnly && <>
                 <button
                   onClick={() => { setShowArchived(true); setArchivedTab("cards"); fetchArchived(); }}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3365,6 +3416,7 @@ export function BoardPage() {
                 >
                   <ILixeira />Lixeira
                 </button>
+                </>}
                 {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={openEditBoard}
@@ -3374,7 +3426,7 @@ export function BoardPage() {
                     <IGear />Configurações
                   </button>
                 )}
-                {(currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
+                {!readOnly && (currentUser?.id === board.owner_id || currentUser?.role === "administrador" || currentUser?.role === "coordenador") && (
                   <button
                     onClick={() => setShowAutomations(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border text-slate-300 hover:bg-background-elevated active:scale-95 transition-all duration-150"
@@ -3385,7 +3437,7 @@ export function BoardPage() {
                   </button>
                 )}
                 {/* Nova Lista: só elevado (membro não cria lista). */}
-                {isElevated && (
+                {isElevated && !readOnly && (
                   <button
                     onClick={() => setAddingList(true)}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all duration-150"
@@ -3420,6 +3472,24 @@ export function BoardPage() {
           </div>
         </div>
 
+        {readOnly && board.archived_at && (
+          <div className="mx-4 md:mx-6 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5">
+            <p className="text-sm text-amber-200">
+              <span className="font-semibold">Quadro arquivado</span> em {new Date(board.archived_at).toLocaleDateString("pt-BR")} — somente leitura.
+              {erroArquivo && <span className="block text-xs text-red-300 mt-0.5">{erroArquivo}</span>}
+            </p>
+            {isAdmin && (
+              <button
+                onClick={() => definirArquivado(false)}
+                disabled={mudandoArquivo}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-500/50 text-amber-200 hover:bg-amber-500/15 disabled:opacity-50 transition-colors"
+              >
+                {mudandoArquivo ? "Desarquivando…" : "Desarquivar"}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Board canvas */}
         <div className="flex-1 overflow-hidden px-4 md:px-6 pb-4 md:pb-6">
           <div
@@ -3443,8 +3513,10 @@ export function BoardPage() {
                     key={list.id}
                     list={list}
                     cards={filteredCards(list.id)}
-                    isElevated={isElevated}
-                    onToggleDone={toggleDone}
+                    // Arquivado: sem os controles de elevado (menu, renomear) nas colunas.
+                    isElevated={isElevated && !readOnly}
+                    readOnly={readOnly}
+                    onToggleDone={readOnly ? undefined : toggleDone}
                     canMoveLeft={idx > 0}
                     canMoveRight={idx < lists.length - 1}
                     onMoveList={dir => handleMoveList(list, dir)}
@@ -3455,7 +3527,7 @@ export function BoardPage() {
                   />
                 ))}
                 {/* Adicionar lista: só elevado (as listas são etapas do fluxo). */}
-                {isElevated && (addingList ? (
+                {isElevated && !readOnly && (addingList ? (
                   <AddListForm
                     boardId={boardId}
                     position={lists.length}
@@ -3495,6 +3567,7 @@ export function BoardPage() {
           onRestore={handleRestoreFromModal}
           isDone={selectedCard.done}
           onToggleDone={() => toggleDone(selectedCard)}
+          readOnly={readOnly}
         />
       )}
 
@@ -3511,6 +3584,7 @@ export function BoardPage() {
               <button onClick={() => setShowEditBoard(false)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-background-elevated transition-colors"><IX /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <fieldset disabled={readOnly} className="min-w-0 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-400">Nome do board</label>
                 <input
@@ -3741,9 +3815,43 @@ export function BoardPage() {
                   </>
                 )}
               </div>
+              </fieldset>
             </div>
             <div className="border-t border-border p-5 shrink-0">
               <p className="text-xs font-semibold text-slate-400 mb-3">Zona de perigo</p>
+              {/* Arquivar: só administrador. Tira o quadro de vista e dos números,
+                  sem excluir — fica em "Quadros arquivados", só leitura. */}
+              {isAdmin && (
+                confirmArquivar ? (
+                  <div className="space-y-2 mb-3">
+                    <p className="text-xs text-slate-400">Arquivar? O quadro sai da lista, do Dashboard e da busca, e passa a abrir só para leitura em "Quadros arquivados". Dá para desarquivar depois.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setConfirmArquivar(false)} className="flex-1 py-2 rounded-lg border border-border text-xs font-medium text-slate-400 hover:bg-background-elevated transition-colors">Cancelar</button>
+                      <button onClick={() => definirArquivado(true)} disabled={mudandoArquivo} className="flex-1 py-2 rounded-lg bg-amber-500 text-slate-900 text-xs font-semibold hover:bg-amber-400 disabled:opacity-50 transition-colors">
+                        {mudandoArquivo ? "Arquivando…" : "Confirmar arquivamento"}
+                      </button>
+                    </div>
+                  </div>
+                ) : readOnly ? (
+                  <button
+                    onClick={() => definirArquivado(false)}
+                    disabled={mudandoArquivo}
+                    className="w-full mb-3 py-2.5 rounded-lg border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-amber-500/10 disabled:opacity-50 transition-colors"
+                  >
+                    Desarquivar quadro
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmArquivar(true)}
+                    className="w-full mb-3 py-2.5 rounded-lg border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-amber-500/10 transition-colors"
+                  >
+                    Arquivar quadro
+                  </button>
+                )
+              )}
+              {isAdmin && erroArquivo && (
+                <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2 mb-3">{erroArquivo}</p>
+              )}
               {confirmDeleteBoard ? (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-400">Tem certeza? O quadro some para todos e vai para a Lixeira de quadros — só um administrador pode restaurar.</p>

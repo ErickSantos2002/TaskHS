@@ -33,8 +33,9 @@ arquiva e desarquiva. O resto ficou a meu critério ("eu confio em você").
   (igual a quadro inexistente). *Minha decisão.*
 - Busca global: não acha card de quadro arquivado. *Minha decisão.*
 - Lembretes: o loop não gera notificação (nem automática por prazo, nem manual)
-  para card de quadro arquivado. O lembrete manual não é marcado `fired`, então
-  dispara se o quadro for desarquivado. *Minha decisão.*
+  para card de quadro arquivado. O lembrete manual vencido é consumido sem
+  notificar (`fired = true`), como já acontece com card na lixeira — senão
+  dispararia semanas depois, sem contexto, ao desarquivar. *Minha decisão.*
 
 **O que continua**
 - `GET /api/boards/archived`: os arquivados, no mesmo formato da vitrine
