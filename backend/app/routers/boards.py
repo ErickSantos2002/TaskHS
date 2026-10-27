@@ -16,7 +16,7 @@ from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd
 from app.schemas.card import CardOut
 from app.schemas.list import ListOut, DoneListsUpdate
 from app.routers.cards import _card_options, _card_to_dict
-from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
+from app.dependencies import get_current_user, require_board_access_by_board_id, require_board_view_by_board_id, user_can_access_board, assert_board_writable
 from app.routers.auth import get_elevated_user
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
@@ -338,7 +338,7 @@ async def board_snapshot(board_id: int,
 
 
 @router.post("/{board_id}/stream-ticket")
-async def stream_ticket(board_id: int, current_user: User = Depends(require_board_access_by_board_id)):
+async def stream_ticket(board_id: int, current_user: User = Depends(require_board_view_by_board_id)):
     return {"ticket": create_stream_ticket(current_user.email, board_id)}
 
 
@@ -381,6 +381,7 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     data = body.model_dump(exclude_none=True)
     # "Sem ícone" manda icon=null de propósito, e o exclude_none acima engoliria
     # isso — sem esta linha não haveria como LIMPAR o ícone, só trocar.
@@ -408,6 +409,7 @@ async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession 
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     listas = (await db.execute(
         select(List)
         .where(List.board_id == board_id, List.deleted_at.is_(None), List.archived == False)
@@ -541,6 +543,7 @@ async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Dep
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
 
     if body.role == BoardRole.owner:
         raise HTTPException(status_code=400, detail="O dono do quadro é definido na criação e não pode ser atribuído aqui")
@@ -569,6 +572,7 @@ async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Apenas o dono do quadro ou um administrador pode gerenciar membros")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
     if user_id == board.owner_id:
         raise HTTPException(status_code=400, detail="O dono do quadro não pode ser removido")
 

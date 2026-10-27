@@ -30,8 +30,8 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 async def _quadros_visiveis(user: User, db: AsyncSession) -> list[int]:
-    """Mesmo recorte de /boards/stats e de can_open: elevado vê todos."""
-    stmt = select(Board.id).where(Board.deleted_at.is_(None))
+    """Mesmo recorte de /boards/stats e de can_open: elevado vê todos. Arquivado não conta."""
+    stmt = select(Board.id).where(Board.deleted_at.is_(None), Board.archived_at.is_(None))
     if not user.is_elevated:
         stmt = stmt.join(BoardMember, BoardMember.board_id == Board.id).where(BoardMember.user_id == user.id)
     return list((await db.execute(stmt)).scalars().all())
@@ -44,7 +44,11 @@ async def get_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     if board_id is not None:
-        if not await user_can_access_board(board_id, current_user, db):
+        arquivado = (await db.execute(
+            select(Board.archived_at).where(Board.id == board_id)
+        )).scalar_one_or_none() is not None
+        # Arquivado não tem painel: para o Dashboard é como se não existisse.
+        if arquivado or not await user_can_access_board(board_id, current_user, db):
             # Elevado alcança todo quadro vivo, então falso para ele é "não
             # existe". Para os outros, 403 sempre: não revela se o quadro existe.
             if current_user.is_elevated:

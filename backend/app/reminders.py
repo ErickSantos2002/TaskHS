@@ -23,12 +23,14 @@ async def _board_id_for_card(db, list_id: int) -> int | None:
 
 
 async def _card_vivo(db, card: Card) -> bool:
-    """Card, lista e quadro fora da lixeira (a lixeira nao propaga para os filhos)."""
+    """Card, lista e quadro fora da lixeira (a lixeira nao propaga para os filhos),
+    e quadro nao arquivado: arquivado esta fora de circulacao, nao notifica."""
     if card.deleted_at is not None:
         return False
     q = await db.execute(
         select(List.id).join(Board, Board.id == List.board_id).where(
             List.id == card.list_id, List.deleted_at.is_(None), Board.deleted_at.is_(None),
+            Board.archived_at.is_(None),
         ).limit(1)
     )
     return q.scalars().first() is not None
@@ -88,6 +90,7 @@ async def run_reminder_cycle() -> None:
             .join(Board, Board.id == List.board_id)
             .where(
                 Card.deleted_at.is_(None), List.deleted_at.is_(None), Board.deleted_at.is_(None),
+                Board.archived_at.is_(None),
                 Card.archived == False,
                 Card.due_date_completed == False,
                 Card.due_date != None,
