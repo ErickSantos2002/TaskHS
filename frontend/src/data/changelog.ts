@@ -14,6 +14,15 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.9.0",
+    date: "2026-10-27",
+    changes: [
+      { kind: "novidade", text: "Dashboard por quadro: escolha um quadro no topo do Dashboard para ver os cards ativos, listas, arquivados, prazos vencidos, os que vencem hoje e um gráfico com a quantidade de cards em cada lista." },
+      { kind: "novidade", text: "Alerta de 72 horas úteis: o Dashboard mostra quantos cards foram criados há mais de 72 h (contando só dias de semana) e ainda não chegaram a uma lista de concluído. Clique no alerta para ver quais são, em que lista estão, e abrir cada card direto." },
+      { kind: "melhoria", text: "Nas configurações do quadro, o dono ou o administrador marca quais listas são \"de concluído\". Cards nessas listas não entram no alerta de 72 h." },
+    ],
+  },
+  {
     version: "2.8.2",
     date: "2026-10-27",
     changes: [

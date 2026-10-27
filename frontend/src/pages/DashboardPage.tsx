@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
 import { BoardIcon } from "../components/BoardIcon";
-import type { BoardListItem } from "../types";
+import { AtrasadosModal } from "../components/AtrasadosModal";
+import type { BoardListItem, DashboardData } from "../types";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -46,6 +47,21 @@ const ICal = () => (
 const IArrow = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+  </svg>
+);
+const IList = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+const IArchive = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+  </svg>
+);
+const IAlert = () => (
+  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
   </svg>
 );
 const ISpinner = () => (
@@ -95,14 +111,87 @@ function StatCard({ label, value, icon, color, sub }: {
   );
 }
 
+// ── Alerta de 72 h úteis ───────────────────────────────────────
+
+function AlertaAtrasados({ valor, onClick }: { valor: number | undefined; onClick: () => void }) {
+  const tem = !!valor;
+  return (
+    <button
+      onClick={onClick}
+      disabled={valor === undefined}
+      className={cn(
+        "w-full text-left rounded-xl border p-5 flex items-center gap-4 transition-colors",
+        tem
+          ? "bg-red-500/10 border-red-500/40 hover:bg-red-500/15"
+          : "bg-background-surface border-border hover:border-primary/40",
+      )}
+    >
+      <div className={cn(
+        "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
+        tem ? "bg-red-500/20 text-red-400" : "bg-slate-700/40 text-slate-500",
+      )}>
+        <IAlert />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-3xl font-extrabold leading-none", tem ? "text-red-400" : "text-slate-100")}>
+          {valor === undefined ? <span className="w-10 h-7 rounded bg-background-elevated animate-pulse inline-block" /> : valor}
+        </p>
+        <p className="text-sm text-slate-300 mt-1 font-semibold">Cards há mais de 72 h úteis</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">Desde a criação, só dias de semana, fora das listas de concluído</p>
+      </div>
+      <span className="text-xs font-semibold text-primary shrink-0 hidden sm:flex items-center gap-1">Ver cards <IArrow /></span>
+    </button>
+  );
+}
+
+// ── Cards por lista ────────────────────────────────────────────
+
+function BarrasPorLista({ listas }: { listas: DashboardData["listas"] }) {
+  const maior = Math.max(1, ...listas.map(l => l.total));
+  return (
+    <div className="rounded-xl bg-background-surface border border-border px-5 py-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-300">Cards por lista</p>
+        <p className="text-[11px] text-slate-500">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500 align-middle mr-1" />acima de 72 h úteis
+          <span className="mx-2">·</span>✓ lista de concluído
+        </p>
+      </div>
+      {listas.length === 0 ? (
+        <p className="text-xs text-slate-500">Este quadro não tem listas.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {listas.map(l => (
+            <div key={l.id} className="flex items-center gap-3 text-xs">
+              <span className="w-32 sm:w-56 shrink-0 truncate text-slate-300" title={l.title}>
+                {l.is_done && <span className="text-primary mr-1">✓</span>}{l.title}
+              </span>
+              <div className="flex-1 h-3 flex rounded bg-background-elevated overflow-hidden">
+                <div className="h-full bg-primary/70" style={{ width: `${((l.total - l.atrasados) / maior) * 100}%` }} />
+                <div className="h-full bg-red-500" style={{ width: `${(l.atrasados / maior) * 100}%` }} />
+              </div>
+              <span className="w-14 shrink-0 text-right text-slate-400 tabular-nums">
+                {l.total}{l.atrasados > 0 && <span className="text-red-400"> ({l.atrasados})</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── DashboardPage ──────────────────────────────────────────────
 
 export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState<Stats | null>(null);
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dashCarregado, setDash] = useState<DashboardData | null>(null);
+  const [verAtrasados, setVerAtrasados] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -112,9 +201,37 @@ export function DashboardPage() {
       setStats(s);
       // /boards devolve todos os quadros da empresa (vitrine com cadeado é a
       // /boards). Aqui é o painel pessoal: só os que a pessoa pode abrir.
-      setBoards(b.filter(board => board.can_open).slice(0, 6));
+      setBoards(b.filter(board => board.can_open));
     }).finally(() => setLoading(false));
   }, []);
+
+  // O quadro escolhido mora na URL (?board=), para F5 e link compartilhado.
+  // Quadro que a pessoa não abre (ou que não existe) vira "Todos os quadros".
+  const boardParam = searchParams.get("board");
+  const selecionado = boards.find(b => String(b.id) === boardParam) ?? null;
+  const boardId = selecionado?.id ?? null;
+
+  useEffect(() => {
+    if (!loading && boardParam && !selecionado) setSearchParams({}, { replace: true });
+  }, [loading, boardParam, selecionado, setSearchParams]);
+
+  useEffect(() => {
+    if (loading) return;
+    let vigente = true;
+    api.get<DashboardData>(boardId ? `/dashboard?board_id=${boardId}` : "/dashboard")
+      .then(d => { if (vigente) setDash(d); })
+      .catch(() => {});
+    // Troca rápida de quadro: a resposta do quadro anterior não sobrescreve a atual.
+    return () => { vigente = false; };
+  }, [loading, boardId]);
+
+  // Enquanto chega o do quadro novo, o painel do anterior não aparece.
+  const dash = dashCarregado && dashCarregado.board_id === boardId ? dashCarregado : null;
+
+  function escolherQuadro(id: string) {
+    setVerAtrasados(false);
+    setSearchParams(id ? { board: id } : {});
+  }
 
   const completionRate = stats && stats.cards_total > 0
     ? Math.round((stats.cards_completed / stats.cards_total) * 100)
@@ -131,14 +248,54 @@ export function DashboardPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5 capitalize">{formatDate()}</p>
         </div>
-        <button
-          onClick={() => navigate("/boards")}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all self-start sm:self-auto"
-        >
-          Ver todos os boards <IArrow />
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <select
+            value={boardId ? String(boardId) : ""}
+            onChange={e => escolherQuadro(e.target.value)}
+            disabled={loading}
+            aria-label="Quadro do dashboard"
+            className="text-sm bg-background-elevated rounded-lg border border-border px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 max-w-[16rem]"
+          >
+            <option value="">Todos os quadros</option>
+            {boards.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+          </select>
+          <button
+            onClick={() => navigate("/boards")}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-600 active:scale-95 transition-all"
+          >
+            Ver todos os boards <IArrow />
+          </button>
+        </div>
       </div>
 
+      <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
+
+      {selecionado ? (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard label="Cards ativos" value={dash?.kpis.cards_ativos} icon={<ICards />} color="bg-indigo-500/15 text-indigo-400" />
+            <StatCard label="Listas" value={dash?.kpis.listas} icon={<IList />} color="bg-primary/15 text-primary" />
+            <StatCard label="Arquivados" value={dash?.kpis.arquivados} icon={<IArchive />} color="bg-slate-700/40 text-slate-400" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              label="Prazo vencido"
+              value={dash?.kpis.prazo_vencido}
+              icon={<IClock />}
+              color={dash?.kpis.prazo_vencido ? "bg-red-500/15 text-red-400" : "bg-slate-700/40 text-slate-500"}
+            />
+            <StatCard
+              label="Vencem hoje"
+              value={dash?.kpis.vencem_hoje}
+              icon={<ICal />}
+              color={dash?.kpis.vencem_hoje ? "bg-amber-500/15 text-amber-400" : "bg-slate-700/40 text-slate-500"}
+            />
+            <StatCard label="Em listas de concluído" value={dash?.kpis.em_concluido} icon={<ICheck />} color="bg-emerald-500/15 text-emerald-400" />
+          </div>
+          {dash ? <BarrasPorLista listas={dash.listas} /> : <div className="flex justify-center py-10"><ISpinner /></div>}
+        </>
+      ) : (
+      <>
       {/* ── Stats grid ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -212,7 +369,7 @@ export function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {boards.map(board => (
+            {boards.slice(0, 6).map(board => (
               <button
                 key={board.id}
                 onClick={() => navigate(`/boards/${board.id}`)}
@@ -239,7 +396,12 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
+      {verAtrasados && dash && (
+        <AtrasadosModal atrasados={dash.atrasados} mostrarQuadro={!selecionado} onClose={() => setVerAtrasados(false)} />
+      )}
     </div>
   );
 }

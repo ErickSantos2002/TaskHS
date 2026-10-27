@@ -24,7 +24,13 @@ class ListOut(BaseModel):
     color: str
     position: int
     archived: bool = False
+    is_done: bool = False
     deleted_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DoneListsUpdate(BaseModel):
+    """Ids das listas de concluído do quadro; as que ficarem fora voltam a contar."""
+    list_ids: list[int]

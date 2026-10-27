@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.reminder import Reminder
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
-from app.schemas.list import ListOut
+from app.schemas.list import ListOut, DoneListsUpdate
 from app.routers.cards import _card_options, _card_to_dict
 from app.dependencies import get_current_user, require_board_access_by_board_id, user_can_access_board
 from app.routers.auth import get_elevated_user
@@ -377,6 +377,35 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
     await db.commit()
     await db.refresh(board)
     return board
+
+
+@router.put("/{board_id}/done-lists", response_model=list[ListOut])
+async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Define quais listas do quadro são "de concluído" (alerta de 72 h do Dashboard).
+
+    Substitui o conjunto inteiro: lista ativa fora de `list_ids` volta a contar.
+    Mesmo critério de `update_board` — é configuração do quadro, não do card.
+
+    Só mexe em lista ativa (viva e não arquivada), que é o que o drawer mostra:
+    se incluísse as arquivadas, todo "Salvar" do drawer desmarcaria a lista de
+    concluído que alguém arquivou, e ao desarquivar os cards dela voltariam ao
+    alerta de 72 h.
+    """
+    board = await _get_board_or_404(board_id, db)
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    listas = (await db.execute(
+        select(List)
+        .where(List.board_id == board_id, List.deleted_at.is_(None), List.archived == False)
+        .order_by(List.position)
+    )).scalars().all()
+    marcar = set(body.list_ids)
+    if not marcar <= {l.id for l in listas}:
+        raise HTTPException(status_code=400, detail="Lista não pertence a este quadro")
+    for lista in listas:
+        lista.is_done = lista.id in marcar
+    await db.commit()
+    return listas
 
 
 @router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)

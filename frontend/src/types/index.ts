@@ -63,6 +63,7 @@ export interface BoardList {
   color: string;
   position: number;
   archived: boolean;
+  is_done: boolean;
   created_at: string;
 }
 
@@ -240,4 +241,42 @@ export interface TrashBoard {
   deleted_by_name: string;
   lists: number;
   cards: number;
+}
+
+// ── Dashboard (GET /api/dashboard) ─────────────────────────────
+
+export interface DashboardKpis {
+  cards_ativos: number;
+  listas: number;
+  arquivados: number;
+  prazo_vencido: number;
+  vencem_hoje: number;
+  em_concluido: number;
+  atrasados: number;
+}
+
+export interface DashboardLista {
+  id: number;
+  title: string;
+  is_done: boolean;
+  total: number;
+  atrasados: number;
+}
+
+export interface DashboardAtrasado {
+  card_id: number;
+  list_id: number;
+  board_id: number;
+  board_title: string;
+  list_title: string;
+  title: string;
+  created_at: string;
+  horas_uteis: number;
+}
+
+export interface DashboardData {
+  board_id: number | null;
+  kpis: DashboardKpis;
+  listas: DashboardLista[];
+  atrasados: DashboardAtrasado[];
 }
