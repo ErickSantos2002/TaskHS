@@ -251,8 +251,6 @@ export interface DashboardKpis {
   cards_ativos: number;
   listas: number;
   arquivados: number;
-  prazo_vencido: number;
-  vencem_hoje: number;
   em_concluido: number;
   atrasados: number;
 }
@@ -276,9 +274,38 @@ export interface DashboardAtrasado {
   horas_uteis: number;
 }
 
+export interface MovimentoDia {
+  dia: string;  // ISO "YYYY-MM-DD", dia de Brasília
+  total: number;
+}
+
+export interface RankingQuadro {
+  id: number;
+  nome: string;
+  color: string | null;
+  total: number;
+}
+
+export interface RankingPessoa {
+  id: number;
+  nome: string;
+  initials: string;
+  avatar_url: string | null;
+  total: number;
+}
+
+export type PeriodoDashboard = 7 | 30 | 90;
+
 export interface DashboardData {
   board_id: number | null;
+  periodo: PeriodoDashboard;
   kpis: DashboardKpis;
   listas: DashboardLista[];
   atrasados: DashboardAtrasado[];
+  /** Movimento = card mudado de lista por uma pessoa (a integração não conta). */
+  movimentos_por_dia: MovimentoDia[];
+  quadros_mais_movimentados: RankingQuadro[];
+  quadros_com_mais_cards: RankingQuadro[];
+  pessoas_que_mais_movimentam: RankingPessoa[];
+  pessoas_com_mais_cards: RankingPessoa[];
 }
