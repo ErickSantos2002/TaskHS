@@ -63,6 +63,7 @@ export interface BoardList {
   color: string;
   position: number;
   archived: boolean;
+  is_done: boolean;
   created_at: string;
 }
 

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, ForeignKey, Integer, DateTime, Boolean
+from sqlalchemy import String, ForeignKey, Integer, DateTime, Boolean, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -14,6 +14,8 @@ class List(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     color: Mapped[str] = mapped_column(String(7), default="#64748b")
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Lista "de concluido" (migration 014): card aqui sai do alerta de 72 h do Dashboard.
+    is_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     # Lixeira (migration 013). NULL = viva.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
