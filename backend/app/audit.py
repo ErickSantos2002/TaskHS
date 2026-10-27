@@ -90,7 +90,7 @@ def _sse_target(session, obj, raw_action):
 
 
 SENSITIVE = {"password_hash"}
-IGNORED_FIELDS = {"created_at", "updated_at"}
+IGNORED_FIELDS = {"created_at", "updated_at", "list_entered_at"}
 VERB = {"criar": "criou", "editar": "editou", "excluir": "excluiu", "mover": "moveu"}
 
 # Lixeira (v2.7.0): mover pra lixeira / restaurar sao UPDATEs de deleted_at, mas

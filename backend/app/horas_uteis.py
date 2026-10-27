@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 TZ_BR = timezone(timedelta(hours=-3))
 LIMITE_HORAS = 72
+# Régua por lista (travados por setor): horas úteis desde que o card entrou na lista.
+LIMITE_HORAS_LISTA = 24
 
 # Uma segunda-feira 00:00 em Brasília qualquer, só para servir de régua.
 _SEGUNDA = datetime(2024, 1, 1, tzinfo=TZ_BR)
