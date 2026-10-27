@@ -8,10 +8,15 @@ app/horas_uteis.py) que ainda não chegou numa lista "de concluído" do quadro
 card do alerta, de propósito: na operação a caixinha tem outro significado.
 Só a lista onde o card está decide.
 
+Rankings (v2.11.0): "movimentar" é MOVER o card de lista, feito por uma pessoa
+— `audit_log` com entity_type='card', action='mover', actor_type='usuario'. A
+integração fica de fora. Os rankings de "mais cards" são a foto de agora; os de
+movimento dependem do período (dias corridos, no horário de Brasília).
+
 Fora dos chokepoints da lixeira: toda query aqui filtra `deleted_at IS NULL` em
 card, lista e quadro à mão.
 """
-from datetime import date, datetime, timezone
+from datetime import datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, or_
@@ -19,14 +24,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, user_can_access_board
-from app.horas_uteis import horas_uteis, LIMITE_HORAS
+from app.horas_uteis import horas_uteis, LIMITE_HORAS, TZ_BR
+from app.models.audit import AuditLog
 from app.models.board import Board, BoardMember
-from app.models.card import Card
+from app.models.card import Card, CardMember
 from app.models.list import List
 from app.models.user import User
 from app.schemas.dashboard import DashboardOut
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+PERIODOS = (7, 30, 90)
+TOP = 8
+
+
+def _top(contagem: dict[int, int], nomes: dict[int, str]) -> list[int]:
+    """Ids dos TOP maiores, empate desempatado pelo nome."""
+    return sorted(contagem, key=lambda i: (-contagem[i], nomes.get(i, "")))[:TOP]
 
 
 async def _quadros_visiveis(user: User, db: AsyncSession) -> list[int]:
@@ -40,9 +54,12 @@ async def _quadros_visiveis(user: User, db: AsyncSession) -> list[int]:
 @router.get("", response_model=DashboardOut)
 async def get_dashboard(
     board_id: int | None = Query(None),
+    periodo: int = Query(30),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if periodo not in PERIODOS:
+        raise HTTPException(status_code=422, detail="Período deve ser 7, 30 ou 90 dias")
     if board_id is not None:
         arquivado = (await db.execute(
             select(Board.archived_at).where(Board.id == board_id)
@@ -68,7 +85,7 @@ async def get_dashboard(
 
     ativos = (await db.execute(
         select(
-            Card.id, Card.title, Card.list_id, Card.created_at, Card.due_date, Card.due_date_completed,
+            Card.id, Card.title, Card.list_id, Card.created_at,
             List.title, List.is_done, Board.id, Board.title,
         )
         .join(List, List.id == Card.list_id)
@@ -90,18 +107,18 @@ async def get_dashboard(
         )
     )).scalar_one()
 
-    agora = datetime.now(timezone.utc)
-    hoje = date.today()  # mesma régua de /boards/stats
+    agora = datetime.now(TZ_BR)
     total_por_lista: dict[int, int] = {}
     atrasados_por_lista: dict[int, int] = {}
+    cards_por_quadro: dict[int, int] = {}
+    nome_quadro: dict[int, str] = {}
     atrasados = []
-    prazo_vencido = vencem_hoje = em_concluido = 0
-    for (card_id, title, list_id, created_at, due_date, due_ok,
+    em_concluido = 0
+    for (card_id, title, list_id, created_at,
          list_title, list_done, b_id, b_title) in ativos:
         total_por_lista[list_id] = total_por_lista.get(list_id, 0) + 1
-        if due_date is not None and not due_ok:
-            prazo_vencido += due_date < hoje
-            vencem_hoje += due_date == hoje
+        cards_por_quadro[b_id] = cards_por_quadro.get(b_id, 0) + 1
+        nome_quadro[b_id] = b_title
         if list_done:
             em_concluido += 1
             continue
@@ -114,14 +131,82 @@ async def get_dashboard(
                 "created_at": created_at, "horas_uteis": round(horas, 1),
             })
 
+    # ── Movimentos no período: dias corridos inteiros, terminando hoje ──
+    hoje = agora.date()
+    dias = [hoje - timedelta(days=i) for i in range(periodo - 1, -1, -1)]
+    desde = datetime.combine(dias[0], time.min, tzinfo=TZ_BR)
+    movimentos = (await db.execute(
+        select(AuditLog.board_id, AuditLog.actor_user_id, AuditLog.created_at).where(
+            AuditLog.entity_type == "card", AuditLog.action == "mover",
+            AuditLog.actor_type == "usuario", AuditLog.created_at >= desde,
+            # Pelo quadro do evento: card que depois foi pra lixeira ainda conta.
+            AuditLog.board_id.in_(board_ids),
+        )
+    )).all()
+    por_dia = dict.fromkeys(dias, 0)
+    mov_quadro: dict[int, int] = {}
+    mov_pessoa: dict[int, int] = {}
+    for b_id, user_id, quando in movimentos:
+        dia = quando.astimezone(TZ_BR).date()
+        if dia in por_dia:
+            por_dia[dia] += 1
+        mov_quadro[b_id] = mov_quadro.get(b_id, 0) + 1
+        if user_id is not None:
+            mov_pessoa[user_id] = mov_pessoa.get(user_id, 0) + 1
+
+    # ── Pessoas com mais cards: membro de card ativo (foto de agora) ──
+    cards_pessoa = dict((await db.execute(
+        select(CardMember.user_id, func.count(CardMember.id))
+        .join(Card, Card.id == CardMember.card_id)
+        .join(List, List.id == Card.list_id)
+        .join(Board, Board.id == List.board_id)
+        .where(
+            Card.deleted_at.is_(None), *lista_viva, Board.deleted_at.is_(None),
+            Card.archived == False, List.archived == False,
+        )
+        .group_by(CardMember.user_id)
+    )).all())
+
+    pessoas = {
+        u.id: u for u in (await db.execute(
+            select(User).where(User.id.in_(set(mov_pessoa) | set(cards_pessoa)))
+        )).scalars().all()
+    }
+    if mov_quadro:
+        nome_quadro |= dict((await db.execute(
+            select(Board.id, Board.title).where(Board.id.in_(mov_quadro))
+        )).all())
+    cor_quadro = dict((await db.execute(
+        select(Board.id, Board.color).where(Board.id.in_(set(mov_quadro) | set(cards_por_quadro)))
+    )).all())
+    nome_pessoa = {i: u.name for i, u in pessoas.items()}
+
+    def ranking_quadros(contagem: dict[int, int]) -> list[dict]:
+        # Rankings de QUADRO só fazem sentido na visão de todos os quadros.
+        if board_id is not None:
+            return []
+        return [{"id": i, "nome": nome_quadro.get(i, ""), "color": cor_quadro.get(i), "total": contagem[i]}
+                for i in _top(contagem, nome_quadro)]
+
+    def ranking_pessoas(contagem: dict[int, int]) -> list[dict]:
+        # Usuário apagado some do ranking (não há nome para mostrar).
+        contagem = {i: n for i, n in contagem.items() if i in pessoas}
+        return [{"id": i, "nome": pessoas[i].name, "initials": pessoas[i].initials,
+                 "avatar_url": pessoas[i].avatar_url, "total": contagem[i]}
+                for i in _top(contagem, nome_pessoa)]
+
     return {
         "board_id": board_id,
+        "periodo": periodo,
+        "movimentos_por_dia": [{"dia": d, "total": n} for d, n in por_dia.items()],
+        "quadros_mais_movimentados": ranking_quadros(mov_quadro),
+        "quadros_com_mais_cards": ranking_quadros(cards_por_quadro),
+        "pessoas_que_mais_movimentam": ranking_pessoas(mov_pessoa),
+        "pessoas_com_mais_cards": ranking_pessoas(cards_pessoa),
         "kpis": {
             "cards_ativos": len(ativos),
             "listas": len(listas),
             "arquivados": arquivados,
-            "prazo_vencido": prazo_vencido,
-            "vencem_hoje": vencem_hoje,
             "em_concluido": em_concluido,
             "atrasados": len(atrasados),
         },

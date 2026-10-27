@@ -3,45 +3,25 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../lib/utils";
-import { BoardIcon } from "../components/BoardIcon";
 import { AtrasadosModal } from "../components/AtrasadosModal";
-import type { BoardListItem, DashboardData } from "../types";
+import { MovimentosPorDia, RankingBarras, type ItemRanking } from "../components/DashboardGraficos";
+import type { BoardListItem, DashboardData, PeriodoDashboard } from "../types";
+
+const PERIODOS: PeriodoDashboard[] = [7, 30, 90];
 
 // ── Types ──────────────────────────────────────────────────────
 
-interface Stats {
-  boards: number;
-  cards_total: number;
-  cards_overdue: number;
-  cards_due_today: number;
-  cards_completed: number;
-}
 
 // ── Icons ──────────────────────────────────────────────────────
 
-const IBoard = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-  </svg>
-);
 const ICards = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
   </svg>
 );
-const IClock = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
 const ICheck = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-const ICal = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
   </svg>
 );
 const IArrow = () => (
@@ -187,55 +167,67 @@ export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [stats, setStats] = useState<Stats | null>(null);
   const [boards, setBoards] = useState<BoardListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dashCarregado, setDash] = useState<DashboardData | null>(null);
   const [verAtrasados, setVerAtrasados] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      api.get<Stats>("/boards/stats"),
-      api.get<BoardListItem[]>("/boards"),
-    ]).then(([s, b]) => {
-      setStats(s);
+    api.get<BoardListItem[]>("/boards")
       // /boards devolve todos os quadros da empresa (vitrine com cadeado é a
       // /boards). Aqui é o painel pessoal: só os que a pessoa pode abrir.
-      setBoards(b.filter(board => board.can_open));
-    }).finally(() => setLoading(false));
+      .then(b => setBoards(b.filter(board => board.can_open)))
+      .finally(() => setLoading(false));
   }, []);
 
-  // O quadro escolhido mora na URL (?board=), para F5 e link compartilhado.
-  // Quadro que a pessoa não abre (ou que não existe) vira "Todos os quadros".
+  // Quadro (?board=) e período (?periodo=) moram na URL, para F5 e link
+  // compartilhado. Quadro que a pessoa não abre vira "Todos os quadros";
+  // período fora de 7/30/90 vira 30.
   const boardParam = searchParams.get("board");
   const selecionado = boards.find(b => String(b.id) === boardParam) ?? null;
   const boardId = selecionado?.id ?? null;
+  const periodoParam = Number(searchParams.get("periodo"));
+  const periodo: PeriodoDashboard = PERIODOS.includes(periodoParam as PeriodoDashboard)
+    ? periodoParam as PeriodoDashboard
+    : 30;
 
   useEffect(() => {
-    if (!loading && boardParam && !selecionado) setSearchParams({}, { replace: true });
+    if (!loading && boardParam && !selecionado) {
+      setSearchParams(p => { p.delete("board"); return p; }, { replace: true });
+    }
   }, [loading, boardParam, selecionado, setSearchParams]);
 
   useEffect(() => {
     if (loading) return;
     let vigente = true;
-    api.get<DashboardData>(boardId ? `/dashboard?board_id=${boardId}` : "/dashboard")
+    const qs = new URLSearchParams({ periodo: String(periodo) });
+    if (boardId) qs.set("board_id", String(boardId));
+    api.get<DashboardData>(`/dashboard?${qs}`)
       .then(d => { if (vigente) setDash(d); })
       .catch(() => {});
-    // Troca rápida de quadro: a resposta do quadro anterior não sobrescreve a atual.
+    // Troca rápida de quadro/período: a resposta anterior não sobrescreve a atual.
     return () => { vigente = false; };
-  }, [loading, boardId]);
+  }, [loading, boardId, periodo]);
 
-  // Enquanto chega o do quadro novo, o painel do anterior não aparece.
-  const dash = dashCarregado && dashCarregado.board_id === boardId ? dashCarregado : null;
+  // Enquanto chega o do quadro/período novo, o painel anterior não aparece.
+  const dash = dashCarregado && dashCarregado.board_id === boardId && dashCarregado.periodo === periodo
+    ? dashCarregado : null;
 
-  function escolherQuadro(id: string) {
+  function mudarParam(chave: string, valor: string | null) {
     setVerAtrasados(false);
-    setSearchParams(id ? { board: id } : {});
+    setSearchParams(p => {
+      if (valor) p.set(chave, valor); else p.delete(chave);
+      return p;
+    });
   }
 
-  const completionRate = stats && stats.cards_total > 0
-    ? Math.round((stats.cards_completed / stats.cards_total) * 100)
-    : null;
+  const sufixoPeriodo = `nos últimos ${periodo} dias`;
+  const semMembros = "Ninguém é membro de card ainda. Entre como membro nos cards pelos quais você é responsável.";
+  const pessoas = (lista: DashboardData["pessoas_com_mais_cards"]): ItemRanking[] =>
+    lista.map(p => ({ id: p.id, nome: p.nome, total: p.total, pessoa: { name: p.nome, initials: p.initials, avatar_url: p.avatar_url } }));
+  const quadros = (lista: DashboardData["quadros_com_mais_cards"]): ItemRanking[] =>
+    lista.map(q => ({ id: q.id, nome: q.nome, total: q.total, color: q.color }));
+  const carregando = <div className="flex justify-center py-10"><ISpinner /></div>;
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto min-h-0 px-4 md:px-6 py-6 space-y-6">
@@ -249,9 +241,23 @@ export function DashboardPage() {
           <p className="text-sm text-slate-500 mt-0.5 capitalize">{formatDate()}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="flex rounded-lg border border-border bg-background-elevated overflow-hidden" role="group" aria-label="Período">
+            {PERIODOS.map(p => (
+              <button
+                key={p}
+                onClick={() => mudarParam("periodo", p === 30 ? null : String(p))}
+                className={cn(
+                  "px-3 py-2 text-xs font-semibold transition-colors",
+                  periodo === p ? "bg-primary/15 text-primary" : "text-slate-400 hover:text-slate-200",
+                )}
+              >
+                {p} dias
+              </button>
+            ))}
+          </div>
           <select
             value={boardId ? String(boardId) : ""}
-            onChange={e => escolherQuadro(e.target.value)}
+            onChange={e => mudarParam("board", e.target.value || null)}
             disabled={loading}
             aria-label="Quadro do dashboard"
             className="text-sm bg-background-elevated rounded-lg border border-border px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary/50 max-w-[16rem]"
@@ -270,133 +276,58 @@ export function DashboardPage() {
 
       <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
 
-      {selecionado ? (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard label="Cards ativos" value={dash?.kpis.cards_ativos} icon={<ICards />} color="bg-indigo-500/15 text-indigo-400" />
-            <StatCard label="Listas" value={dash?.kpis.listas} icon={<IList />} color="bg-primary/15 text-primary" />
-            <StatCard label="Arquivados" value={dash?.kpis.arquivados} icon={<IArchive />} color="bg-slate-700/40 text-slate-400" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard
-              label="Prazo vencido"
-              value={dash?.kpis.prazo_vencido}
-              icon={<IClock />}
-              color={dash?.kpis.prazo_vencido ? "bg-red-500/15 text-red-400" : "bg-slate-700/40 text-slate-500"}
-            />
-            <StatCard
-              label="Vencem hoje"
-              value={dash?.kpis.vencem_hoje}
-              icon={<ICal />}
-              color={dash?.kpis.vencem_hoje ? "bg-amber-500/15 text-amber-400" : "bg-slate-700/40 text-slate-500"}
-            />
-            <StatCard label="Em listas de concluído" value={dash?.kpis.em_concluido} icon={<ICheck />} color="bg-emerald-500/15 text-emerald-400" />
-          </div>
-          {dash ? <BarrasPorLista listas={dash.listas} /> : <div className="flex justify-center py-10"><ISpinner /></div>}
-        </>
-      ) : (
-      <>
-      {/* ── Stats grid ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Boards"
-          value={stats?.boards}
-          icon={<IBoard />}
-          color="bg-primary/15 text-primary"
-        />
-        <StatCard
-          label="Cards ativos"
-          value={stats?.cards_total}
-          icon={<ICards />}
-          color="bg-indigo-500/15 text-indigo-400"
-          sub={completionRate !== null ? `${completionRate}% concluídos` : undefined}
-        />
-        <StatCard
-          label="Vencidos"
-          value={stats?.cards_overdue}
-          icon={<IClock />}
-          color={stats?.cards_overdue ? "bg-red-500/15 text-red-400" : "bg-slate-700/40 text-slate-500"}
-        />
-        <StatCard
-          label="Vencem hoje"
-          value={stats?.cards_due_today}
-          icon={<ICal />}
-          color={stats?.cards_due_today ? "bg-amber-500/15 text-amber-400" : "bg-slate-700/40 text-slate-500"}
-        />
-      </div>
-
-      {/* ── Completion bar ── */}
-      {stats && stats.cards_total > 0 && (
-        <div className="rounded-xl bg-background-surface border border-border px-5 py-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
-              <ICheck />
-              Progresso geral
-            </div>
-            <span className="text-sm font-bold text-slate-200">{completionRate}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-background-elevated overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-primary to-emerald-400 transition-all duration-700"
-              style={{ width: `${completionRate}%` }}
-            />
-          </div>
-          <p className="text-xs text-slate-500">
-            {stats.cards_completed} de {stats.cards_total} cards com prazo concluídos
-          </p>
+      {selecionado && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Cards ativos" value={dash?.kpis.cards_ativos} icon={<ICards />} color="bg-indigo-500/15 text-indigo-400" />
+          <StatCard label="Listas" value={dash?.kpis.listas} icon={<IList />} color="bg-primary/15 text-primary" />
+          <StatCard label="Arquivados" value={dash?.kpis.arquivados} icon={<IArchive />} color="bg-slate-700/40 text-slate-400" />
+          <StatCard label="Em listas de concluído" value={dash?.kpis.em_concluido} icon={<ICheck />} color="bg-emerald-500/15 text-emerald-400" />
         </div>
       )}
 
-      {/* ── Recent boards ── */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Boards recentes</p>
-          <button onClick={() => navigate("/boards")} className="text-xs text-primary hover:underline">Ver todos</button>
-        </div>
+      {!dash ? carregando : (
+        <>
+          <MovimentosPorDia serie={dash.movimentos_por_dia} />
 
-        {loading ? (
-          <div className="flex justify-center py-10"><ISpinner /></div>
-        ) : boards.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center py-12 text-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-background-elevated flex items-center justify-center text-slate-500"><IBoard /></div>
-            <p className="text-sm font-semibold text-slate-400">Nenhum board ainda</p>
-            <button
-              onClick={() => navigate("/boards")}
-              className="text-sm text-primary hover:underline"
-            >
-              Criar primeiro board
-            </button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {!selecionado && (
+              <>
+                <RankingBarras
+                  titulo="Quadros mais movimentados"
+                  subtitulo={`Cards mudados de lista ${sufixoPeriodo}`}
+                  itens={quadros(dash.quadros_mais_movimentados)}
+                  cor="bg-primary/70"
+                  vazio="Nenhum card foi movido no período."
+                  onClickItem={id => mudarParam("board", String(id))}
+                />
+                <RankingBarras
+                  titulo="Quadros com mais cards"
+                  subtitulo="Cards ativos agora"
+                  itens={quadros(dash.quadros_com_mais_cards)}
+                  cor="bg-primary/70"
+                  vazio="Nenhum card ativo."
+                  onClickItem={id => mudarParam("board", String(id))}
+                />
+              </>
+            )}
+            <RankingBarras
+              titulo="Pessoas que mais movimentam"
+              subtitulo={`Cards mudados de lista ${sufixoPeriodo}`}
+              itens={pessoas(dash.pessoas_que_mais_movimentam)}
+              cor="bg-indigo-400/70"
+              vazio="Ninguém moveu cards no período."
+            />
+            <RankingBarras
+              titulo="Pessoas com mais cards"
+              subtitulo="Cards ativos em que a pessoa é membro"
+              itens={pessoas(dash.pessoas_com_mais_cards)}
+              cor="bg-indigo-400/70"
+              vazio={semMembros}
+            />
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {boards.slice(0, 6).map(board => (
-              <button
-                key={board.id}
-                onClick={() => navigate(`/boards/${board.id}`)}
-                className="group text-left rounded-xl bg-background-surface border border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-200 overflow-hidden"
-              >
-                <div className="h-1.5" style={{ backgroundColor: board.color }} />
-                <div className="p-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${board.color}28`, color: board.color }}>
-                    <BoardIcon name={board.icon} className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-100 group-hover:text-primary transition-colors truncate">{board.title}</p>
-                    {board.description && (
-                      <p className="text-xs text-slate-500 truncate mt-0.5">{board.description}</p>
-                    )}
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      {new Date(board.created_at).toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <span className="text-slate-600 group-hover:text-primary transition-colors shrink-0"><IArrow /></span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      </>
+
+          {selecionado && <BarrasPorLista listas={dash.listas} />}
+        </>
       )}
 
       {verAtrasados && dash && (
