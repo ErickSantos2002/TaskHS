@@ -284,6 +284,25 @@ export interface DashboardAtrasado {
   horas_uteis: number;
 }
 
+export interface DashboardTravadoSetor {
+  setor_id: number;
+  nome: string;
+  total: number;
+}
+
+/** Card há mais de 24 h úteis na mesma lista, numa lista com setor. */
+export interface DashboardTravado {
+  card_id: number;
+  list_id: number;
+  board_id: number;
+  board_title: string;
+  list_title: string;
+  title: string;
+  setor_id: number;
+  list_entered_at: string;
+  horas_uteis: number;
+}
+
 export interface MovimentoDia {
   dia: string;  // ISO "YYYY-MM-DD", dia de Brasília
   total: number;
@@ -318,4 +337,7 @@ export interface DashboardData {
   quadros_com_mais_cards: RankingQuadro[];
   pessoas_que_mais_movimentam: RankingPessoa[];
   pessoas_com_mais_cards: RankingPessoa[];
+  /** Régua por lista: inclui setores com 0 que têm lista no recorte. */
+  travados_por_setor: DashboardTravadoSetor[];
+  travados_setor: DashboardTravado[];
 }

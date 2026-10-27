@@ -124,6 +124,61 @@ function AlertaAtrasados({ valor, onClick }: { valor: number | undefined; onClic
   );
 }
 
+// ── Travados por setor (24 h úteis na mesma lista) ─────────────
+
+function TravadosPorSetor({ setores, onClickSetor }: {
+  setores: DashboardData["travados_por_setor"] | undefined;
+  onClickSetor: (setorId: number) => void;
+}) {
+  const maior = Math.max(1, ...(setores ?? []).map(s => s.total));
+  return (
+    <div className="rounded-xl bg-background-surface border border-border px-5 py-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-slate-300">Travados por setor (24 h úteis na lista)</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">
+          Cards parados há mais de 24 h úteis na mesma lista, somados pelo setor da lista
+        </p>
+      </div>
+      {setores === undefined ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map(i => <div key={i} className="h-3 rounded bg-background-elevated animate-pulse" />)}
+        </div>
+      ) : setores.length === 0 ? (
+        <p className="text-xs text-slate-500">
+          Nenhuma lista com setor. Marque o setor das listas no drawer do quadro.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {setores.map(s => {
+            const tem = s.total > 0;
+            return (
+              <button
+                key={s.setor_id}
+                onClick={() => onClickSetor(s.setor_id)}
+                disabled={!tem}
+                className={cn(
+                  "w-full flex items-center gap-3 text-xs rounded transition-colors",
+                  tem ? "hover:bg-background-elevated/60" : "cursor-default",
+                )}
+              >
+                <span className={cn("w-28 sm:w-40 shrink-0 truncate text-left", tem ? "text-slate-300" : "text-slate-500")} title={s.nome}>
+                  {s.nome}
+                </span>
+                <div className="flex-1 h-3 rounded bg-background-elevated overflow-hidden">
+                  {tem && <div className="h-full rounded bg-red-500/80" style={{ width: `${(s.total / maior) * 100}%` }} />}
+                </div>
+                <span className={cn("w-10 shrink-0 text-right tabular-nums", tem ? "font-semibold text-red-400" : "text-slate-500")}>
+                  {s.total}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Cards por lista ────────────────────────────────────────────
 
 function BarrasPorLista({ listas }: { listas: DashboardData["listas"] }) {
@@ -171,6 +226,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [dashCarregado, setDash] = useState<DashboardData | null>(null);
   const [verAtrasados, setVerAtrasados] = useState(false);
+  const [setorAberto, setSetorAberto] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<BoardListItem[]>("/boards")
@@ -276,6 +332,8 @@ export function DashboardPage() {
 
       <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
 
+      <TravadosPorSetor setores={dash?.travados_por_setor} onClickSetor={setSetorAberto} />
+
       {selecionado && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Cards ativos" value={dash?.kpis.cards_ativos} icon={<ICards />} color="bg-indigo-500/15 text-indigo-400" />
@@ -331,8 +389,32 @@ export function DashboardPage() {
       )}
 
       {verAtrasados && dash && (
-        <AtrasadosModal atrasados={dash.atrasados} mostrarQuadro={!selecionado} onClose={() => setVerAtrasados(false)} />
+        <AtrasadosModal
+          atrasados={dash.atrasados.map(a => ({ ...a, desde: a.created_at }))}
+          mostrarQuadro={!selecionado}
+          onClose={() => setVerAtrasados(false)}
+          titulo={`${dash.atrasados.length} ${dash.atrasados.length === 1 ? "card há" : "cards há"} mais de 72 h úteis`}
+          descricao="Contando só dias de semana, desde a criação do card. Cards em listas de concluído ficam de fora."
+          rotuloDesde="Criado em"
+          vazio="Nenhum card passou de 72 h úteis."
+        />
       )}
+
+      {setorAberto !== null && dash && (() => {
+        const travados = dash.travados_setor.filter(t => t.setor_id === setorAberto);
+        const nome = dash.travados_por_setor.find(s => s.setor_id === setorAberto)?.nome ?? "";
+        return (
+          <AtrasadosModal
+            atrasados={travados.map(t => ({ ...t, desde: t.list_entered_at }))}
+            mostrarQuadro={!selecionado}
+            onClose={() => setSetorAberto(null)}
+            titulo={`${nome}: ${travados.length} ${travados.length === 1 ? "card parado" : "cards parados"} há mais de 24 h úteis`}
+            descricao="Contando só dias de semana, desde que o card entrou na lista atual."
+            rotuloDesde="Na lista desde"
+            vazio="Nenhum card parado neste setor."
+          />
+        );
+      })()}
     </div>
   );
 }
