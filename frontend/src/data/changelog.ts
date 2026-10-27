@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.8.2",
+    date: "2026-10-27",
+    changes: [
+      { kind: "correcao", text: "A busca voltou a ser rápida: ela chegava a levar quase 20 segundos para mostrar resultados desde que passou a procurar também nos comentários." },
+    ],
+  },
+  {
     version: "2.8.1",
     date: "2026-10-26",
     changes: [

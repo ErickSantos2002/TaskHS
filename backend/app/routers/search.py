@@ -57,33 +57,42 @@ def termos_de(q: str) -> list[str]:
     return [t for t in normalizar(q).split() if len(t) >= TAMANHO_MINIMO_TERMO]
 
 
-def _comentarios_do_card():
-    """Os comentários vivos do card colados num texto só.
+def _comentarios_por_card():
+    """Os comentários vivos de cada card colados num texto só, uma linha por card.
 
-    Subquery correlacionada e agregada DE PROPÓSITO, em vez de JOIN: com JOIN,
-    um card com três comentários casando viraria três linhas no resultado, e a
+    Agregado DE PROPÓSITO, em vez de JOIN direto em card_comments: com JOIN, um
+    card com três comentários casando viraria três linhas no resultado, e a
     lógica de "todas as palavras" passaria a valer por comentário, não por card
     (buscar "cliente prazo" deixaria de achar o card em que cada palavra está
     num comentário diferente).
+
+    E é um LEFT JOIN num agregado, não subquery correlacionada no WHERE: a
+    correlacionada roda uma vez por linha avaliada, e com estatística velha o
+    planner varria `cards` uma vez por lista — 320 mil agregações, 19 s numa
+    busca (out/2026). Assim os comentários são agregados uma vez só.
     """
     return (
-        select(func.coalesce(func.string_agg(CardComment.body, " "), ""))
-        .where(CardComment.card_id == Card.id, CardComment.deleted_at.is_(None))
-        .correlate(Card)
-        .scalar_subquery()
+        select(
+            CardComment.card_id.label("card_id"),
+            func.string_agg(CardComment.body, " ").label("texto"),
+        )
+        .where(CardComment.deleted_at.is_(None))
+        .group_by(CardComment.card_id)
+        .subquery("comentarios")
     )
 
 
-def _feno():
+def _feno(comentarios):
     """title + description + obs1..6 + comentários num texto só, sem acento.
 
-    concat_ws ignora NULL sozinho — não precisa de coalesce em cada coluna.
+    concat_ws ignora NULL sozinho — não precisa de coalesce em cada coluna (nem
+    no texto dos comentários, que é NULL no card sem comentário).
     """
     juntos = func.concat_ws(
         " ",
         Card.title, Card.description,
         Card.obs1, Card.obs2, Card.obs3, Card.obs4, Card.obs5, Card.obs6,
-        _comentarios_do_card(),
+        comentarios.c.texto,
     )
     return func.translate(func.lower(juntos), _DE, _PARA)
 
@@ -132,11 +141,13 @@ async def search(
     if not termos:
         return []
 
-    feno = _feno()
+    comentarios_agg = _comentarios_por_card()
+    feno = _feno(comentarios_agg)
     stmt = (
         select(Card, ListModel.title, ListModel.archived, Board.id, Board.title, Board.color)
         .join(ListModel, ListModel.id == Card.list_id)
         .join(Board, Board.id == ListModel.board_id)
+        .outerjoin(comentarios_agg, comentarios_agg.c.card_id == Card.id)
         # Lixeira: card, lista ou quadro excluido nao aparece na busca.
         .where(Card.deleted_at.is_(None), ListModel.deleted_at.is_(None), Board.deleted_at.is_(None))
     )
