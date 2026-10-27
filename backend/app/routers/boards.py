@@ -14,7 +14,8 @@ from app.models.user import User
 from app.models.reminder import Reminder
 from app.schemas.board import BoardCreate, BoardUpdate, BoardOut, BoardMemberAdd, BoardMemberOut, BoardListOut
 from app.schemas.card import CardOut
-from app.schemas.list import ListOut, DoneListsUpdate
+from app.schemas.list import ListOut, DoneListsUpdate, ListSetoresUpdate
+from app.models.setor import Setor
 from app.routers.cards import _card_options, _card_to_dict
 from app.dependencies import get_current_user, require_board_access_by_board_id, require_board_view_by_board_id, user_can_access_board, assert_board_writable
 from app.routers.auth import get_elevated_user
@@ -420,6 +421,41 @@ async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession 
         raise HTTPException(status_code=400, detail="Lista não pertence a este quadro")
     for lista in listas:
         lista.is_done = lista.id in marcar
+    await db.commit()
+    return listas
+
+
+@router.put("/{board_id}/list-setores", response_model=list[ListOut])
+async def set_list_setores(board_id: int, body: ListSetoresUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Define o setor de cada lista (travados por setor do Dashboard).
+
+    Mesmo gate de `set_done_lists`, mas só mexe nas listas enviadas: lista
+    arquivada (fora do drawer) mantém o setor. Setor inativo só é aceito se a
+    lista já estava nele — o drawer mostra o atual, mas não oferece inativos.
+    """
+    board = await _get_board_or_404(board_id, db)
+    if board.owner_id != current_user.id and not current_user.is_elevated:
+        raise HTTPException(status_code=403, detail="Apenas o dono ou administrador pode editar o board")
+    await assert_board_writable(board_id, db)  # arquivado: só leitura
+    listas = (await db.execute(
+        select(List)
+        .where(List.board_id == board_id, List.deleted_at.is_(None), List.archived == False)
+        .order_by(List.position)
+    )).scalars().all()
+    por_id = {l.id: l for l in listas}
+    if not set(body.setores) <= set(por_id):
+        raise HTTPException(status_code=400, detail="Lista não pertence a este quadro")
+    pedidos = {s for s in body.setores.values() if s is not None}
+    ativo = dict((await db.execute(
+        select(Setor.id, Setor.ativo).where(Setor.id.in_(pedidos))
+    )).all()) if pedidos else {}
+    if pedidos - set(ativo):
+        raise HTTPException(status_code=400, detail="Setor não encontrado")
+    for list_id, setor_id in body.setores.items():
+        lista = por_id[list_id]
+        if setor_id is not None and not ativo[setor_id] and lista.setor_id != setor_id:
+            raise HTTPException(status_code=400, detail="Setor inativo")
+        lista.setor_id = setor_id
     await db.commit()
     return listas
 

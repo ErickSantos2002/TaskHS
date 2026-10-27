@@ -25,6 +25,7 @@ class ListOut(BaseModel):
     position: int
     archived: bool = False
     is_done: bool = False
+    setor_id: int | None = None
     deleted_at: datetime | None = None
     created_at: datetime
 
@@ -34,3 +35,8 @@ class ListOut(BaseModel):
 class DoneListsUpdate(BaseModel):
     """Ids das listas de concluído do quadro; as que ficarem fora voltam a contar."""
     list_ids: list[int]
+
+
+class ListSetoresUpdate(BaseModel):
+    """Setor de cada lista: {list_id: setor_id | null}. Só as listas enviadas mudam."""
+    setores: dict[int, int | None]

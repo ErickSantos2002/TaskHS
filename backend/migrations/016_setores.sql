@@ -2,8 +2,7 @@
 -- Cadastro de setores (admin), setor de cada lista (drawer do quadro) e o
 -- relógio da régua de 24 h úteis por lista (cards.list_entered_at).
 -- Idempotente: pode rodar de novo sem estragar o que já foi corrigido à mão.
-
-BEGIN;
+-- Aplicada sozinha no boot (app/migrations.py), na transação do runner.
 
 CREATE TABLE IF NOT EXISTS setores (
     id         SERIAL PRIMARY KEY,
@@ -67,8 +66,6 @@ BEGIN
                 'aaaaaeeeeiiiiooooouuuucaaaaaeeeeiiiiooooouuuuc')) ~ regra.padrao;
     END LOOP;
 END $$;
-
-COMMIT;
 
 -- Relatório para revisar: quadro · lista · setor atribuído.
 SELECT b.title AS quadro, l.title AS lista, COALESCE(s.nome, '—') AS setor
