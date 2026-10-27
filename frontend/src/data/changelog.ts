@@ -14,6 +14,15 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.11.0",
+    date: "2026-10-27",
+    changes: [
+      { kind: "melhoria", text: "Dashboard novo: gráfico de movimentações por dia (cards mudados de lista) e rankings de quadros mais movimentados, quadros com mais cards, pessoas que mais movimentam e pessoas com mais cards. Escolha o período de 7, 30 ou 90 dias no topo." },
+      { kind: "melhoria", text: "Clicar num quadro dos rankings abre o painel dele, que agora também mostra o gráfico e quem mais movimenta naquele quadro." },
+      { kind: "melhoria", text: "Saíram do Dashboard o progresso geral, os vencidos, os que vencem hoje e a lista de boards recentes." },
+    ],
+  },
+  {
     version: "2.10.0",
     date: "2026-10-27",
     changes: [
