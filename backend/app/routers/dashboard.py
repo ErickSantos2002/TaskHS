@@ -19,6 +19,11 @@ com setor (`List.setor_id`) e fora das listas de concluído. Somado por setor,
 para a Qualidade ver onde o processo trava. Ver spec
 2026-10-27-travados-por-setor-design.md.
 
+Visibilidade (v2.12.1): as duas réguas (72 h e travados por setor) são só de
+administrador e coordenador (`is_elevated`), a pedido da Qualidade, para um
+setor não usar o número para culpar outro. Para os demais o backend zera o
+contador e devolve as listas vazias, e não só esconde na tela.
+
 Fora dos chokepoints da lixeira: toda query aqui filtra `deleted_at IS NULL` em
 card, lista e quadro à mão.
 """
@@ -158,6 +163,10 @@ async def get_dashboard(
     travados_por_setor = dict.fromkeys(nome_setor, 0)
     for t in travados_setor:
         travados_por_setor[t["setor_id"]] = travados_por_setor.get(t["setor_id"], 0) + 1
+
+    # Réguas da Qualidade: só elevado vê (ver docstring).
+    if not current_user.is_elevated:
+        atrasados, atrasados_por_lista, travados_setor, travados_por_setor = [], {}, [], {}
 
     # ── Movimentos no período: dias corridos inteiros, terminando hoje ──
     hoje = agora.date()

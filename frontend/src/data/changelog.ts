@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.12.1",
+    date: "2026-10-28",
+    changes: [
+      { kind: "correcao", text: "Dashboard: o alerta de 72 h úteis e os travados por setor agora aparecem só para administradores e coordenadores, a pedido da Qualidade." },
+    ],
+  },
+  {
     version: "2.12.0",
     date: "2026-10-27",
     changes: [

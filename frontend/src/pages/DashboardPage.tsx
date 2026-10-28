@@ -181,15 +181,17 @@ function TravadosPorSetor({ setores, onClickSetor }: {
 
 // ── Cards por lista ────────────────────────────────────────────
 
-function BarrasPorLista({ listas }: { listas: DashboardData["listas"] }) {
+function BarrasPorLista({ listas, mostraAtrasados }: { listas: DashboardData["listas"]; mostraAtrasados: boolean }) {
   const maior = Math.max(1, ...listas.map(l => l.total));
   return (
     <div className="rounded-xl bg-background-surface border border-border px-5 py-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-300">Cards por lista</p>
         <p className="text-[11px] text-slate-500">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500 align-middle mr-1" />acima de 72 h úteis
-          <span className="mx-2">·</span>✓ lista de concluído
+          {mostraAtrasados && <>
+            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500 align-middle mr-1" />acima de 72 h úteis
+            <span className="mx-2">·</span>
+          </>}✓ lista de concluído
         </p>
       </div>
       {listas.length === 0 ? (
@@ -220,6 +222,7 @@ function BarrasPorLista({ listas }: { listas: DashboardData["listas"] }) {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const isElevated = user?.role === "administrador" || user?.role === "coordenador";
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [boards, setBoards] = useState<BoardListItem[]>([]);
@@ -330,9 +333,12 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
+      {/* Réguas da Qualidade: só administrador e coordenador (o backend também zera). */}
+      {isElevated && <>
+        <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
 
-      <TravadosPorSetor setores={dash?.travados_por_setor} onClickSetor={setSetorAberto} />
+        <TravadosPorSetor setores={dash?.travados_por_setor} onClickSetor={setSetorAberto} />
+      </>}
 
       {selecionado && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -384,7 +390,7 @@ export function DashboardPage() {
             />
           </div>
 
-          {selecionado && <BarrasPorLista listas={dash.listas} />}
+          {selecionado && <BarrasPorLista listas={dash.listas} mostraAtrasados={isElevated} />}
         </>
       )}
 
