@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.13.0",
+    date: "2026-11-05",
+    changes: [
+      { kind: "novidade", text: "Os assistentes do HS.OS agora podem consultar e trabalhar nos cards em nome da pessoa, sem acesso às telas de gestão." },
+      { kind: "novidade", text: "Novo endpoint de \"minhas tarefas\" para integrações: lista os cards em que a pessoa é membro, em todos os quadros." },
+    ],
+  },
+  {
     version: "2.12.1",
     date: "2026-10-28",
     changes: [

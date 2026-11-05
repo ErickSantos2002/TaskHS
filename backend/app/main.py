@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.database import engine, Base, AsyncSessionLocal
 import app.models  # noqa: F401 — ensures all models are registered before create_all
 import app.audit  # noqa: F401 — registra os listeners de auditoria
-from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders, automations, integration, logs, search, avatars, trash, dashboard, setores
+from app.routers import auth, boards, lists, cards, labels, notifications, attachments, reminders, automations, integration, logs, search, avatars, trash, dashboard, setores, minhas
 from app.core.config import settings
 from app.reminders import reminder_loop
 from app.migrations import run_migrations
@@ -79,6 +79,7 @@ async def audit_http_exception_handler(request: Request, exc: StarletteHTTPExcep
 app.include_router(auth.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")
 app.include_router(lists.router, prefix="/api")
+app.include_router(minhas.router, prefix="/api")  # antes de cards: /cards/minhas
 app.include_router(cards.router, prefix="/api")
 app.include_router(labels.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
