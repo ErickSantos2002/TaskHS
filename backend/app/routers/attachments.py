@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.models.card import Card, CardAttachment
 from app.models.user import User
 from app.schemas.card import AttachmentOut
-from app.dependencies import get_current_user, require_board_access_by_list_id
+from app.dependencies import get_current_user, require_board_access_by_list_id, elevado_fora_do_agente
 
 router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"],
                    dependencies=[Depends(require_board_access_by_list_id)])
@@ -144,7 +144,7 @@ async def delete_attachment(
     att = result.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Anexo não encontrado")
-    if att.uploaded_by != current_user.id and not current_user.is_elevated:
+    if att.uploaded_by != current_user.id and not elevado_fora_do_agente(current_user):
         raise HTTPException(status_code=403, detail="Apenas o autor do anexo ou um administrador pode excluí-lo")
     if att.stored_name:
         path = os.path.join(settings.UPLOAD_DIR, att.stored_name)

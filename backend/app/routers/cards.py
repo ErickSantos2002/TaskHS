@@ -18,7 +18,7 @@ from app.schemas.card import (
     ActivityOut, ActivityPage,
 )
 from app.models.audit import AuditLog
-from app.dependencies import get_current_user, require_board_access_by_list_id, assert_board_access_by_list_id, assert_list_writable
+from app.dependencies import get_current_user, elevado_fora_do_agente, require_board_access_by_list_id, assert_board_access_by_list_id, assert_list_writable
 from app.automations import run_card_moved_automations
 from app.mentions import ids_mencionados, texto_para_notificacao
 # Reusa o serializador do router de anexos para o anexo ter UMA forma só no JSON.
@@ -512,7 +512,7 @@ async def delete_comment(list_id: int, card_id: int, comment_id: int, db: AsyncS
     await _get_card_or_404(card_id, list_id, db)
     comment = await _get_comment_or_404(comment_id, card_id, db)
     # Excluir: autor ou elevado (moderação), espelhando o delete de anexo.
-    if comment.author_id != current_user.id and not current_user.is_elevated:
+    if comment.author_id != current_user.id and not elevado_fora_do_agente(current_user):
         raise HTTPException(status_code=403, detail="Apenas o autor ou um administrador pode excluir o comentário")
     if comment.deleted_at is None:
         comment.deleted_at = datetime.now(timezone.utc)

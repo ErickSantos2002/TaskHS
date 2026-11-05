@@ -9,7 +9,7 @@ from app.models.board import Board, BoardMember
 from app.models.list import List as ListModel
 import logging
 
-from app.audit_context import set_actor_identity, set_actor_via
+from app.audit_context import get_actor, set_actor_identity, set_actor_via
 from app.core.agente import TokenDeAgenteInvalido, eh_token_de_agente, validar_token_de_agente
 
 logger = logging.getLogger("taskhs.agente")
@@ -217,3 +217,9 @@ async def require_board_access_by_list_id(
     if request.method not in METODOS_DE_LEITURA:
         await assert_list_writable(list_id, db)
     return current_user
+
+
+def elevado_fora_do_agente(user: User) -> bool:
+    """Elevado E não é um agente do HS.OS. O bot nunca usa poderes de gestão/moderação,
+    mesmo quando a pessoa é administrador (regra da spec do token de agente)."""
+    return user.is_elevated and get_actor().via is None

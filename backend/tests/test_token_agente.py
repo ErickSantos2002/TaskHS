@@ -79,6 +79,12 @@ def test_chave_errada(par):
         validar_token_de_agente(emitir(outro), pem)
 
 
+def test_exp_longe_demais(par):
+    priv, pem = par
+    with pytest.raises(TokenDeAgenteInvalido):
+        validar_token_de_agente(emitir(priv, exp=int(time.time()) + 3600), pem)
+
+
 def test_sem_exp(par):
     priv, pem = par
     with pytest.raises(TokenDeAgenteInvalido):

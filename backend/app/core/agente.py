@@ -1,5 +1,10 @@
 """Token de agente do HS.OS (JWT EdDSA). Função pura: sem config e sem banco."""
+import time
+
 import jwt
+
+# HS.OS emite tokens de 5 min; a folga cobre diferença de relógio.
+VIDA_MAXIMA_SEGUNDOS = 600
 
 
 class TokenDeAgenteInvalido(Exception):
@@ -31,6 +36,8 @@ def validar_token_de_agente(token: str, chave_pem: str) -> tuple[str, str]:
         )
     except (jwt.PyJWTError, ValueError, TypeError) as exc:
         raise TokenDeAgenteInvalido(str(exc)) from exc
+    if payload["exp"] - time.time() > VIDA_MAXIMA_SEGUNDOS:
+        raise TokenDeAgenteInvalido("exp longe demais")
     email = payload.get("sub")
     act = payload.get("act")
     bot = act.get("sub") if isinstance(act, dict) else None
