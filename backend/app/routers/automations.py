@@ -7,10 +7,10 @@ from app.models.board import Board
 from app.models.list import List
 from app.models.user import User
 from app.schemas.automation import AutomationCreate, AutomationUpdate, AutomationOut
-from app.dependencies import get_current_user, require_board_access_by_board_id
+from app.dependencies import bloquear_token_de_agente, get_current_user, require_board_access_by_board_id
 
 router = APIRouter(prefix="/boards/{board_id}/automations", tags=["automations"],
-                   dependencies=[Depends(require_board_access_by_board_id)])
+                   dependencies=[Depends(bloquear_token_de_agente), Depends(require_board_access_by_board_id)])
 
 
 async def _get_board_or_404(board_id: int, db: AsyncSession) -> Board:

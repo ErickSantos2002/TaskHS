@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:4173"
     # integração externa (espelhamento de cards via API key)
     INTEGRATION_API_KEY: str = ""
+    # Chave pública (PEM) do HS.OS para validar tokens de agente; vazia = todo token de agente leva 401
+    HSOS_AGENTE_CHAVE_PUBLICA: str = ""
 
     # SSO Microsoft (Entra ID). Vazias = SSO desligado.
     MS_CLIENT_ID: str = ""

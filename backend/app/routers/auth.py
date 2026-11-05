@@ -17,7 +17,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.core.config import settings
 from app.core import sso_tickets
 from app.services import microsoft_auth
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, bloquear_token_de_agente
 from app.models.audit import AuditLog
 from app.audit_context import get_actor
 from app.routers.avatars import AVATAR_DIR
@@ -25,13 +25,19 @@ from app.routers.avatars import AVATAR_DIR
 logger = logging.getLogger("audit")
 
 
-async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+async def get_admin_user(
+    _agente: None = Depends(bloquear_token_de_agente),
+    current_user: User = Depends(get_current_user),
+) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
     return current_user
 
 
-async def get_elevated_user(current_user: User = Depends(get_current_user)) -> User:
+async def get_elevated_user(
+    _agente: None = Depends(bloquear_token_de_agente),
+    current_user: User = Depends(get_current_user),
+) -> User:
     if not current_user.is_elevated:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores e coordenadores")
     return current_user
@@ -39,7 +45,7 @@ async def get_elevated_user(current_user: User = Depends(get_current_user)) -> U
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(bloquear_token_de_agente)])
 async def register(body: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
@@ -57,7 +63,7 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)):
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post("/login", response_model=TokenOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -99,7 +105,7 @@ class ProfileUpdate(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
 
-@router.patch("/me", response_model=UserOut)
+@router.patch("/me", response_model=UserOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def update_me(body: ProfileUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     current_user.name = body.name
     current_user.initials = iniciais_do_nome(body.name)
@@ -122,7 +128,7 @@ def _apaga_avatar(nome: str | None) -> None:
         logger.warning("não consegui apagar o avatar antigo %s", nome)
 
 
-@router.post("/me/avatar", response_model=UserOut)
+@router.post("/me/avatar", response_model=UserOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def upload_my_avatar(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     ext = AVATAR_TYPES.get(file.content_type or "")
     if ext is None:
@@ -146,7 +152,7 @@ async def upload_my_avatar(file: UploadFile = File(...), db: AsyncSession = Depe
     return current_user
 
 
-@router.delete("/me/avatar", response_model=UserOut)
+@router.delete("/me/avatar", response_model=UserOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def delete_my_avatar(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     antigo = current_user.avatar
     current_user.avatar = None
@@ -259,13 +265,13 @@ def _limpa_state_cookie(resp: RedirectResponse) -> RedirectResponse:
     return resp
 
 
-@router.get("/sso/status")
+@router.get("/sso/status", dependencies=[Depends(bloquear_token_de_agente)])
 async def sso_status():
     """Diz ao front se deve mostrar o botão 'Entrar com Microsoft'."""
     return {"enabled": settings.sso_enabled}
 
 
-@router.get("/microsoft")
+@router.get("/microsoft", dependencies=[Depends(bloquear_token_de_agente)])
 async def microsoft_login():
     if not settings.sso_enabled:
         raise HTTPException(status_code=503, detail="Login com Microsoft não está configurado")
@@ -290,7 +296,7 @@ async def microsoft_login():
     return resp
 
 
-@router.get("/microsoft/callback")
+@router.get("/microsoft/callback", dependencies=[Depends(bloquear_token_de_agente)])
 async def microsoft_callback(
     request: Request,
     code: str | None = None,
@@ -374,7 +380,7 @@ async def microsoft_callback(
     return _limpa_state_cookie(resp)
 
 
-@router.post("/sso/exchange", response_model=TokenOut)
+@router.post("/sso/exchange", response_model=TokenOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def sso_exchange(body: SsoExchangeIn, db: AsyncSession = Depends(get_db)):
     """Troca o ticket de uso único pelo JWT. 400 (não 401) de propósito:
     o cliente HTTP do front trata 401 como sessão expirada e redireciona

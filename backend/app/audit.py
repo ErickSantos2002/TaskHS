@@ -383,7 +383,7 @@ def _audit_after_flush(session, flush_context):
                 "entity_label": (str(label)[:255] if label is not None else None),
                 "board_id": board_id,
                 "card_id": card_id,
-                "summary": summary,
+                "summary": f"{summary} (via {actor.via})" if actor.via and summary is not None else summary,
                 "changes": json.dumps(changes, ensure_ascii=False) if changes else None,
                 "ip": (actor.ip[:45] if actor.ip else None),
                 "path": (actor.path[:255] if actor.path else None),

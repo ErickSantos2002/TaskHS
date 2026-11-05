@@ -10,6 +10,7 @@ class Actor:
     email: str | None = None
     ip: str | None = None
     path: str | None = None
+    via: str | None = None  # bot que agiu em nome da pessoa (token de agente)
 
 
 current_actor: ContextVar[Actor | None] = ContextVar("current_actor", default=None)
@@ -38,3 +39,11 @@ def set_actor_identity(actor_type: str, user_id: int | None, name: str, email: s
     actor.user_id = user_id
     actor.name = name
     actor.email = email
+
+
+def set_actor_via(via: str | None) -> None:
+    actor = current_actor.get()
+    if actor is None:
+        actor = Actor()
+        current_actor.set(actor)
+    actor.via = via

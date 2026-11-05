@@ -17,7 +17,7 @@ from app.schemas.card import CardOut
 from app.schemas.list import ListOut, DoneListsUpdate, ListSetoresUpdate
 from app.models.setor import Setor
 from app.routers.cards import _card_options, _card_to_dict
-from app.dependencies import get_current_user, require_board_access_by_board_id, require_board_view_by_board_id, user_can_access_board, assert_board_writable
+from app.dependencies import bloquear_token_de_agente, get_current_user, require_board_access_by_board_id, require_board_view_by_board_id, user_can_access_board, assert_board_writable
 from app.routers.auth import get_elevated_user
 from app.core.security import create_stream_ticket, decode_stream_ticket
 import json as _json
@@ -62,7 +62,7 @@ def _board_list_item(board: Board, user: User) -> dict:
     }
 
 
-@router.post("", response_model=BoardListOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=BoardListOut, status_code=status.HTTP_201_CREATED, dependencies=[Depends(bloquear_token_de_agente)])
 async def create_board(body: BoardCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_elevated_user)):
     board = Board(**body.model_dump(), owner_id=current_user.id)
     db.add(board)
@@ -157,7 +157,7 @@ async def get_stats(db: AsyncSession = Depends(get_db), current_user: User = Dep
     return {"boards": boards_count, "cards_total": total, "cards_overdue": overdue, "cards_due_today": due_today, "cards_completed": completed}
 
 
-@router.post("/import")
+@router.post("/import", dependencies=[Depends(bloquear_token_de_agente)])
 async def import_from_trello(file: UploadFile = File(...), current_user: User = Depends(get_elevated_user)):
     content = await file.read()
 
@@ -377,7 +377,7 @@ async def board_stream(board_id: int, ticket: str):
     )
 
 
-@router.patch("/{board_id}", response_model=BoardOut)
+@router.patch("/{board_id}", response_model=BoardOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
@@ -395,7 +395,7 @@ async def update_board(board_id: int, body: BoardUpdate, db: AsyncSession = Depe
     return board
 
 
-@router.put("/{board_id}/done-lists", response_model=list[ListOut])
+@router.put("/{board_id}/done-lists", response_model=list[ListOut], dependencies=[Depends(bloquear_token_de_agente)])
 async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Define quais listas do quadro são "de concluído" (alerta de 72 h do Dashboard).
 
@@ -425,7 +425,7 @@ async def set_done_lists(board_id: int, body: DoneListsUpdate, db: AsyncSession 
     return listas
 
 
-@router.put("/{board_id}/list-setores", response_model=list[ListOut])
+@router.put("/{board_id}/list-setores", response_model=list[ListOut], dependencies=[Depends(bloquear_token_de_agente)])
 async def set_list_setores(board_id: int, body: ListSetoresUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Define o setor de cada lista (travados por setor do Dashboard).
 
@@ -478,18 +478,18 @@ async def _definir_arquivado(board_id: int, arquivar: bool, db: AsyncSession, us
     return board
 
 
-@router.post("/{board_id}/archive", response_model=BoardOut)
+@router.post("/{board_id}/archive", response_model=BoardOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def archive_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Arquiva: some da vitrine, do Dashboard, da busca e dos lembretes; abre só para leitura."""
     return await _definir_arquivado(board_id, True, db, current_user)
 
 
-@router.post("/{board_id}/unarchive", response_model=BoardOut)
+@router.post("/{board_id}/unarchive", response_model=BoardOut, dependencies=[Depends(bloquear_token_de_agente)])
 async def unarchive_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     return await _definir_arquivado(board_id, False, db, current_user)
 
 
-@router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(bloquear_token_de_agente)])
 async def delete_board(board_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
@@ -574,7 +574,7 @@ async def list_members(board_id: int, db: AsyncSession = Depends(get_db), curren
     ]
 
 
-@router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED)
+@router.post("/{board_id}/members", status_code=status.HTTP_201_CREATED, dependencies=[Depends(bloquear_token_de_agente)])
 async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:
@@ -603,7 +603,7 @@ async def add_member(board_id: int, body: BoardMemberAdd, db: AsyncSession = Dep
     return {"ok": True}
 
 
-@router.delete("/{board_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{board_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(bloquear_token_de_agente)])
 async def remove_member(board_id: int, user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     board = await _get_board_or_404(board_id, db)
     if board.owner_id != current_user.id and not current_user.is_elevated:

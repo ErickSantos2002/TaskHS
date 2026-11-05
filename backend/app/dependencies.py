@@ -7,9 +7,25 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.models.board import Board, BoardMember
 from app.models.list import List as ListModel
-from app.audit_context import set_actor_identity
+import logging
+
+from app.audit_context import get_actor, set_actor_identity, set_actor_via
+from app.core.agente import TokenDeAgenteInvalido, eh_token_de_agente, validar_token_de_agente
+
+logger = logging.getLogger("taskhs.agente")
 
 bearer = HTTPBearer()
+
+
+async def bloquear_token_de_agente(request: Request) -> None:
+    """Recusa (403) o token de agente do HS.OS nas rotas de gestão.
+
+    Não verifica a assinatura: quem forjar o cabeçalho só ganha um 403 para si.
+    Sem cabeçalho Authorization, segue (rotas como login não têm token).
+    """
+    partes = request.headers.get("authorization", "").split(None, 1)
+    if len(partes) == 2 and partes[0].lower() == "bearer" and eh_token_de_agente(partes[1].strip()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ação não permitida para o agente")
 
 
 async def get_current_user(
@@ -17,6 +33,20 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     token = credentials.credentials
+    if eh_token_de_agente(token):
+        from app.core.config import settings
+        try:
+            email, bot = validar_token_de_agente(token, settings.HSOS_AGENTE_CHAVE_PUBLICA)
+        except TokenDeAgenteInvalido:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de agente inválido")
+        result = await db.execute(select(User).where(User.email == email, User.is_active == True))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+        set_actor_identity("usuario", user.id, user.name, user.email)
+        set_actor_via(bot)
+        logger.info("token de agente: %s via %s", email, bot)
+        return user
     email = decode_token(token)
     if not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
@@ -187,3 +217,9 @@ async def require_board_access_by_list_id(
     if request.method not in METODOS_DE_LEITURA:
         await assert_list_writable(list_id, db)
     return current_user
+
+
+def elevado_fora_do_agente(user: User) -> bool:
+    """Elevado E não é um agente do HS.OS. O bot nunca usa poderes de gestão/moderação,
+    mesmo quando a pessoa é administrador (regra da spec do token de agente)."""
+    return user.is_elevated and get_actor().via is None
