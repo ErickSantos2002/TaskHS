@@ -17,6 +17,17 @@ logger = logging.getLogger("taskhs.agente")
 bearer = HTTPBearer()
 
 
+async def bloquear_token_de_agente(request: Request) -> None:
+    """Recusa (403) o token de agente do HS.OS nas rotas de gestão.
+
+    Não verifica a assinatura: quem forjar o cabeçalho só ganha um 403 para si.
+    Sem cabeçalho Authorization, segue (rotas como login não têm token).
+    """
+    partes = request.headers.get("authorization", "").split(None, 1)
+    if len(partes) == 2 and partes[0].lower() == "bearer" and eh_token_de_agente(partes[1].strip()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ação não permitida para o agente")
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
     db: AsyncSession = Depends(get_db),
