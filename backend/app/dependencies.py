@@ -7,7 +7,12 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.models.board import Board, BoardMember
 from app.models.list import List as ListModel
-from app.audit_context import set_actor_identity
+import logging
+
+from app.audit_context import set_actor_identity, set_actor_via
+from app.core.agente import TokenDeAgenteInvalido, eh_token_de_agente, validar_token_de_agente
+
+logger = logging.getLogger("taskhs.agente")
 
 bearer = HTTPBearer()
 
@@ -17,6 +22,20 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     token = credentials.credentials
+    if eh_token_de_agente(token):
+        from app.core.config import settings
+        try:
+            email, bot = validar_token_de_agente(token, settings.HSOS_AGENTE_CHAVE_PUBLICA)
+        except TokenDeAgenteInvalido:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de agente inválido")
+        result = await db.execute(select(User).where(User.email == email, User.is_active == True))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+        set_actor_identity("usuario", user.id, user.name, user.email)
+        set_actor_via(bot)
+        logger.info("token de agente: %s via %s", email, bot)
+        return user
     email = decode_token(token)
     if not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
