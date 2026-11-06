@@ -10,6 +10,7 @@ from app.models.card import Card, CardAttachment
 from app.models.user import User
 from app.schemas.card import AttachmentOut
 from app.dependencies import get_current_user, require_board_access_by_list_id, elevado_fora_do_agente
+from app.membro_auto import garantir_membro_card
 
 router = APIRouter(prefix="/lists/{list_id}/cards/{card_id}/attachments", tags=["attachments"],
                    dependencies=[Depends(require_board_access_by_list_id)])
@@ -102,6 +103,8 @@ async def upload_attachments(
         )
         db.add(att)
         created.append(att)
+    if created:
+        await garantir_membro_card(db, card_id, current_user.id)
     await db.commit()
     for att in created:
         await db.refresh(att)
