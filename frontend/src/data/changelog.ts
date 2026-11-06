@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.14.0",
+    date: "2026-11-06",
+    changes: [
+      { kind: "melhoria", text: "Quem mexe no card — cria, edita título, descrição, data ou prioridade, comenta, anexa arquivo, mexe em checklist ou etiqueta — passa a ser membro dele automaticamente. Mover o card entre listas não conta." },
+      { kind: "melhoria", text: "Os cards antigos foram corrigidos: quem já tinha trabalhado neles entrou como membro." },
+    ],
+  },
+  {
     version: "2.13.0",
     date: "2026-11-05",
     changes: [

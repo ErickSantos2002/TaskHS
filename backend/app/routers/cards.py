@@ -20,6 +20,7 @@ from app.schemas.card import (
 from app.models.audit import AuditLog
 from app.dependencies import get_current_user, elevado_fora_do_agente, require_board_access_by_list_id, assert_board_access_by_list_id, assert_list_writable
 from app.automations import run_card_moved_automations
+from app.membro_auto import CAMPOS_CONTEUDO, garantir_membro_card
 from app.mentions import ids_mencionados, texto_para_notificacao
 # Reusa o serializador do router de anexos para o anexo ter UMA forma só no JSON.
 # Import seguro: routers/__init__.py é vazio e attachments.py não importa cards.py.
@@ -142,6 +143,8 @@ async def create_card(list_id: int, body: CardCreate, db: AsyncSession = Depends
     last_pos = last.scalar_one_or_none() or 0.0
     card = Card(**body.model_dump(), list_id=list_id, position=last_pos + 65536.0)
     db.add(card)
+    await db.flush()
+    await garantir_membro_card(db, card.id, current_user.id)
     await db.commit()
     result = await db.execute(select(Card).where(Card.id == card.id).options(*_card_options()))
     return _card_to_dict(result.scalar_one())
@@ -195,6 +198,12 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
             )
         )).scalar_one_or_none()
         data["position"] = primeira / 2 if primeira is not None else 65536
+
+    # Comparado ANTES de aplicar o corpo e antes das automacoes: PATCH que reenvia o
+    # mesmo titulo nao e trabalho, e o mark_due_complete da automacao nao e da pessoa.
+    mudou_conteudo = any(
+        k in CAMPOS_CONTEUDO and getattr(card, k) != v for k, v in data.items()
+    )
 
     old_list_id = card.list_id
     for k, v in data.items():
@@ -259,6 +268,11 @@ async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSes
             if par is not None and par not in ja_tem:
                 db.add(CardLabel(card_id=card.id, label_id=par))
                 ja_tem.add(par)
+
+    # Depois da limpeza de troca de quadro: o membro e checado contra o quadro onde
+    # o card fica, nao o de onde saiu.
+    if mudou_conteudo:
+        await garantir_membro_card(db, card.id, current_user.id, quadro_destino or quadro_origem)
 
     if old_list_id != new_list_id:
         await run_card_moved_automations(db, card, old_list_id, new_list_id)
@@ -343,6 +357,7 @@ async def copy_card(list_id: int, card_id: int, body: CardCopyBody = None, db: A
         for item in _to_list(cl.items):
             db.add(ChecklistItem(checklist_id=new_cl.id, text=item.text, checked=False))
 
+    await garantir_membro_card(db, new_card.id, current_user.id)
     await db.commit()
     result = await db.execute(select(Card).where(Card.id == new_card.id).options(*_card_options()))
     return _card_to_dict(result.scalar_one())
@@ -443,6 +458,8 @@ async def add_comment(list_id: int, card_id: int, body: CommentCreate, db: Async
             board_id=board_id,
         ))
 
+    await garantir_membro_card(db, card_id, current_user.id, board_id)
+
     # So notifica quem e membro do quadro: a notificacao leva o titulo do card e um
     # trecho do comentario. Mesma rede do loop de lembretes — se a invariante furar
     # por um caminho imprevisto, aqui o custo e zero em vez de vazamento.
@@ -502,6 +519,7 @@ async def edit_comment(list_id: int, card_id: int, comment_id: int, body: Commen
             comment.original_body = comment.body
         comment.body = novo
         comment.edited_at = datetime.now(timezone.utc)
+        await garantir_membro_card(db, card_id, current_user.id)
         await db.commit()
         await db.refresh(comment)
     return _comment_to_dict(comment, await _anexos_do_comentario(comment.id, db))
@@ -673,6 +691,7 @@ async def add_label(list_id: int, card_id: int, body: CardLabelBody, db: AsyncSe
     if existing.scalar_one_or_none():
         return {"ok": True}
     db.add(CardLabel(card_id=card_id, label_id=body.label_id))
+    await garantir_membro_card(db, card_id, current_user.id)
     await db.commit()
     return {"ok": True}
 
@@ -684,6 +703,7 @@ async def remove_label(list_id: int, card_id: int, label_id: int, db: AsyncSessi
     label = result.scalar_one_or_none()
     if label:
         await db.delete(label)
+        await garantir_membro_card(db, card_id, current_user.id)
         await db.commit()
 
 
@@ -694,6 +714,7 @@ async def create_checklist(list_id: int, card_id: int, body: ChecklistCreate, db
     await _get_card_or_404(card_id, list_id, db)
     checklist = Checklist(card_id=card_id, title=body.title)
     db.add(checklist)
+    await garantir_membro_card(db, card_id, current_user.id)
     await db.commit()
     result = await db.execute(
         select(Checklist).where(Checklist.id == checklist.id).options(selectinload(Checklist.items))
@@ -708,6 +729,7 @@ async def delete_checklist(list_id: int, card_id: int, checklist_id: int, db: As
     checklist = result.scalar_one_or_none()
     if checklist:
         await db.delete(checklist)
+        await garantir_membro_card(db, card_id, current_user.id)
         await db.commit()
 
 
@@ -719,6 +741,7 @@ async def add_checklist_item(list_id: int, card_id: int, checklist_id: int, body
         raise HTTPException(status_code=404, detail="Checklist não encontrado")
     item = ChecklistItem(checklist_id=checklist_id, text=body.text)
     db.add(item)
+    await garantir_membro_card(db, card_id, current_user.id)
     await db.commit()
     await db.refresh(item)
     return item
@@ -740,8 +763,11 @@ async def update_checklist_item(list_id: int, card_id: int, checklist_id: int, i
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
     data = body.model_dump(exclude_none=True)
+    mudou = any(getattr(item, k) != v for k, v in data.items())
     for k, v in data.items():
         setattr(item, k, v)
+    if mudou:
+        await garantir_membro_card(db, card_id, current_user.id)
     await db.commit()
     await db.refresh(item)
     return item
@@ -762,4 +788,5 @@ async def delete_checklist_item(list_id: int, card_id: int, checklist_id: int, i
     item = result.scalar_one_or_none()
     if item:
         await db.delete(item)
+        await garantir_membro_card(db, card_id, current_user.id)
         await db.commit()
