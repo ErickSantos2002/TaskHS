@@ -60,10 +60,16 @@ async def garantir_membro_card(
     # se o savepoint voltar atrás, só pode levar junto o CardMember — nunca a ação
     # principal que entrou no mesmo flush.
     await db.flush()
+    # Os hooks de rollback do audit.py descartam a fila de SSE da sessão — e o SA 2.0
+    # dispara esses hooks também no rollback de SAVEPOINT. Sem guardar a fila aqui,
+    # perder a corrida no unique apagaria o aviso em tempo real da ação principal
+    # (o comentário entraria no banco, mas ninguém o veria chegar na tela).
+    sse_pendente = list(db.sync_session.info.get("_sse_pending", []))
     try:
         async with db.begin_nested():
             db.add(CardMember(card_id=card_id, user_id=user_id))
             await db.flush()
     except IntegrityError:
+        db.sync_session.info["_sse_pending"] = sse_pendente
         return False
     return True

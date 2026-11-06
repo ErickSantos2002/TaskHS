@@ -39,7 +39,10 @@ SQL = text("""
 WITH imp AS (
     SELECT entity_id AS board_id, created_at + interval '10 minutes' AS ate
     FROM audit_log
-    WHERE path = 'POST /api/boards/import' AND entity_type = 'quadro' AND entity_id IS NOT NULL
+    -- Pelo texto, nao pelo path: um import (quadro "T.I. 2", set/2026) foi gravado
+    -- como "sistema" e sem path, e o filtro por path deixava o importador passar.
+    WHERE entity_type = 'quadro' AND action = 'criar' AND entity_id IS NOT NULL
+      AND summary LIKE 'importou o quadro %do Trello%'
 ),
 ativ AS (
     SELECT a.card_id, a.actor_user_id AS user_id, a.created_at AS quando
