@@ -334,7 +334,12 @@ export function DashboardPage() {
       </div>
 
       {/* Réguas da Qualidade: só administrador e coordenador (o backend também zera). */}
-      {isElevated && <>
+      {isElevated && dash?.fora_do_alerta && (
+        <p className="rounded-xl border border-border bg-background-elevated px-4 py-3 text-sm text-slate-400">
+          Este quadro está fora do alerta de atrasos: os cards dele não entram no alerta de 72 h nem nos travados por setor.
+        </p>
+      )}
+      {isElevated && !dash?.fora_do_alerta && <>
         <AlertaAtrasados valor={dash?.kpis.atrasados} onClick={() => setVerAtrasados(true)} />
 
         <TravadosPorSetor setores={dash?.travados_por_setor} onClickSetor={setSetorAberto} />

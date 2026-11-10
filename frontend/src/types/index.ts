@@ -23,6 +23,8 @@ export interface Board {
   created_at: string;
   integration_enabled: boolean;
   obs_labels: string[];
+  /** Fora do alerta de 72 h e dos travados por setor (v2.15.0). Não marca nada como concluído. */
+  fora_do_alerta: boolean;
   /** Arquivado (v2.10.0): fora da vitrine e do Dashboard, abre só para leitura. */
   archived_at: string | null;
 }
@@ -327,6 +329,8 @@ export type PeriodoDashboard = 7 | 30 | 90;
 
 export interface DashboardData {
   board_id: number | null;
+  /** Recorte de um quadro fora do alerta: as réguas vêm sempre vazias. */
+  fora_do_alerta: boolean;
   periodo: PeriodoDashboard;
   kpis: DashboardKpis;
   listas: DashboardLista[];

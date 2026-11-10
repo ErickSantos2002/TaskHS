@@ -14,6 +14,14 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.15.0",
+    date: "2026-11-10",
+    changes: [
+      { kind: "melhoria", text: "Quadro pode ficar \"fora do alerta de atrasos\" (no editar quadro): os cards dele saem do alerta de 72 h e dos travados por setor do Dashboard sem precisar marcar as listas como concluídas — e continuam aparecendo em Minhas tarefas." },
+      { kind: "correcao", text: "T.I. 2 e Expedição deixam de ter todas as listas marcadas como concluídas; os cards em andamento voltam a aparecer em Minhas tarefas." },
+    ],
+  },
+  {
     version: "2.14.0",
     date: "2026-11-06",
     changes: [

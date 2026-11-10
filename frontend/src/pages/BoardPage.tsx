@@ -2679,6 +2679,7 @@ export function BoardPage() {
   const [editBoardColor, setEditBoardColor] = useState("#0ea5e9");
   const [editBoardIcon, setEditBoardIcon] = useState<string | null>(null);
   const [editIntegrationEnabled, setEditIntegrationEnabled] = useState(false);
+  const [editForaDoAlerta, setEditForaDoAlerta] = useState(false);
   const [editObsLabels, setEditObsLabels] = useState<string[]>(["", "", "", "", "", ""]);
   const [editDoneListIds, setEditDoneListIds] = useState<Set<number>>(new Set());
   // Setor de cada lista (travados por setor do Dashboard). Os setores vêm com
@@ -3087,6 +3088,7 @@ export function BoardPage() {
     setEditBoardColor(board.color);
     setEditBoardIcon(board.icon);
     setEditIntegrationEnabled(board.integration_enabled);
+    setEditForaDoAlerta(board.fora_do_alerta);
     setEditObsLabels([0, 1, 2, 3, 4, 5].map(i => board.obs_labels[i] ?? ""));
     setEditDoneListIds(new Set(lists.filter(l => l.is_done).map(l => l.id)));
     setEditSetorPorLista(new Map(lists.map(l => [l.id, l.setor_id ?? null])));
@@ -3113,6 +3115,7 @@ export function BoardPage() {
         color: editBoardColor,
         icon: editBoardIcon,
         integration_enabled: editIntegrationEnabled,
+        fora_do_alerta: editForaDoAlerta,
         obs_labels: editObsLabels.map(s => s.trim()),
       });
       setBoard(updated);
@@ -3705,11 +3708,27 @@ export function BoardPage() {
                   </div>
                 )}
               </div>
+              <div className="pt-3 border-t border-border">
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editForaDoAlerta}
+                    onChange={e => setEditForaDoAlerta(e.target.checked)}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <span>
+                    <span className="block text-xs font-semibold text-slate-400">Fora do alerta de atrasos</span>
+                    <span className="block text-[11px] text-slate-500 mt-0.5">
+                      Os cards deste quadro não entram no alerta de 72 h nem nos travados por setor do Dashboard. Continuam abertos em Minhas tarefas.
+                    </span>
+                  </span>
+                </label>
+              </div>
               <div className="space-y-2 pt-3 border-t border-border">
                 <div>
                   <p className="text-xs font-semibold text-slate-400">Listas: concluído e setor</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Marque as listas de concluído: os cards nelas não entram nos alertas do Dashboard.
+                    Marque as listas de concluído: os cards nelas contam como concluídos, saem dos alertas do Dashboard e de Minhas tarefas.
                     O setor soma no Dashboard os cards parados há mais de 24 h úteis na lista.
                   </p>
                 </div>
