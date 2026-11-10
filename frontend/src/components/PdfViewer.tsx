@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import "pdfjs-dist/web/pdf_viewer.css";
-import * as pdfjsLib from "pdfjs-dist";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// Build "legacy" de propósito: o build moderno do pdfjs-dist 6 chama
+// Promise.withResolvers / Math.sumPrecise / Uint8Array.fromBase64 sem polyfill, e
+// em navegador anterior a Chrome 119 / Firefox 121 / Safari 17.4 o getDocument
+// quebrava (nov/2026 — micros da empresa sem navegador atualizado). O legacy traz
+// os polyfills; o custo é só um pedaço sob demanda um pouco maior.
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 // Worker do pdf.js servido como asset (mesma origem) — sem CDN externo.
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -21,7 +26,17 @@ export default function PdfViewer({ url }: { url: string }) {
 
   useEffect(() => {
     let cancelado = false;
-    const loadingTask = pdfjsLib.getDocument({ url });
+    // getDocument pode lançar já na criação; fora do try, o erro iria para o
+    // ErrorBoundary ("não foi possível carregar o visualizador") em vez de virar
+    // a mensagem local abaixo.
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument>;
+    try {
+      loadingTask = pdfjsLib.getDocument({ url });
+    } catch {
+      setErro("Não foi possível exibir o PDF.");
+      setCarregando(false);
+      return;
+    }
     let pdfDoc: PDFDocumentProxy | null = null;
     const pages = pagesRef.current;
     if (!pages) return;
