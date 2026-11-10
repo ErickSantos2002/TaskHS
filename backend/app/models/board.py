@@ -27,6 +27,9 @@ class Board(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     integration_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     obs_labels: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    # Fora do alerta de 72 h e dos travados por setor do Dashboard (migration 018).
+    # Nao marca nada como concluido: isso continua sendo List.is_done.
+    fora_do_alerta: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     # Lixeira (migration 013). NULL = vivo.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

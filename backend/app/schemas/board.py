@@ -58,6 +58,7 @@ class BoardUpdate(BaseModel):
     icon: str | None = None
     integration_enabled: bool | None = None
     obs_labels: list[str] | None = None
+    fora_do_alerta: bool | None = None
 
     @field_validator("obs_labels")
     @classmethod
@@ -78,6 +79,7 @@ class BoardOut(BaseModel):
     created_at: datetime
     integration_enabled: bool
     obs_labels: list[str]
+    fora_do_alerta: bool = False
     deleted_at: datetime | None = None
     archived_at: datetime | None = None
 
