@@ -72,6 +72,8 @@ class RankingPessoa(BaseModel):
 
 class DashboardOut(BaseModel):
     board_id: int | None
+    # Recorte de um quadro com Board.fora_do_alerta: réguas sempre vazias.
+    fora_do_alerta: bool = False
     periodo: int
     kpis: DashboardKpis
     listas: list[DashboardLista]

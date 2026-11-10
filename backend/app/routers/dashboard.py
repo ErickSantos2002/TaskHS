@@ -3,6 +3,9 @@
 O alerta é da Qualidade: card criado há mais de 72 horas úteis (ver
 app/horas_uteis.py) que ainda não chegou numa lista "de concluído" do quadro
 (`List.is_done`, marcada no drawer). Quadro sem lista marcada conta tudo.
+Quadro com `Board.fora_do_alerta` (v2.15.0, drawer) fica fora do alerta e dos
+travados por setor sem que os cards dele virem "concluídos" — o `is_done` também
+esconde o card de /cards/minhas, e era usado como gambiarra para isso.
 
 `Card.done` (a caixinha "concluído" do card) e `due_date_completed` NÃO tiram o
 card do alerta, de propósito: na operação a caixinha tem outro significado.
@@ -89,7 +92,7 @@ async def get_dashboard(
 
     lista_viva = (List.deleted_at.is_(None), List.board_id.in_(board_ids))
     listas = (await db.execute(
-        select(List.id, List.title, List.is_done, List.setor_id)
+        select(List.id, List.title, List.is_done, List.setor_id, Board.fora_do_alerta)
         .join(Board, Board.id == List.board_id)
         .where(*lista_viva, Board.deleted_at.is_(None), List.archived == False)
         .order_by(List.board_id, List.position)
@@ -99,6 +102,7 @@ async def get_dashboard(
         select(
             Card.id, Card.title, Card.list_id, Card.created_at, Card.list_entered_at,
             List.title, List.is_done, List.setor_id, Board.id, Board.title,
+            Board.fora_do_alerta,
         )
         .join(List, List.id == Card.list_id)
         .join(Board, Board.id == List.board_id)
@@ -128,12 +132,16 @@ async def get_dashboard(
     travados_setor = []
     em_concluido = 0
     for (card_id, title, list_id, created_at, entrou_na_lista,
-         list_title, list_done, setor_id, b_id, b_title) in ativos:
+         list_title, list_done, setor_id, b_id, b_title, fora_do_alerta) in ativos:
         total_por_lista[list_id] = total_por_lista.get(list_id, 0) + 1
         cards_por_quadro[b_id] = cards_por_quadro.get(b_id, 0) + 1
         nome_quadro[b_id] = b_title
         if list_done:
             em_concluido += 1
+            continue
+        # Depois do is_done de propósito: card em lista de concluído de um quadro
+        # fora do alerta continua contando como concluído no KPI.
+        if fora_do_alerta:
             continue
         horas = horas_uteis(created_at, agora)
         if horas > LIMITE_HORAS:
@@ -156,7 +164,10 @@ async def get_dashboard(
 
     # Setores do recorte: os que têm ao menos uma lista contável (ativa e fora
     # de concluído) — assim "Financeiro 0" aparece, e setor sem lista aqui não.
-    setores_no_recorte = {setor for _, _, done, setor in listas if setor is not None and not done}
+    # Quadro fora do alerta não é medido: os setores dele não entram.
+    setores_no_recorte = {
+        setor for _, _, done, setor, fora in listas if setor is not None and not done and not fora
+    }
     nome_setor = dict((await db.execute(
         select(Setor.id, Setor.nome).where(Setor.id.in_(setores_no_recorte))
     )).all()) if setores_no_recorte else {}
@@ -234,6 +245,10 @@ async def get_dashboard(
 
     return {
         "board_id": board_id,
+        # Só no recorte de um quadro: a tela troca as réguas vazias por um aviso.
+        "fora_do_alerta": board_id is not None and bool(await db.scalar(
+            select(Board.fora_do_alerta).where(Board.id == board_id)
+        )),
         "periodo": periodo,
         "movimentos_por_dia": [{"dia": d, "total": n} for d, n in por_dia.items()],
         "quadros_mais_movimentados": ranking_quadros(mov_quadro),
@@ -251,7 +266,7 @@ async def get_dashboard(
         "listas": [] if board_id is None else [
             {"id": l_id, "title": l_title, "is_done": l_done,
              "total": total_por_lista.get(l_id, 0), "atrasados": atrasados_por_lista.get(l_id, 0)}
-            for l_id, l_title, l_done, _ in listas
+            for l_id, l_title, l_done, _, _ in listas
         ],
         "atrasados": atrasados,
         "travados_por_setor": sorted(
