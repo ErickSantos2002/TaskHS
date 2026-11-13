@@ -103,6 +103,7 @@ SQLAlchemy 2.0 (`Mapped[...]`/`mapped_column`), tudo async. Sessão via `get_db`
 - `reminders` → `/api/lists/{list_id}/cards/{card_id}/reminders` (lembrete manual pessoal: CRUD)
 - `automations` → `/api/boards/{board_id}/automations` (regras por evento: CRUD; criar/editar/excluir = dono/admin)
 - `notifications` → `/api/notifications` (listar/marcar lida)
+- `agente` → `GET /api/agente/capacidades` — só token de agente (login normal → 404): `{papel, rotas}` para a tela "Capacidade" do HS.OS. As rotas saem da árvore de dependências (`get_current_user` sem `bloquear_token_de_agente`); `tests/test_capacidades_agente.py` prende isso. Testes: `docker run --rm -u root -v "$PWD/backend":/app -w /app --env-file backend/.env taskhs-backend sh -c "pip install -q -r requirements-dev.txt && python -m pytest -q -p no:cacheprovider"`.
 
 **Modelo de dados:** `User` → `Board`(owner) → `BoardMember`/`BoardLabel`/`List` → `Card` → `CardLabel`/`CardMember`/`CardComment`/`CardAttachment`/`Checklist`→`ChecklistItem`. Esses filhos do card têm `cascade="all, delete-orphan"` no ORM. **`Notification`, `Reminder`, `ReminderSent`, `Automation` referenciam `card_id`/`board_id`/`trigger_list_id` mas NÃO têm relationship/cascade** — por isso o **apagar de vez** da lixeira (`purge_*` em [routers/trash.py](backend/app/routers/trash.py)) deleta essas linhas explicitamente antes de excluir (senão FK 500). Papéis: `owner`/`admin`/`member`/`viewer`. Prioridade: `critical`/`high`/`medium`/`low`.
 

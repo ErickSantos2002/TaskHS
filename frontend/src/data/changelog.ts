@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.16.0",
+    date: "2026-11-13",
+    changes: [
+      { kind: "melhoria", text: "O Guardi (HS.OS) passa a saber o que pode fazer no TaskHS em seu nome: nova consulta de capacidade, usada pela tela \"Capacidade\" do HS.OS. Só responde ao agente; para o login normal nada muda." },
+    ],
+  },
+  {
     version: "2.15.1",
     date: "2026-11-10",
     changes: [
