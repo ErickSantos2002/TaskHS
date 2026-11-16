@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.16.1",
+    date: "2026-11-16",
+    changes: [
+      { kind: "correcao", text: "Apagar toda a descrição de um card (ou tirar a data de entrega) volta a funcionar — antes, ao clicar fora, o texto antigo continuava lá." },
+    ],
+  },
+  {
     version: "2.16.0",
     date: "2026-11-13",
     changes: [

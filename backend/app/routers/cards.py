@@ -26,6 +26,9 @@ from app.mentions import ids_mencionados, texto_para_notificacao
 # Import seguro: routers/__init__.py é vazio e attachments.py não importa cards.py.
 from app.routers.attachments import attachment_to_dict
 
+# Campos opcionais que a tela pode limpar mandando null no PATCH.
+CAMPOS_LIMPAVEIS = {"description", "due_date"}
+
 
 class CardCopyBody(BaseModel):
     title: str | None = None
@@ -168,6 +171,11 @@ async def get_card(list_id: int, card_id: int, db: AsyncSession = Depends(get_db
 async def update_card(list_id: int, card_id: int, body: CardUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     card = await _get_card_or_404(card_id, list_id, db)
     data = body.model_dump(exclude_none=True)
+    # exclude_none protege as colunas obrigatorias (titulo, posicao...) de um null,
+    # mas tambem engolia o null explicito de quem quer LIMPAR um campo opcional —
+    # apagar a descricao ou tirar a data nao fazia nada. Nesses, null enviado vale.
+    for campo in CAMPOS_LIMPAVEIS & body.model_fields_set:
+        data[campo] = getattr(body, campo)
     # O destino vem no CORPO: a tranca do router so validou o list_id da URL.
     # Sem isto, um membro do quadro A move um card para o quadro B — e dispara as
     # automacoes de la — sem poder nem ler o B.
