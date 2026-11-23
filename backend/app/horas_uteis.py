@@ -45,3 +45,22 @@ def horas_uteis(inicio: datetime, fim: datetime) -> float:
     if fim <= inicio:
         return 0.0
     return (_segundos_uteis_desde_a_regua(fim) - _segundos_uteis_desde_a_regua(inicio)) / 3600
+
+
+def reguas_do_card(
+    created_at: datetime, list_entered_at: datetime, setor_id: int | None, agora: datetime,
+) -> dict:
+    """As duas réguas da Qualidade para um card JÁ elegível (fora de lista de
+    concluído, de quadro fora do alerta e de arquivados — isso é do chamador).
+
+    Usada pelo Dashboard e pelo /meta do card (selo no modal), para os números
+    baterem. A régua por lista só existe se a lista tem setor.
+    """
+    horas = horas_uteis(created_at, agora)
+    horas_lista = horas_uteis(list_entered_at, agora) if setor_id is not None else None
+    return {
+        "horas_criacao": round(horas, 1),
+        "atrasado": horas > LIMITE_HORAS,
+        "horas_lista": round(horas_lista, 1) if horas_lista is not None else None,
+        "travado": horas_lista is not None and horas_lista > LIMITE_HORAS_LISTA,
+    }

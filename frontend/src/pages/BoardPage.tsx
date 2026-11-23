@@ -282,7 +282,12 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
   const [erroActivity, setErroActivity] = useState<string | null>(null);
   // Quem criou / quem arquivou — derivado do log (endpoint /meta). Só a data de
   // criação vem do próprio card; estes dois campos o modelo não guarda.
-  const [cardMeta, setCardMeta] = useState<{ created_by: string | null; created_by_type: string | null; archived_by: string | null; archived_at: string | null } | null>(null);
+  // `alerta`: réguas da Qualidade (72 h desde a criação / travado na lista), só
+  // para admin/coordenador — o backend manda null para os demais.
+  const [cardMeta, setCardMeta] = useState<{
+    created_by: string | null; created_by_type: string | null; archived_by: string | null; archived_at: string | null;
+    alerta?: { horas_criacao: number; atrasado: boolean; horas_lista: number | null; travado: boolean; setor: string | null } | null;
+  } | null>(null);
   const [deleting, setDeleting] = useState(false);
   // Menu de ações do cabeçalho (mover/copiar/arquivar/excluir). Troca de vista
   // no lugar em vez de abrir submenu flutuante — posicionar submenu dentro de
@@ -1066,6 +1071,29 @@ function CardDetailModal({ card, boardId, listTitle, lists, boardLabels, current
                 <span>arquivado por <span className="text-slate-400 font-medium">{cardMeta.archived_by}</span>{cardMeta.archived_at && ` em ${new Date(cardMeta.archived_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}`}</span>
               )}
             </p>
+            {/* Selos de atraso (mesmas réguas do Dashboard). Só chegam para elevado. */}
+            {(cardMeta?.alerta?.atrasado || cardMeta?.alerta?.travado) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {cardMeta.alerta.atrasado && (
+                  <span
+                    title="Criado há mais de 72 h úteis e ainda fora das listas de concluído (alerta do Dashboard)"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-500/15 border border-red-500/40 text-red-400"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /></svg>
+                    Atrasado · {Math.floor(cardMeta.alerta.horas_criacao)} h úteis desde a criação
+                  </span>
+                )}
+                {cardMeta.alerta.travado && cardMeta.alerta.horas_lista != null && (
+                  <span
+                    title="Parado há mais de 24 h úteis na mesma lista (travados por setor do Dashboard)"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 border border-amber-500/40 text-amber-400"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z" /></svg>
+                    Parado há {Math.floor(cardMeta.alerta.horas_lista)} h úteis nesta lista{cardMeta.alerta.setor ? ` (${cardMeta.alerta.setor})` : ""}
+                  </span>
+                )}
+              </div>
+            )}
             {/* Concluído COMPARTILHADO: um marca, todos veem (via SSE). */}
             <button
               onClick={onToggleDone}
