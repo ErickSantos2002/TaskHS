@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, user_can_access_board
-from app.horas_uteis import horas_uteis, LIMITE_HORAS, LIMITE_HORAS_LISTA, TZ_BR
+from app.horas_uteis import reguas_do_card, TZ_BR
 from app.models.audit import AuditLog
 from app.models.board import Board, BoardMember
 from app.models.card import Card, CardMember
@@ -143,23 +143,21 @@ async def get_dashboard(
         # fora do alerta continua contando como concluído no KPI.
         if fora_do_alerta:
             continue
-        horas = horas_uteis(created_at, agora)
-        if horas > LIMITE_HORAS:
+        r = reguas_do_card(created_at, entrou_na_lista, setor_id, agora)
+        if r["atrasado"]:
             atrasados_por_lista[list_id] = atrasados_por_lista.get(list_id, 0) + 1
             atrasados.append({
                 "card_id": card_id, "list_id": list_id, "board_id": b_id,
                 "board_title": b_title, "list_title": list_title, "title": title,
-                "created_at": created_at, "horas_uteis": round(horas, 1),
+                "created_at": created_at, "horas_uteis": r["horas_criacao"],
             })
-        if setor_id is not None:
-            horas_lista = horas_uteis(entrou_na_lista, agora)
-            if horas_lista > LIMITE_HORAS_LISTA:
-                travados_setor.append({
-                    "card_id": card_id, "list_id": list_id, "board_id": b_id,
-                    "board_title": b_title, "list_title": list_title, "title": title,
-                    "setor_id": setor_id, "list_entered_at": entrou_na_lista,
-                    "horas_uteis": round(horas_lista, 1),
-                })
+        if r["travado"]:
+            travados_setor.append({
+                "card_id": card_id, "list_id": list_id, "board_id": b_id,
+                "board_title": b_title, "list_title": list_title, "title": title,
+                "setor_id": setor_id, "list_entered_at": entrou_na_lista,
+                "horas_uteis": r["horas_lista"],
+            })
     travados_setor.sort(key=lambda t: -t["horas_uteis"])
 
     # Setores do recorte: os que têm ao menos uma lista contável (ativa e fora

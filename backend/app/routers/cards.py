@@ -7,7 +7,9 @@ from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.database import get_db
 from app.models.card import Card, CardAttachment, CardComment, CardMember, CardLabel, Checklist, ChecklistItem
-from app.models.board import BoardLabel, BoardMember
+from app.models.board import Board, BoardLabel, BoardMember
+from app.models.setor import Setor
+from app.horas_uteis import reguas_do_card, TZ_BR
 from app.models.list import List
 from app.models.notification import Notification
 from app.models.reminder import Reminder
@@ -586,7 +588,7 @@ async def card_meta(list_id: int, card_id: int, db: AsyncSession = Depends(get_d
 
     Cards criados antes do log (13/07/2026) ou por caminho não auditado devolvem
     created_by null — o front cai só na data de criação, que vem do próprio card."""
-    await _get_card_or_404(card_id, list_id, db)
+    card = await _get_card_or_404(card_id, list_id, db)
 
     criador = (await db.execute(
         select(AuditLog).where(
@@ -609,7 +611,35 @@ async def card_meta(list_id: int, card_id: int, db: AsyncSession = Depends(get_d
         "created_by_type": criador.actor_type if criador else None,
         "archived_by": arquivador.actor_name if arquivador else None,
         "archived_at": arquivador.created_at if arquivador else None,
+        "alerta": await _alerta_do_card(card, current_user, db),
     }
+
+
+async def _alerta_do_card(card: Card, user: User, db: AsyncSession) -> dict | None:
+    """Selo do modal: as réguas da Qualidade (72 h desde a criação e travado na
+    lista) para ESTE card — os mesmos números do Dashboard (routers/dashboard.py).
+
+    Só elevado vê, como no Dashboard (v2.12.1), e o corte é aqui: os demais (e o
+    token de agente) recebem null. Também null quando o card não é medido —
+    lista de concluído, quadro fora do alerta, ou card/lista/quadro arquivado.
+    Fica no /meta e não no _card_to_dict porque aquele JSON vai pelo SSE a todos
+    os membros do quadro.
+    """
+    if not elevado_fora_do_agente(user) or card.archived:
+        return None
+    lista = (await db.execute(
+        select(List.is_done, List.archived, List.setor_id, Board.fora_do_alerta, Board.archived_at, Setor.nome)
+        .join(Board, Board.id == List.board_id)
+        .outerjoin(Setor, Setor.id == List.setor_id)
+        .where(List.id == card.list_id)
+    )).one_or_none()
+    if lista is None:
+        return None
+    is_done, list_arquivada, setor_id, fora_do_alerta, quadro_arquivado_em, setor_nome = lista
+    if is_done or list_arquivada or fora_do_alerta or quadro_arquivado_em is not None:
+        return None
+    r = reguas_do_card(card.created_at, card.list_entered_at, setor_id, datetime.now(TZ_BR))
+    return {**r, "setor": setor_nome}
 
 
 # "Concluído" é COMPARTILHADO: um campo (done) do card, alternado pelo PATCH

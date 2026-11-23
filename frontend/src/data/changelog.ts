@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.17.0",
+    date: "2026-11-23",
+    changes: [
+      { kind: "melhoria", text: "Ao abrir um card atrasado, o modal mostra um selo com as horas úteis desde a criação (alerta de 72 h) e há quanto tempo ele está parado na lista (travados por setor) — os mesmos números do Dashboard. Visível só para administradores e coordenadores." },
+    ],
+  },
+  {
     version: "2.16.1",
     date: "2026-11-16",
     changes: [
