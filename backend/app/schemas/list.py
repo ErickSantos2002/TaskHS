@@ -1,5 +1,10 @@
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
+
+# "manual" = Card.position; "prazo" = o front ordena por due_date (migration 019).
+SortMode = Literal["manual", "prazo"]
 
 
 class ListCreate(BaseModel):
@@ -14,6 +19,7 @@ class ListUpdate(BaseModel):
     description: str | None = None
     color: str | None = None
     position: int | None = None
+    sort_mode: SortMode | None = None
 
 
 class ListOut(BaseModel):
@@ -26,6 +32,7 @@ class ListOut(BaseModel):
     archived: bool = False
     is_done: bool = False
     setor_id: int | None = None
+    sort_mode: SortMode = "manual"
     deleted_at: datetime | None = None
     created_at: datetime
 

@@ -18,6 +18,8 @@ class List(Base):
     is_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     # Setor da lista (migration 016): soma dos "travados por setor" do Dashboard.
     setor_id: Mapped[int | None] = mapped_column(ForeignKey("setores.id", ondelete="SET NULL"), nullable=True)
+    # Ordenacao da lista (migration 019): "manual" (Card.position) ou "prazo" (ordenado no front).
+    sort_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="manual", server_default=text("'manual'"))
     # Lixeira (migration 013). NULL = viva.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
