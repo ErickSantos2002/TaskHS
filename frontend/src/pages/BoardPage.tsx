@@ -2340,6 +2340,14 @@ function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone,
     }
   }
 
+  async function handleToggleSortMode() {
+    setShowMenu(false);
+    try {
+      const updated = await api.patch<BoardList>(`/boards/${list.board_id}/lists/${list.id}`, { sort_mode: list.sort_mode === "prazo" ? "manual" : "prazo" });
+      onListUpdate(updated);
+    } catch { /* falhou: a lista segue no modo de antes */ }
+  }
+
   async function handleColorChange(color: string) {
     setShowColorPicker(false);
     setShowMenu(false);
@@ -2437,6 +2445,12 @@ function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone,
                       </div>
                     )}
                   </div>
+                  {/* Ordenar por prazo (v2.18.0): só exibição, a position dos cards fica intacta. */}
+                  <button onClick={handleToggleSortMode} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-300 hover:bg-background-elevated transition-colors text-left border-t border-border">
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0"><ICal /></span>
+                    <span className="flex-1">Ordenar por prazo</span>
+                    {list.sort_mode === "prazo" && <span className="text-primary"><ICheck /></span>}
+                  </button>
                   {/* Reordenar a lista (só elevado — o menu inteiro já é). Linhas
                       normais, como os outros itens; desabilitado na ponta. */}
                   <div className="border-t border-border">
@@ -2483,6 +2497,11 @@ function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone,
           </div>
         </div>
         {list.description && <p className="text-[11px] text-slate-500 mt-1 pl-4.5">{list.description}</p>}
+        {list.sort_mode === "prazo" && (
+          <p className="flex items-center gap-1 text-[11px] text-slate-500 mt-1 pl-4.5" title="Os cards que vencem antes ficam em cima. Arrastar dentro desta lista não muda a ordem.">
+            <ICal />Ordenada por prazo
+          </p>
+        )}
       </div>
 
       {/* Cards */}

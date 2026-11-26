@@ -14,6 +14,13 @@ export interface ChangelogVersion {
 // Mais recente primeiro. APP_VERSION e o selo "Versão atual" derivam de CHANGELOG[0].
 export const CHANGELOG: ChangelogVersion[] = [
   {
+    version: "2.18.0",
+    date: "2026-11-26",
+    changes: [
+      { kind: "melhoria", text: "Listas podem ser ordenadas por prazo: no menu ⋯ da lista (administrador e coordenador), \"Ordenar por prazo\" põe em cima os cards que vencem antes. As outras listas continuam na ordem manual." },
+    ],
+  },
+  {
     version: "2.17.0",
     date: "2026-11-23",
     changes: [
