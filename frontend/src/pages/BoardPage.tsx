@@ -8,6 +8,7 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+  type SortingStrategy,
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -19,6 +20,7 @@ import { Avatar } from "../components/Avatar";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { BoardTrashPanel, ILixeira } from "../components/Lixeira";
 import { carregarComRetry } from "../lib/carregarComRetry";
+import { ordenarPorPrazo } from "../lib/ordenarCards";
 // Com retry: o visualizador é buscado no clique, e uma requisição que falha
 // (rede oscilando, deploy reiniciando o container) não pode virar erro fatal.
 const PdfViewer = lazy(() => carregarComRetry(() => import("../components/PdfViewer")));
@@ -2283,6 +2285,10 @@ function AddListForm({ boardId, position, onAdded, onCancel }: { boardId: number
 
 // ── KanbanColumn ───────────────────────────────────────────────
 
+/** Lista ordenada por prazo: o arrastar interno não reordena, então os cards
+ *  também não "abrem espaço" sob o card arrastado. */
+const semAnimacaoDeOrdem: SortingStrategy = () => null;
+
 function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone, canMoveLeft, canMoveRight, onMoveList, onCardAdded, onCardClick, onListUpdate, onListDelete }: {
   list: BoardList;
   cards: Card[];
@@ -2480,7 +2486,7 @@ function KanbanColumn({ list, cards, isElevated, readOnly = false, onToggleDone,
       </div>
 
       {/* Cards */}
-      <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={cards.map(c => c.id)} strategy={list.sort_mode === "prazo" ? semAnimacaoDeOrdem : verticalListSortingStrategy}>
         <DroppableColumn id={`list-${list.id}`}>
           {cards.length === 0 && !addingCard && (
             <div className="flex flex-col items-center justify-center py-6 mx-1 rounded-lg border border-dashed border-white/10">
@@ -3307,6 +3313,8 @@ export function BoardPage() {
 
     if (sourceListId === destListId) {
       if (String(overId).startsWith("list-")) return;
+      // Lista por prazo: a ordem é a do prazo, arrastar dentro dela não reordena.
+      if (lists.find(l => l.id === sourceListId)?.sort_mode === "prazo") return;
       setCardsByList(prev => {
         const cards     = prev[sourceListId] ?? [];
         const activeIdx = cards.findIndex(c => c.id === activeId);
@@ -3348,6 +3356,8 @@ export function BoardPage() {
     const activeId   = active.id as number;
     const destListId = resolveListId(over.id);
     if (!destListId) return;
+    // Soltar na própria lista por prazo: nada mudou (onDragOver não reordenou).
+    if (destListId === sourceListId && lists.find(l => l.id === destListId)?.sort_mode === "prazo") return;
     const finalCards = cardsByList[destListId] ?? [];
     const newIndex   = finalCards.findIndex(c => c.id === activeId);
     const prev       = finalCards[newIndex - 1];
@@ -3371,11 +3381,13 @@ export function BoardPage() {
 
   function filteredCards(listId: number): Card[] {
     const cards = cardsByList[listId] ?? [];
-    return cards.filter(c => {
+    const filtrados = cards.filter(c => {
       const matchSearch = !search.trim() || c.title.toLowerCase().includes(search.toLowerCase()) || c.description?.toLowerCase().includes(search.toLowerCase());
       const matchPriority = !filterPriority || c.priority === filterPriority;
       return matchSearch && matchPriority;
     });
+    // O estado fica na ordem de position; a ordem por prazo é só de exibição.
+    return lists.find(l => l.id === listId)?.sort_mode === "prazo" ? ordenarPorPrazo(filtrados) : filtrados;
   }
 
   if (loading) return <div className="flex flex-col flex-1 items-center justify-center"><ISpinner /></div>;

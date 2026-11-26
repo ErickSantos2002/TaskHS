@@ -59,6 +59,8 @@ export interface BoardListItem extends Board {
   members: UserBasic[];
 }
 
+export type SortMode = "manual" | "prazo";
+
 export interface BoardList {
   id: number;
   board_id: number;
@@ -70,6 +72,8 @@ export interface BoardList {
   is_done: boolean;
   /** Setor da lista (travados por setor do Dashboard); null = sem setor. */
   setor_id: number | null;
+  /** "manual" = Card.position; "prazo" = ordenada por prazo na tela (v2.18.0). */
+  sort_mode: SortMode;
   created_at: string;
 }
 
